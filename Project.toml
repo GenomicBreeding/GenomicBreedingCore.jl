@@ -1,0 +1,29 @@
+name = "GBCore"
+uuid = "50d95318-1838-4cfa-a614-3543b4bb0509"
+authors = ["jeffersonparil@gmail.com"]
+version = "1.0.0-DEV"
+
+[deps]
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+MixedModels = "ff71e718-51f3-5ec2-a782-8ffcbfa3c316"
+PrecompileTools = "aea7be01-6a6a-4083-8856-8a6e6704d82a"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
+UnicodePlots = "b8865327-cd53-5732-bb35-84acbb429228"
+
+[compat]
+DataFrames = "1.7.0"
+Documenter = "1.8.0"
+MixedModels = "4.28.0"
+PrecompileTools = "1.2.1"
+Random = "1.11.0"
+StatsBase = "0.34.4"
+UnicodePlots = "3.7.1"
+julia = "1.11"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
