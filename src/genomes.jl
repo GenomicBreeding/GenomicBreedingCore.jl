@@ -736,21 +736,21 @@ Merge a Genomes struct with a Phenomes struct using union or intersection
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
-julia> genomes = simulategenomes(n=10, verbose=false);
+julia> genomes = Genomes(n=2,p=4);
 
-julia> trials, effects = simulatetrials(genomes=slice(genomes, idx_entries=collect(1:5), idx_loci_alleles=collect(1:length(genomes.loci_alleles))), f_add_dom_epi=[0.90 0.05 0.05;], n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=2, verbose=false);
+julia> genomes.entries = ["entry_1", "entry_2"];
 
-julia> phenomes = analyse(trials, max_levels=20, max_time_per_model=10, verbose=false).phenomes[1];
+julia> genomes.loci_alleles = ["chr1\\t1\\tA|T\\tA", "chr1\\t2\\tC|G\\tG", "chr2\\t3\\tA|T\\tA", "chr2\\t4\\tG|T\\tG"];
 
-julia> genomes_merged_1, phenomes_merged_1 = merge(genomes, phenomes, keep_all=true);
+julia> genomes.allele_frequencies = [0.50 0.25 0.12 0.6; 0.45 0.20 0.10 0.05];
 
-julia> size(genomes_merged_1.allele_frequencies), size(phenomes_merged_1.phenotypes)
-((10, 10000), (10, 1))
+julia> phenomes = Phenomes(n=2, t=2);
 
-julia> genomes_merged_2, phenomes_merged_2 = merge(genomes, phenomes, keep_all=false);
+julia> phenomes.entries = ["entry_1", "entry_2"];
 
-julia> size(genomes_merged_2.allele_frequencies), size(phenomes_merged_2.phenotypes)
-((5, 10000), (5, 1))
+julia> phenomes.traits = ["trait_1", "trait_2"];
+
+julia> mg, mp = merge(genomes, phenomes);
 ```
 """
 function Base.merge(genomes::Genomes, phenomes::Phenomes; keep_all::Bool = true)::Tuple{Genomes,Phenomes}
