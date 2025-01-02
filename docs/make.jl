@@ -8,11 +8,11 @@ makedocs(;
     authors = "jeffersonparil@gmail.com",
     sitename = "GBCore.jl",
     format = Documenter.HTML(;
-        canonical = "https://jeffersonfparil.github.io/GBCore.jl",
+        canonical = "https://GenomicBreeding.github.io/GBCore.jl",
         edit_link = "main",
         assets = String[],
     ),
     pages = ["Home" => "index.md"],
 )
 
-deploydocs(; repo = "github.com/jeffersonfparil/GBCore.jl", devbranch = "main")
+deploydocs(; repo = "github.com/GenomicBreeding/GBCore.jl", devbranch = "main")

@@ -4,7 +4,7 @@ CurrentModule = GBCore
 
 # GBCore
 
-Documentation for [GBCore](https://github.com/jeffersonfparil/GBCore.jl).
+Documentation for [GBCore](https://github.com/GenomicBreeding/GBCore.jl).
 
 ```@index
 ```
