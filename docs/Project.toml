@@ -1,3 +1,6 @@
 [deps]
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
 GBCore = "50d95318-1838-4cfa-a614-3543b4bb0509"
+MixedModels = "ff71e718-51f3-5ec2-a782-8ffcbfa3c316"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
