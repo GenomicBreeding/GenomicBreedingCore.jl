@@ -20,7 +20,7 @@ include("simulation/simulate_genomes.jl")
 include("simulation/simulate_trials.jl")
 include("simulation/simulate_mating.jl")
 
-export Genomes, Phenomes, Trials, SimulatedEffects, TEBV
+export AbstractGB, Genomes, Phenomes, Trials, SimulatedEffects, TEBV
 export clone, hash, ==
 export checkdims, dimensions, loci_alleles, loci, plot, slice, filter, tabularise
 export simulategenomes, simulateeffects, simulategenomiceffects, simulatetrials
