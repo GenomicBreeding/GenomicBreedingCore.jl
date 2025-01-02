@@ -1,4 +1,27 @@
 """
+    clone(x::Phenomes)::Phenomes
+
+Clone a Phenomes object
+
+## Example
+```jldoctest; setup = :(using GBCore)
+julia> phenomes = Phenomes(n=2, t=2);
+
+julia> copy_phenomes = clone(phenomes)
+Phenomes(["", ""], ["", ""], ["", ""], Union{Missing, Float64}[missing missing; missing missing], Bool[0 0; 0 0])
+```
+"""
+function clone(x::Phenomes)::Phenomes
+    y::Phenomes = Phenomes(n = length(x.entries), t = length(x.traits))
+    y.entries = deepcopy(x.entries)
+    y.populations = deepcopy(x.populations)
+    y.traits = deepcopy(x.traits)
+    y.phenotypes = deepcopy(x.phenotypes)
+    y.mask = deepcopy(x.mask)
+    y
+end
+
+"""
     Base.hash(x::Phenomes, h::UInt)::UInt
 
 Hash a Phenomes struct.

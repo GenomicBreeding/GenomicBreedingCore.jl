@@ -1,17 +1,17 @@
 """
-    Base.deepcopy(x::Genomes)::Genomes
+    clone(x::Genomes)::Genomes
 
-Copy a Genomes object
+Clone a Genomes object
 
 ## Example
 ```jldoctest; setup = :(using GBCore)
 julia> genomes = Genomes(n=2, p=2);
 
-julia> copy_genomes = deepcopy(genomes)
+julia> copy_genomes = clone(genomes)
 Genomes(["", ""], ["", ""], ["", ""], Union{Missing, Float64}[missing missing; missing missing], Bool[0 0; 0 0])
 ```
 """
-function Base.deepcopy(x::Genomes)::Genomes
+function clone(x::Genomes)::Genomes
     y::Genomes = Genomes(n = length(x.entries), p = length(x.loci_alleles))
     y.entries = deepcopy(x.entries)
     y.populations = deepcopy(x.populations)
@@ -28,7 +28,7 @@ end
 Hash a Genomes struct using the entries, populations and loci_alleles.
 We deliberately excluded the allele_frequencies, and mask for efficiency.
 
-## Example
+## Examples
 ```jldoctest; setup = :(using GBCore)
 julia> genomes = Genomes(n=2, p=2);
 
@@ -83,8 +83,6 @@ julia> genomes.entries = ["entry_1", "entry_2"];
 
 julia> genomes.loci_alleles = ["chr1\\t1\\tA|T\\tA", "chr1\\t2\\tC|G\\tG", "chr2\\t3\\tA|T\\tA", "chr2\\t4\\tG|T\\tG"];
 
-julia> genomes.allele_frequencies = [0.50 0.25 0.12 0.6; 0.45 0.20 0.10 0.05];
-
 julia> checkdims(genomes)
 true
 ```
@@ -116,22 +114,16 @@ Count the number of entries, populations, loci-alleles combination, loci, and ma
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
-julia> genomes = Genomes(n=2,p=4);
-
-julia> genomes.entries = ["entry_1", "entry_2"];
-
-julia> genomes.loci_alleles = ["chr1\\t1\\tA|T\\tA", "chr1\\t2\\tC|G\\tG", "chr2\\t3\\tA|T\\tA", "chr2\\t4\\tG|T\\tG"];
-
-julia> genomes.allele_frequencies = [0.50 0.25 0.12 0.6; 0.45 0.20 0.10 0.05];
+julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
 
 julia> dimensions(genomes)
 Dict{String, Int64} with 6 entries:
-  "n_entries"      => 2
-  "n_chr"          => 2
-  "n_loci"         => 4
-  "n_loci_alleles" => 4
+  "n_entries"      => 100
+  "n_chr"          => 7
+  "n_loci"         => 1000
+  "n_loci_alleles" => 3000
   "n_populations"  => 1
-  "max_n_alleles"  => 2
+  "max_n_alleles"  => 4
 ```
 """
 function dimensions(genomes::Genomes)::Dict{String,Int64}
@@ -185,18 +177,12 @@ Extract chromosomes, positions, and alleles across loci-allele combinations
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
-julia> genomes = Genomes(n=2,p=4);
-
-julia> genomes.entries = ["entry_1", "entry_2"];
-
-julia> genomes.loci_alleles = ["chr1\\t1\\tA|T\\tA", "chr1\\t2\\tC|G\\tG", "chr2\\t3\\tA|T\\tA", "chr2\\t4\\tG|T\\tG"];
-
-julia> genomes.allele_frequencies = [0.50 0.25 0.12 0.6; 0.45 0.20 0.10 0.05];
+julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
 
 julia> chromsomes, positions, alleles = loci_alleles(genomes);
 
 julia> length(chromsomes), length(positions), length(alleles)
-(4, 4, 4)
+(3000, 3000, 3000)
 ```
 """
 function loci_alleles(genomes::Genomes)::Tuple{Vector{String},Vector{Int64},Vector{String}}
@@ -223,18 +209,12 @@ Extract chromosome names, positions, start and end indexes of each locus across 
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
-julia> genomes = Genomes(n=2,p=4);
-
-julia> genomes.entries = ["entry_1", "entry_2"];
-
-julia> genomes.loci_alleles = ["chr1\\t1\\tA|T\\tA", "chr1\\t2\\tC|G\\tG", "chr2\\t3\\tA|T\\tA", "chr2\\t4\\tG|T\\tG"];
-
-julia> genomes.allele_frequencies = [0.50 0.25 0.12 0.6; 0.45 0.20 0.10 0.05];
+julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
 
 julia> chromsomes, positions, loci_ini_idx, loci_fin_idx = loci(genomes);
 
 julia> length(chromsomes), length(positions), length(loci_ini_idx), length(loci_fin_idx)
-(4, 4, 4, 4)
+(1000, 1000, 1000, 1000)
 ```
 """
 function loci(genomes::Genomes)::Tuple{Vector{String},Vector{Int64},Vector{Int64},Vector{Int64}}
@@ -276,18 +256,11 @@ end
 Plot allele frequencies
 
 # Examples
-```setup = :(using GBCore)
-julia> genomes = Genomes(n=2,p=4);
+```
+julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
 
-julia> genomes.entries = ["entry_1", "entry_2"];
+julia> GBCore.plot(genomes);
 
-julia> genomes.loci_alleles = ["chr1\\t1\\tA|T\\tA", "chr1\\t2\\tC|G\\tG", "chr2\\t3\\tA|T\\tA", "chr2\\t4\\tG|T\\tG"];
-
-julia> genomes.allele_frequencies = [0.50 0.25 0.12 0.6; 0.45 0.20 0.10 0.05];
-
-julia> genomes.allele_frequencies = [0.50 0.25 0.12 0.6; 0.45 0.20 0.10 0.05];
-
-julia> plot(genomes);
 ```
 """
 function plot(genomes::Genomes, seed::Int64 = 42)
@@ -346,23 +319,18 @@ Slice a Genomes struct by specifing indixes of entries and loci-allele combinati
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
-julia> genomes = Genomes(n=2,p=4);
+julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
 
-julia> genomes.entries = ["entry_1", "entry_2"];
-
-julia> genomes.loci_alleles = ["chr1\\t1\\tA|T\\tA", "chr1\\t2\\tC|G\\tG", "chr2\\t3\\tA|T\\tA", "chr2\\t4\\tG|T\\tG"];
-
-julia> genomes.allele_frequencies = [0.50 0.25 0.12 0.6; 0.45 0.20 0.10 0.05];
-
-julia> sliced_genomes = slice(genomes, idx_entries=[1]; idx_loci_alleles=[1,3]);
+julia> sliced_genomes = slice(genomes, idx_entries=collect(1:10); idx_loci_alleles=collect(1:300));
 
 julia> dimensions(sliced_genomes)
-  "n_entries"      => 1
-  "n_chr"          => 2
-  "n_loci"         => 2
-  "n_loci_alleles" => 2
+Dict{String, Int64} with 6 entries:
+  "n_entries"      => 10
+  "n_chr"          => 1
+  "n_loci"         => 100
+  "n_loci_alleles" => 300
   "n_populations"  => 1
-  "max_n_alleles"  => 2
+  "max_n_alleles"  => 4
 ```
 """
 function slice(genomes::Genomes; idx_entries::Vector{Int64}, idx_loci_alleles::Vector{Int64})::Genomes
@@ -418,26 +386,20 @@ Filter a Genomes struct by minimum allele frequency
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
-julia> genomes = Genomes(n=2,p=4);
-
-julia> genomes.entries = ["entry_1", "entry_2"];
-
-julia> genomes.loci_alleles = ["chr1\\t1\\tA|T\\tA", "chr1\\t2\\tC|G\\tG", "chr2\\t3\\tA|T\\tA", "chr2\\t4\\tG|T\\tG"];
-
-julia> genomes.allele_frequencies = [0.50 0.25 0.12 0.6; 0.45 0.20 0.10 0.05];
+julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
 
 julia> filtered_genomes_1 = filter(genomes, maf=0.1);
 
-julia> filtered_genomes_2 = filter(genomes, maf=0.1, chr_pos_allele_ids=genomes.loci_alleles[3:4]);
+julia> filtered_genomes_2 = filter(genomes, maf=0.1, chr_pos_allele_ids=genomes.loci_alleles[1:1000]);
 
 julia> size(genomes.allele_frequencies)
-(2, 4)
+(100, 3000)
 
 julia> size(filtered_genomes_1.allele_frequencies)
-(2, 4)
+(100, 1236)
 
 julia> size(filtered_genomes_2.allele_frequencies)
-(2, 2)
+(100, 388)
 ```
 """
 function Base.filter(
@@ -586,23 +548,21 @@ Merge two Genomes structs using a tuple of conflict resolution weights
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
-julia> genomes = Genomes(n=2,p=4);
+julia> n = 100; l = 5_000; n_alleles = 2;
 
-julia> genomes.entries = ["entry_1", "entry_2"];
+julia> all = simulategenomes(n=n, l=l, n_alleles=n_alleles, verbose=false);
 
-julia> genomes.loci_alleles = ["chr1\\t1\\tA|T\\tA", "chr1\\t2\\tC|G\\tG", "chr2\\t3\\tA|T\\tA", "chr2\\t4\\tG|T\\tG"];
+julia> genomes = slice(all, idx_entries=collect(1:Int(floor(n*0.75))), idx_loci_alleles=collect(1:Int(floor(l*(n_alleles-1)*0.75))));
 
-julia> genomes.allele_frequencies = [0.50 0.25 0.12 0.6; 0.45 0.20 0.10 0.05];
+julia> other = slice(all, idx_entries=collect(Int(floor(n*0.50)):n), idx_loci_alleles=collect(Int(floor(l*(n_alleles-1)*0.50)):l*(n_alleles-1)));
 
-julia> other = deepcopy(genomes); genomes.allele_frequencies[1] = 0.10;
-
-julia> merged_genomes = merge(genomes, other, conflict_resolution=(0.50, 0.50), verbose=false);
+julia> merged_genomes = merge(genomes, other, conflict_resolution=(0.75, 0.25), verbose=false);
 
 julia> size(merged_genomes.allele_frequencies)
-(2, 4)
+(100, 5000)
 
 julia> sum(ismissing.(merged_genomes.allele_frequencies))
-0
+123725
 ```
 """
 function Base.merge(
@@ -740,7 +700,17 @@ julia> genomes = simulategenomes(n=10, verbose=false);
 
 julia> trials, effects = simulatetrials(genomes=slice(genomes, idx_entries=collect(1:5), idx_loci_alleles=collect(1:length(genomes.loci_alleles))), f_add_dom_epi=[0.90 0.05 0.05;], n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=2, verbose=false);
 
-julia> phenomes = analyse(trials, max_levels=20, max_time_per_model=10, verbose=false).phenomes[1];
+julia> phenomes = Phenomes(n=5, t=1);
+
+julia> phenomes.entries = trials.entries[1:5];
+
+julia> phenomes.populations = trials.populations[1:5];
+
+julia> phenomes.traits = trials.traits;
+
+julia> phenomes.phenotypes = trials.phenotypes[1:5, :];
+
+julia> phenomes.mask .= true;
 
 julia> genomes_merged_1, phenomes_merged_1 = merge(genomes, phenomes, keep_all=true);
 

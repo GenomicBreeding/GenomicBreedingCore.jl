@@ -1,4 +1,36 @@
 """
+    clone(x::Trials)::Trials
+
+Clone a Trials object
+
+## Example
+```jldoctest; setup = :(using GBCore)
+julia> trials = Trials(n=2, t=2);
+
+julia> copy_trials = clone(trials)
+Trials(Union{Missing, Float64}[missing missing; missing missing], ["", ""], ["", ""], ["", ""], ["", ""], ["", ""], ["", ""], ["", ""], ["", ""], ["", ""], ["", ""], ["", ""])
+```
+"""
+function clone(x::Trials)::Trials
+    y::Trials = Trials(n = length(x.entries), t = length(x.traits))
+    y.entries = deepcopy(x.entries)
+    y.phenotypes = deepcopy(x.phenotypes)
+    y.traits = deepcopy(x.traits)
+    y.years = deepcopy(x.years)
+    y.seasons = deepcopy(x.seasons)
+    y.harvests = deepcopy(x.harvests)
+    y.sites = deepcopy(x.sites)
+    y.replications = deepcopy(x.replications)
+    y.blocks = deepcopy(x.blocks)
+    y.rows = deepcopy(x.rows)
+    y.cols = deepcopy(x.cols)
+    y.entries = deepcopy(x.entries)
+    y.populations = deepcopy(x.populations)
+    y
+end
+
+
+"""
     Base.hash(x::Trials, h::UInt)::UInt
 
 Hash a Trials struct.
