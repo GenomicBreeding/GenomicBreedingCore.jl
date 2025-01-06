@@ -252,7 +252,7 @@ Plot allele frequencies
 ```
 julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
 
-julia> GBCore.plot(genomes);
+julia> plot(genomes)
 
 ```
 """
@@ -306,7 +306,7 @@ function plot(genomes::Genomes, seed::Int64 = 42)
 end
 
 """
-    slice(genomes::Genomes;idx_entries::Vector{Int64},idx_loci_alleles::Vector{Int64})::Genomes
+    slice(genomes::Genomes; idx_entries::Vector{Int64}, idx_loci_alleles::Vector{Int64})::Genomes
 
 Slice a Genomes struct by specifing indixes of entries and loci-allele combinations
 
