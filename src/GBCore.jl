@@ -15,13 +15,14 @@ include("genomes.jl")
 include("phenomes.jl")
 include("trials.jl")
 include("tebv.jl")
+include("fit.jl")
 
 include("simulation/simulate_effects.jl")
 include("simulation/simulate_genomes.jl")
 include("simulation/simulate_trials.jl")
 include("simulation/simulate_mating.jl")
 
-export AbstractGB, Genomes, Phenomes, Trials, SimulatedEffects, TEBV
+export AbstractGB, Genomes, Phenomes, Trials, SimulatedEffects, TEBV, Fit, CV
 export clone, hash, ==
 export checkdims, dimensions, loci_alleles, loci, plot, slice, filter, tabularise
 export simulategenomes, simulateeffects, simulategenomiceffects, simulatetrials
@@ -61,6 +62,10 @@ export countlevels, @string2formula, trialsmodelsfomulae!, analyse
     phenomes == phenomes_copy
     merged_genomes, merged_phenomes = merge(genomes, phenomes)
     tebv = analyse(trials, max_levels = 10)
+    fit = Fit(l = 2)
+    fit_copy = clone(fit)
+    fit == fit
+    checkdims(fit)
 end
 
 

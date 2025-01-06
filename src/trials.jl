@@ -132,7 +132,7 @@ function checkdims(trials::Trials)::Bool
        (n != length(trials.populations))
         return false
     end
-    return true
+    true
 end
 
 function tabularise(trials::Trials)::DataFrame

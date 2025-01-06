@@ -1,4 +1,35 @@
 """
+    clone(x::TEBV)::TEBV
+
+Clone a TEBV object
+
+## Example
+```jldoctest; setup = :(using GBCore, MixedModels, DataFrames)
+julia> tebv = TEBV(traits=[""], formulae=[""], models=[MixedModel(@formula(y~1+(1|x)), DataFrame(y=1, x=1))], df_BLUEs=[DataFrame(x=1)], df_BLUPs=[DataFrame(x=1)], phenomes=[Phenomes(n=1,t=1)]);
+
+julia> copy_tebv = clone(tebv);
+
+julia> copy_tebv.traits == tebv.traits
+true
+
+julia> copy_tebv.phenomes == tebv.phenomes
+true
+```
+"""
+function clone(x::TEBV)::TEBV
+    Φ::TEBV = TEBV(
+        traits = deepcopy(x.traits),
+        formulae = deepcopy(x.formulae),
+        models = deepcopy(x.models),
+        df_BLUEs = deepcopy(x.df_BLUEs),
+        df_BLUPs = deepcopy(x.df_BLUPs),
+        phenomes = deepcopy(x.phenomes),
+    )
+    Φ
+end
+
+
+"""
     Base.hash(x::TEBV, h::UInt)::UInt
 
 Hash a TEBV struct using the traits, formualae and phenomes.
@@ -65,15 +96,7 @@ function checkdims(tebv::TEBV)::Bool
        (t != length(unique(tebv.phenomes)))
         return false
     end
-    if !isa(tebv.traits, Vector{String}) ||
-       !isa(tebv.formulae, Vector{String}) ||
-       !isa(tebv.models, Vector{LinearMixedModel{Float64}}) ||
-       !isa(tebv.df_BLUEs, Vector{DataFrame}) ||
-       !isa(tebv.df_BLUPs, Vector{DataFrame}) ||
-       !isa(tebv.phenomes, Vector{Phenomes})
-        return false
-    end
-    return true
+    true
 end
 
 

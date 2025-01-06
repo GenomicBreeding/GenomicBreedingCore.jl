@@ -296,6 +296,20 @@ end
 
 
 """
+# Genomic prediction model fit
+"""
+mutable struct Fit <: AbstractGB
+    model::String
+    b_hat_labels::Vector{String}
+    b_hat::Vector{Float64}
+    metrics::Dict{String,Float64}
+    function Fit(; l::Int64)
+        new("", repeat([""], inner = l), repeat([0.0], inner = l), Dict("" => 0.0))
+    end
+end
+
+
+"""
 # Cross-validation struct
 """
 mutable struct CV <: AbstractGB

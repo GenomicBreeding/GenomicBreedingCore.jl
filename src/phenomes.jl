@@ -94,14 +94,7 @@ function checkdims(y::Phenomes)::Bool
        ((n, p) != size(y.mask))
         return false
     end
-    if !isa(y.entries, Vector{String}) ||
-       !isa(y.populations, Vector{String}) ||
-       !isa(y.traits, Vector{String}) ||
-       !isa(y.phenotypes, Matrix{Union{Float64,Missing}}) ||
-       !isa(y.mask, Matrix{Bool})
-        return false
-    end
-    return true
+    true
 end
 
 

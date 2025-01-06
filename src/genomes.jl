@@ -97,14 +97,7 @@ function checkdims(genomes::Genomes)::Bool
        ((n, p) != size(genomes.mask))
         return false
     end
-    if !isa(genomes.entries, Vector{String}) ||
-       !isa(genomes.populations, Vector{String}) ||
-       !isa(genomes.loci_alleles, Vector{String}) ||
-       !isa(genomes.allele_frequencies, Matrix{Union{Float64,Missing}}) ||
-       !isa(genomes.mask, Matrix{Bool})
-        return false
-    end
-    return true
+    true
 end
 
 """
