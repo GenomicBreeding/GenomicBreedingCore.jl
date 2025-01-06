@@ -97,6 +97,10 @@ function checkdims(y::Phenomes)::Bool
     true
 end
 
+# """
+# TODO: plot
+# """
+# function plot(phenomes::Phenomes)::Phenomes end
 
 # """
 # TODO: filter using mask

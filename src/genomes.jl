@@ -367,6 +367,30 @@ end
 
 
 """
+    filter(genomes::Genomes)::Genomes
+
+Filter a Genomes struct using its mask matrix where all rows and columns with at least one false value are excluded
+
+# Examples
+```jldoctest; setup = :(using GBCore)
+julia> genomes = simulategenomes(verbose=false); genomes.mask[1:10, 42:100] .= false;
+    
+julia> filtered_genomes = filter(genomes);
+
+julia> size(filtered_genomes.allele_frequencies)
+(90, 9941)
+```
+"""
+function Base.filter(genomes::Genomes)::Genomes
+    # genomes = simulategenomes(); genomes.mask[1:10, 42:100] .= false;
+    idx_entries = findall(mean(genomes.mask, dims = 2)[:, 1] .== 1.0)
+    idx_loci_alleles = findall(mean(genomes.mask, dims = 1)[1, :] .== 1.0)
+    filtered_genomes::Genomes = slice(genomes, idx_entries = idx_entries; idx_loci_alleles = idx_loci_alleles)
+    filtered_genomes
+end
+
+
+"""
     filter(
         genomes::Genomes;
         maf::Float64,
@@ -375,15 +399,15 @@ end
         chr_pos_allele_ids::Union{Missing,Vector{String}} = missing,
     )::Genomes
 
-Filter a Genomes struct by minimum allele frequency
+Filter a Genomes struct by minimum allele frequency, entries sparsity, loci sparsity, and/or vector of locus-allele names
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
 julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
 
-julia> filtered_genomes_1 = filter(genomes, maf=0.1);
+julia> filtered_genomes_1 = filter(genomes, 0.1);
 
-julia> filtered_genomes_2 = filter(genomes, maf=0.1, chr_pos_allele_ids=genomes.loci_alleles[1:1000]);
+julia> filtered_genomes_2 = filter(genomes, 0.1, chr_pos_allele_ids=genomes.loci_alleles[1:1000]);
 
 julia> size(genomes.allele_frequencies)
 (100, 3000)
@@ -396,8 +420,8 @@ julia> size(filtered_genomes_2.allele_frequencies)
 ```
 """
 function Base.filter(
-    genomes::Genomes;
-    maf::Float64,
+    genomes::Genomes,
+    maf::Float64;
     max_entry_sparsity::Float64 = 0.0,
     max_locus_sparsity::Float64 = 0.0,
     chr_pos_allele_ids::Union{Missing,Vector{String}} = missing,
@@ -405,7 +429,7 @@ function Base.filter(
     # genomes::Genomes = simulategenomes(sparsity=0.01, seed=123456); maf=0.01; max_entry_sparsity=0.1; max_locus_sparsity = 0.25
     # chr_pos_allele_ids = sample(genomes.loci_alleles, Int(floor(0.5*length(genomes.loci_alleles)))); sort!(chr_pos_allele_ids)
     if !checkdims(genomes)
-        throw(ArgumentError("Both Genomes structs are corrupted."))
+        throw(ArgumentError("Genomes struct is corrupted."))
     end
     if (maf < 0.0) || (maf > 1.0)
         throw(ArgumentError("We accept `maf` from 0.0 to 1.0."))
@@ -787,17 +811,3 @@ function Base.merge(genomes::Genomes, phenomes::Phenomes; keep_all::Bool = true)
     end
     out_genomes, out_phenomes
 end
-
-
-
-
-# """
-# TODO: slice using mask
-# """
-# function slice(genomes::Genomes)::Genomes end
-
-
-# """
-# TODO: filter using mask
-# """
-# function filter(genomes::Genomes)::Genomes end
