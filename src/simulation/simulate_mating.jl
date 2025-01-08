@@ -18,7 +18,15 @@ function simulatemating(;
     if !checkdims(parent_genomes)
         throw(ArgumentError("Error in the parents' genomes input"))
     end
-    if sum(ismissing.(parent_genomes.allele_frequencies)) != 0
+    # Genomes dimensions
+    genomes_dims::Dict{String,Int64} = dimensions(genomes)
+    n::Int64 = genomes_dims["n_entries"]
+    n_populations::Int64 = genomes_dims["n_populations"]
+    p::Int64 = genomes_dims["n_loci_alleles"]
+    l::Int64 = genomes_dims["n_loci"]
+    max_n_alleles::Int64 = genomes_dims["max_n_alleles"]
+    n_missing::Int64 = genomes_dims["n_missing"]
+    if n_missing > 0
         throw(
             ArgumentError(
                 "We expect no missing values in the allele frequencies of the parents. Please consider filtering them out or imputing.",

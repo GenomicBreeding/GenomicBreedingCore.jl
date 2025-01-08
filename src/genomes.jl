@@ -103,19 +103,20 @@ end
 """
     dimensions(genomes::Genomes)::Dict{String, Int64}
 
-Count the number of entries, populations, loci-alleles combination, loci, and maximum number of alleles per locus in the Genomes struct
+Count the number of entries, populations, loci-alleles combination, loci, maximum number of alleles per locus, and number of missing data in the Genomes struct
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
 julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
 
 julia> dimensions(genomes)
-Dict{String, Int64} with 6 entries:
+Dict{String, Int64} with 7 entries:
   "n_entries"      => 100
   "n_chr"          => 7
   "n_loci"         => 1000
   "n_loci_alleles" => 3000
   "n_populations"  => 1
+  "n_missing"      => 0
   "max_n_alleles"  => 4
 ```
 """
@@ -160,6 +161,7 @@ function dimensions(genomes::Genomes)::Dict{String,Int64}
         "n_chr" => n_chr,
         "n_loci" => n_loci,
         "max_n_alleles" => max_n_alleles,
+        "n_missing" => sum(ismissing.(genomes.allele_frequencies)),
     )
 end
 
@@ -317,12 +319,13 @@ julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
 julia> sliced_genomes = slice(genomes, idx_entries=collect(1:10); idx_loci_alleles=collect(1:300));
 
 julia> dimensions(sliced_genomes)
-Dict{String, Int64} with 6 entries:
+Dict{String, Int64} with 7 entries:
   "n_entries"      => 10
   "n_chr"          => 1
   "n_loci"         => 100
   "n_loci_alleles" => 300
   "n_populations"  => 1
+  "n_missing"      => 0
   "max_n_alleles"  => 4
 ```
 """

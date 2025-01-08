@@ -86,6 +86,21 @@ function simulatetrials(;
         if !checkdims(genomes)
             throw(ArgumentError("Error in the genomes input"))
         end
+        # Genomes dimensions
+        genomes_dims::Dict{String,Int64} = dimensions(genomes)
+        n::Int64 = genomes_dims["n_entries"]
+        n_populations::Int64 = genomes_dims["n_populations"]
+        p::Int64 = genomes_dims["n_loci_alleles"]
+        l::Int64 = genomes_dims["n_loci"]
+        max_n_alleles::Int64 = genomes_dims["max_n_alleles"]
+        n_missing::Int64 = genomes_dims["n_missing"]
+        if n_missing > 0
+            throw(
+                ArgumentError(
+                    "We do not accept a Genomes struct with missing data to simulate trials data. Please consider filtering them out or imputing.",
+                ),
+            )
+        end
         n_traits::Int64 = size(f_add_dom_epi, 1)
         if (n_traits < 1) || (n_traits > 1e6)
             throw(ArgumentError("We accept `n_traits` from 1 to 1 million."))
@@ -115,13 +130,6 @@ function simulatetrials(;
         if (n_replications < 1) || (n_replications > 1e6)
             throw(ArgumentError("We accept `n_replications` from 1 to 1 million."))
         end
-        # Genomes dimensions
-        genomes_dims::Dict{String,Int64} = dimensions(genomes)
-        n::Int64 = genomes_dims["n_entries"]
-        n_populations::Int64 = genomes_dims["n_populations"]
-        p::Int64 = genomes_dims["n_loci_alleles"]
-        l::Int64 = genomes_dims["n_loci"]
-        max_n_alleles::Int64 = genomes_dims["max_n_alleles"]
         # Argument checks (continued...)
         if !ismissing(n_blocks)
             if (n * n_replications % n_blocks) > 0
