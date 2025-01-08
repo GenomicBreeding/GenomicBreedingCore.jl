@@ -104,7 +104,7 @@ Count the number of entries, populations, and traits in the Phenomes struct
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
-julia> phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = rand(10,3);
+julia> phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = fill(0.0, 10,3);
 
 julia> dimensions(phenomes)
 Dict{String, Int64} with 3 entries:
@@ -128,30 +128,60 @@ end
 """
     plot(phenomes::Phenomes)::Nothing
 
-Plot histogram/s of the trait value/s
+Plot histogram/s of the trait value/s and a heatmap of trait correlations
 
 # Examples
 ```
-julia> phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = rand(10,3);
+julia> phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = fill(0.0, 10,3);
 
 julia> plot(phenomes);
 
 ```
 """
-function plot(phenomes::Phenomes)
-    # phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = rand(10,3);
+function plot(phenomes::Phenomes; nbins::Int64 = 10)
+    # phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = rand(10,3);
     if !checkdims(phenomes)
         throw(ArgumentError("Phenomes struct is corrupted."))
     end
-    for j in eachindex(phenomes.traits)
-        ϕ::Vector{Float64} = phenomes.phenotypes[.!ismissing.(phenomes.phenotypes[:, j]), j]
-        if length(ϕ) > 2
-            plt = UnicodePlots.histogram(ϕ, title = phenomes.traits[j], vertical = true, nbins = 5)
-            display(plt)
-        else
-            println(string("Trait: ", phenomes.traits[j], " has ", length(ϕ), " non-missing data points."))
+    # View distributions per population per trait using histograms
+    for pop in unique(phenomes.populations)
+        # pop = phenomes.populations[1]
+        idx_pop = findall(phenomes.populations .== pop)
+        idx_trait_with_variance::Vector{Int64} = []
+        for j in eachindex(phenomes.traits)
+            # j = 1
+            println("##############################################")
+            println("Population: " * pop * " | Trait: " * phenomes.traits[j])
+            ϕ::Vector{Float64} = phenomes.phenotypes[.!ismissing.(phenomes.phenotypes[:, j][idx_pop]), j]
+            if StatsBase.var(ϕ) > 1e-10
+                append!(idx_trait_with_variance, j)
+            end
+            if length(ϕ) > 2
+                plt = UnicodePlots.histogram(ϕ, title = phenomes.traits[j], vertical = false, nbins = nbins)
+                display(plt)
+            else
+                println(string("Trait: ", phenomes.traits[j], " has ", length(ϕ), " non-missing data points."))
+            end
         end
+        # View correlation between traits using scatter plots
+        C::Matrix{Float64} = StatsBase.cor(phenomes.phenotypes[idx_pop, idx_trait_with_variance])
+        plt = UnicodePlots.heatmap(
+            C;
+            height = length(phenomes.traits),
+            width = length(phenomes.traits),
+            title = string(
+                "Trait correlations: {",
+                join(
+                    string.(collect(1:length(idx_trait_with_variance))) .* " => " .*
+                    phenomes.traits[idx_trait_with_variance],
+                    ", ",
+                ),
+                "}",
+            ),
+        )
+        display(plt)
     end
+    # Return John Snow's knowledge.
     return nothing
 end
 
@@ -162,7 +192,7 @@ Slice a Phenomes struct by specifing indixes of entries and traits
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
-julia> phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = rand(10,3);
+julia> phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = fill(0.0, 10,3);
 
 julia> sliced_phenomes = slice(phenomes, idx_entries=collect(1:5); idx_traits=collect(2:3));
 
@@ -220,7 +250,7 @@ Filter a Phenomes struct using its mask matrix where all rows and columns with a
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
-julia> phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = rand(10,3);
+julia> phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = fill(0.0, 10,3);
 
 julia> phenomes.mask .= true; phenomes.mask[6:10, 1] .= false;
     
@@ -381,4 +411,41 @@ function Base.merge(
         throw(ErrorException("Error merging the 2 Phenomes structs."))
     end
     out
+end
+
+"""
+    tabularise(phenomes::Phenomes)::DataFrame
+
+Export the Phenomes structs into a DataFrames.DataFrame struct
+
+# Examples
+```jldoctest; setup = :(using GBCore)
+julia> phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = fill(0.0, 10,3);
+
+julia> tabularise(phenomes)
+10×6 DataFrame
+ Row │ id     entries   populations  A         B         C        
+     │ Int64  String    String       Float64?  Float64?  Float64? 
+─────┼────────────────────────────────────────────────────────────
+   1 │     1  entry_1   pop_1             0.0       0.0       0.0
+   2 │     2  entry_2   pop_1             0.0       0.0       0.0
+   3 │     3  entry_3   pop_1             0.0       0.0       0.0
+   4 │     4  entry_4   pop_1             0.0       0.0       0.0
+   5 │     5  entry_5   pop_1             0.0       0.0       0.0
+   6 │     6  entry_6   pop_1             0.0       0.0       0.0
+   7 │     7  entry_7   pop_1             0.0       0.0       0.0
+   8 │     8  entry_8   pop_1             0.0       0.0       0.0
+   9 │     9  entry_9   pop_1             0.0       0.0       0.0
+  10 │    10  entry_10  pop_1             0.0       0.0       0.0
+```
+"""
+function tabularise(phenomes::Phenomes)::DataFrame
+    # phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = rand(10,3);
+    df_ids::DataFrame =
+        DataFrame(; id = 1:length(phenomes.entries), entries = phenomes.entries, populations = phenomes.populations)
+    df_phe::DataFrame = DataFrame(phenomes.phenotypes, :auto)
+    rename!(df_phe, phenomes.traits)
+    df_phe.id = 1:length(phenomes.entries)
+    df = innerjoin(df_ids, df_phe; on = :id)
+    return df
 end

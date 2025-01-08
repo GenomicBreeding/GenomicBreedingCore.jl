@@ -135,6 +135,21 @@ function checkdims(trials::Trials)::Bool
     true
 end
 
+"""
+    tabularise(trials::Trials)::DataFrame
+
+Export the Trials structs into a DataFrames.DataFrame struct
+
+# Examples
+```jldoctest; setup = :(using GBCore)
+julia> trials, _ = simulatetrials(genomes = simulategenomes(verbose=false), verbose=false);
+
+julia> df = tabularise(trials);
+
+julia> size(df)
+(12800, 14)
+```
+"""
 function tabularise(trials::Trials)::DataFrame
     # trials::Trials, _ = simulatetrials(genomes = simulategenomes());
     df_ids::DataFrame = DataFrame(;
@@ -157,12 +172,74 @@ function tabularise(trials::Trials)::DataFrame
     return df
 end
 
-# # TODO: plot raw data
-# function plot(trials::Trials)::Bool
-#     # trials, _ = simulatetrials(genomes = simulategenomes())
-#     df::DataFrame = tabularise(trials)
-#     cor(trials.phenotypes)
-#     plt = corrplot(trials.phenotypes)
+"""
+    plot(trials::Trials)::Nothing
 
-#     false
-# end
+Plot histogram/s of the trait value/s and a heatmap of trait correlations across the entire trial.
+Additionally, plot mean trait values per year, season, harvest, site, replications, row, column, and population for each trait.
+
+# Examples
+```
+julia> trials, _ = simulatetrials(genomes = simulategenomes(verbose=false), verbose=false);
+
+julia> plot(trials);
+
+```
+"""
+function plot(trials::Trials; nbins::Int64 = 10)
+    # trials, _ = simulatetrials(genomes = simulategenomes()); nbins = 10; 
+    if !checkdims(trials)
+        throw(ArgumentError("Phenomes struct is corrupted."))
+    end
+    for pop in unique(trials.populations)
+        # pop = trials.populations[1]
+        idx_pop = findall(trials.populations .== pop)
+        idx_trait_with_variance::Vector{Int64} = []
+        for j in eachindex(trials.traits)
+            # j = 1
+            println("##############################################")
+            println("Population: " * pop * " | Trait: " * trials.traits[j])
+            ϕ::Vector{Float64} = trials.phenotypes[.!ismissing.(trials.phenotypes[:, j][idx_pop]), j]
+            if StatsBase.var(ϕ) > 1e-10
+                append!(idx_trait_with_variance, j)
+            end
+            if length(ϕ) > 2
+                plt = UnicodePlots.histogram(ϕ, title = trials.traits[j], vertical = false, nbins = nbins)
+                display(plt)
+            else
+                println(string("Trait: ", trials.traits[j], " has ", length(ϕ), " non-missing data points."))
+            end
+        end
+        # View correlation between traits using scatter plots
+        C::Matrix{Float64} = StatsBase.cor(trials.phenotypes[idx_pop, idx_trait_with_variance])
+        plt = UnicodePlots.heatmap(
+            C;
+            height = length(trials.traits),
+            width = length(trials.traits),
+            title = string(
+                "Trait correlations: {",
+                join(
+                    string.(collect(1:length(idx_trait_with_variance))) .* " => " .*
+                    trials.traits[idx_trait_with_variance],
+                    ", ",
+                ),
+                "}",
+            ),
+        )
+        display(plt)
+    end
+    # Mean trait values across years, seasons, harvests, sites, replications, row, column, and populations
+    df = tabularise(trials)
+    for trait in trials.traits
+        # trait = trials.traits[1]
+        println("##############################################")
+        println("Trait: " * trait)
+        for class in ["years", "seasons", "harvests", "sites", "replications", "rows", "cols", "populations"]
+            agg = DataFrames.combine(DataFrames.groupby(df, class), trait => mean)
+            plt = UnicodePlots.barplot(agg[!, 1], agg[!, 2], title = class)
+            display(plt)
+        end
+    end
+    # Return nothing
+    return nothing
+end

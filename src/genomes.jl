@@ -259,7 +259,7 @@ julia> plot(genomes)
 ```
 """
 function plot(genomes::Genomes, seed::Int64 = 42)
-    # genomes = simulategenomes(n=100, l=1_000, n_alleles=3, n_populations=3, μ_β_params=(2.0,2.0), verbose=false); seed::Int64=42;
+    # genomes = simulategenomes(n=100, l=1_000, n_alleles=3, n_populations=3, μ_β_params=(2.0,2.0), sparsity=0.01, verbose=false); seed::Int64=42;
     # Per poulation, using min([250, p]) randomly sampled loci plot:
     #   (1) histogram of allele frequencies per entry,
     #   (2) histogram of mean allele frequencies per locus, and
@@ -270,9 +270,11 @@ function plot(genomes::Genomes, seed::Int64 = 42)
     rng::TaskLocalRNG = Random.seed!(seed)
     for pop in unique(genomes.populations)
         # pop = genomes.populations[1]
+        println("##############################################")
+        println("Population: " * pop)
         p = size(genomes.allele_frequencies, 2)
         idx_row::Vector{Int64} = findall(genomes.populations .== pop)
-        idx_col::Vector{Int64} = StatsBase.sample(rng, 1:p, minimum([250, p]); replace = false, ordered = true)
+        idx_col::Vector{Int64} = StatsBase.sample(rng, 1:p, minimum([100, p]); replace = false, ordered = true)
         Q = genomes.allele_frequencies[idx_row, idx_col]
         q::Vector{Float64} = filter(!ismissing, reshape(Q, (length(idx_row) * length(idx_col), 1)))
         plt_1 = UnicodePlots.histogram(
@@ -296,14 +298,16 @@ function plot(genomes::Genomes, seed::Int64 = 42)
         display(plt_2)
         # Correlation between allele frequencies
         idx_col = findall(sum(ismissing.(Q); dims = 1)[1, :] .== 0)
+        C::Matrix{Float64} = StatsBase.cor(Q[:, findall(sum(ismissing.(Q); dims = 1)[1, :] .== 0)])
         plt_3 = UnicodePlots.heatmap(
-            StatsBase.cor(Q[:, findall(sum(ismissing.(Q); dims = 1)[1, :] .== 0)]);
-            height = 50,
-            width = 50,
+            C;
+            height = size(C, 2),
+            width = size(C, 2),
             zlabel = string("Pairwise loci correlation (", pop, ")"),
         )
         display(plt_3)
     end
+    # Return nada!
     return nothing
 end
 

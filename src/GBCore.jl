@@ -6,7 +6,7 @@ using LinearAlgebra
 using StatsBase
 using Distributions
 using MixedModels
-using UnicodePlots
+using UnicodePlots, Plots
 using ProgressMeter
 using PrecompileTools: @compile_workload
 
