@@ -441,7 +441,7 @@ julia> tabularise(phenomes)
 """
 function tabularise(phenomes::Phenomes)::DataFrame
     # phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = rand(10,3);
-    if !checkdims(phenomes) && !checkdims(other)
+    if !checkdims(phenomes)
         throw(ArgumentError("Phenomes struct is corrupted."))
     end
     df_ids::DataFrame =
