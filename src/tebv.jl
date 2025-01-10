@@ -418,7 +418,7 @@ function analyse(trials::Trials; max_levels::Int64 = 100, max_time_per_model::In
     out_df_BLUPs::Vector{DataFrame} = []
     out_phenomes::Vector{Phenomes} = []
     for trait in unique(trials.traits)
-        # trait = unique(trials.traits)[3]
+        # trait = unique(trials.traits)[2]
         if verbose
             println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
             println(trait)
@@ -472,6 +472,7 @@ function analyse(trials::Trials; max_levels::Int64 = 100, max_time_per_model::In
             pb = Progress(length(idx_parallel_models); desc = "Trials analyses | iterative model fitting: ")
         end
         for i in idx_iterative_models
+            # println(i)
             f = @eval(@string2formula $(formulae[i]))
             model = MixedModel(f, df)
             model.optsum.REML = true
