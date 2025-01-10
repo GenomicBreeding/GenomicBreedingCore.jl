@@ -390,6 +390,11 @@ function analyse(trials::Trials; max_levels::Int64 = 100, max_time_per_model::In
     # trials, simulated_effects = simulatetrials(genomes = simulategenomes()); max_levels::Int64=100; max_time_per_model::Int64=60; verbose::Bool = true;
     # trials, simulated_effects = simulatetrials(genomes = simulategenomes(n=5), n_years=2, n_seasons=2, n_harvests=1, n_sites=2, n_replications=10); max_levels::Int64=100; max_time_per_model::Int64=60; verbose::Bool = true;
     # trials, simulated_effects = simulatetrials(genomes = simulategenomes(n=5), n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=10); max_levels::Int64=100; max_time_per_model::Int64=60; verbose::Bool = true;
+    # fname = "/mnt/c/Users/jp3h/Downloads/Lucerne-2024-10-leaf_to_stem_ratio.txt"; using GBIO; trials = GBIO.readdelimited(Trials, fname=fname, sep="\t"); max_levels::Int64=10; max_time_per_model::Int64=2; verbose::Bool = true;
+    # Check Arguments
+    if !checkdims(trials)
+        throw(ArgumentError("Trials struct is corrupted."))
+    end
     # Tabularise
     df::DataFrame = tabularise(trials)
     # Rename for operation symbols into underscores in the trait names
@@ -424,7 +429,7 @@ function analyse(trials::Trials; max_levels::Int64 = 100, max_time_per_model::In
     out_df_BLUPs::Vector{DataFrame} = []
     out_phenomes::Vector{Phenomes} = []
     for trait in unique(trials.traits)
-        # trait = unique(trials.traits)[2]
+        # trait = unique(trials.traits)[1]
         if verbose
             println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
             println(trait)
@@ -527,19 +532,27 @@ function analyse(trials::Trials; max_levels::Int64 = 100, max_time_per_model::In
         # BLUPs
         df_BLUPs::DataFrame = DataFrame(only(raneftables(model)))
         # Find non-spatial interaction effects with the entries
-        idx_col::Vector{Int64} = findall(match.(r"blocks|rows|cols", names(df_BLUPs)) .== nothing)
+        idx_col::Vector{Int64} = findall(
+            (match.(r"^entries$|blocks|rows|cols", names(df_BLUPs)) .== nothing) .&&
+            (match.(r"^\(Intercept\)$", names(df_BLUPs)) .!= nothing)
+        )
         # Instantiate the Phenomes struct
-        t::Int64 = 1
-        if length(idx_col) > 1
-            t = length(idx_col)
+        t::Int64 = length(idx_col)
+        if t == 0
+            if length(idx_row) == (n-1)
+                t = 1
+            else
+                # No BLUEs nor BLUPs
+                continue
+            end
         end
         phenomes::Phenomes = Phenomes(n = length(entries), t = t)
         phenomes.mask .= true
         # If we have BLUPs (multiple columns or "multiple traits")
-        if length(idx_col) > 1
-            phenomes.entries = df_BLUPs[:, 1]
-            phenomes.phenotypes = Matrix(df_BLUPs[:, idx_col[2:end]])
-            phenomes.traits = string.(trait, "|", names(df_BLUPs))[idx_col[2:end]]
+        if length(idx_col) > 0
+            phenomes.entries = df_BLUPs[:, :entries]
+            phenomes.phenotypes = Matrix(df_BLUPs[:, idx_col])
+            phenomes.traits = string.(trait, "|", names(df_BLUPs))[idx_col]
         end
         # If we have BLUEs (1 column or "1 trait" only)
         if length(idx_row) == (n - 1)
