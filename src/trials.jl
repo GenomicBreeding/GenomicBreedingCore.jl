@@ -169,11 +169,6 @@ function tabularise(trials::Trials)::DataFrame
     rename!(df_phe, trials.traits)
     df_phe.id = 1:length(trials.years)
     df = innerjoin(df_ids, df_phe; on = :id)
-    rename!(df, replace.(names(df), "-" => "_"))
-    rename!(df, replace.(names(df), "*" => "_"))
-    rename!(df, replace.(names(df), "/" => "_"))
-    rename!(df, replace.(names(df), "%" => "perc"))
-    rename!(df, replace.(names(df), "__" => "_"))
     return df
 end
 
