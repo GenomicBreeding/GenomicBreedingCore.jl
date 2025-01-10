@@ -392,12 +392,12 @@ function analyse(trials::Trials; max_levels::Int64 = 100, max_time_per_model::In
     # trials, simulated_effects = simulatetrials(genomes = simulategenomes(n=5), n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=10); max_levels::Int64=100; max_time_per_model::Int64=60; verbose::Bool = true;
     # Tabularise
     df::DataFrame = tabularise(trials)
-    # Check for operation symbols in the trait names
-    rename!(df, replace.(names(df), "+" => "_"))
-    rename!(df, replace.(names(df), "-" => "_"))
-    rename!(df, replace.(names(df), "*" => "_"))
-    rename!(df, replace.(names(df), "/" => "_"))
-    rename!(df, replace.(names(df), "%" => "_"))
+    # Rename for operation symbols into underscores in the trait names
+    symbols = ["+", "-", "*", "/", "%"]
+    for s in symbols
+        trials.traits = replace.(trials.traits, s => "_")
+        rename!(df, replace.(names(df), s => "_"))
+    end
     # Number of entries whose BLUEs or BLUPs we wish to extract
     entries::Vector{String} = sort(unique(df[!, "entries"]))
     n::Int64 = length(entries)
