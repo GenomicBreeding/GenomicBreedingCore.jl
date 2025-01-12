@@ -353,6 +353,156 @@ function trialsmodelsfomulae!(
     (formulae, n_levels)
 end
 
+
+"""
+analyse(df::DataFrame, formulae::Vector{String})::Phenomes
+"""
+function analyse(
+    df::DataFrame; 
+    formulae::Vector{String},
+    idx_parallel_models::Vector{Int64},
+    idx_iterative_models::Vector{Int64},
+    max_time_per_model::Int64 = 60,
+    verbose::Bool=false)
+    # ::(FormulaTerm, LinearMixedModel, DataFrame, DataFrame, Phenomes)
+    # trials, _ = simulatetrials(genomes = simulategenomes()); max_levels::Int64=100; max_time_per_model::Int64=60; verbose::Bool = true;
+    # df::DataFrame = tabularise(trials)
+    # formulae, n_levels = trialsmodelsfomulae!(df; trait = "trait_1", max_levels = 10)
+    # idx_parallel_models::Vector{Int64} = findall(n_levels .<= (1.5 * max_levels))
+    # idx_iterative_models::Vector{Int64} = findall((n_levels .<= (1.5 * max_levels)) .!= true)
+    # verbose = true
+    entries::Vector{String} = sort(unique(df[!, "entries"]))
+    n::Int64 = length(entries)
+    trait = split(formulae[1], "~")
+    if verbose
+        println(string("\t ‣ models to fit = ", length(formulae)))
+        println(string("\t ‣ parallel fitting for the ", length(idx_parallel_models), " simplest models"))
+        println(string("\t ‣ iterative fitting for the ", length(idx_iterative_models), " most complex models"))
+        println(string("\t ‣ simplest model: ", formulae[1]))
+        println(string("\t ‣ most complex model: ", formulae[end]))
+    end
+    # Fit the models
+    models::Vector{LinearMixedModel{Float64}} = Vector{LinearMixedModel{Float64}}(undef, length(formulae))
+    deviances::Vector{Float64} = fill(Inf64, length(formulae))
+    # Parallel fitting of models with total number of levels at or below `(1.5 * max_levels)`
+    if verbose
+        pb = Progress(length(idx_parallel_models); desc = "Trials analyses | parallel model fitting: ")
+    end
+    thread_lock::ReentrantLock = ReentrantLock()
+    Threads.@threads for i in idx_parallel_models
+        # for i in idx_parallel_models
+        f = @eval(@string2formula $(formulae[i]))
+        model = MixedModel(f, df)
+        @lock thread_lock model.optsum.REML = true
+        @lock thread_lock model.optsum.maxtime = max_time_per_model
+        @lock thread_lock try
+            fit!(model, progress = false)
+        catch
+            try
+                fit!(model, progress = false)
+            catch
+                continue
+            end
+        end
+        @lock thread_lock models[i] = model
+        @lock thread_lock deviances[i] = deviance(model)
+        if verbose
+            next!(pb)
+        end
+    end
+    if verbose
+        finish!(pb)
+    end
+    # Iterative fitting of models with total number of levels above `(1.5 * max_levels)` to minimise OOM errors from occuring
+    if verbose
+        pb = Progress(length(idx_parallel_models); desc = "Trials analyses | iterative model fitting: ")
+    end
+    for i in idx_iterative_models
+        # println(i)
+        f = @eval(@string2formula $(formulae[i]))
+        model = MixedModel(f, df)
+        model.optsum.REML = true
+        model.optsum.maxtime = max_time_per_model
+        try
+            fit!(model, progress = false)
+        catch
+            try
+                fit!(model, progress = false)
+            catch
+                continue
+            end
+        end
+        models[i] = model
+        deviances[i] = deviance(model)
+        if verbose
+            next!(pb)
+        end
+    end
+    if verbose
+        finish!(pb)
+    end
+    model = models[argmin(deviances)]
+    # Fixed effects
+    df_BLUEs::DataFrame = DataFrame(coeftable(model))
+    # Determine the effect of the first entry and add the intercept to the effects of the other entries
+    idx_row = findall(match.(r"entries: ", df_BLUEs[!, "Name"]) .!= nothing)
+    if length(idx_row) == (n - 1)
+        df_BLUEs[idx_row, "Name"] = replace.(df_BLUEs[idx_row, "Name"], "entries: " => "")
+        df_BLUEs[1, "Name"] = setdiff(entries, df_BLUEs[idx_row, "Name"])[1]
+        df_BLUEs[2:end, "Coef."] .+= df_BLUEs[1, "Coef."]
+    end
+    # Random effects
+    df_BLUPs::DataFrame = DataFrame(only(raneftables(model)))
+    # Find non-spatial interaction effects with the entries
+    idx_col::Vector{Int64} = findall(
+        (match.(r"^entries$|blocks|rows|cols", names(df_BLUPs)) .== nothing) .&&
+        (match.(r"^\(Intercept\)$", names(df_BLUPs)) .!= nothing)
+    )
+    # Instantiate the Phenomes struct
+    t::Int64 = length(idx_col)
+    if t == 0
+        if length(idx_row) == (n-1)
+            t = 1
+        else
+            # No BLUEs nor BLUPs
+            return (
+                @formula(y ~ 1),
+                df_BLUEs,
+                df_BLUPs,
+                Phenomes(n=0, t=0)
+            )
+        end
+    end
+    phenomes::Phenomes = Phenomes(n = length(entries), t = t)
+    phenomes.mask .= true
+    # If we have BLUPs (multiple columns or "multiple traits")
+    if length(idx_col) > 0
+        phenomes.entries = df_BLUPs[:, :entries]
+        phenomes.phenotypes = Matrix(df_BLUPs[:, idx_col])
+        phenomes.traits = string.(trait, "|", names(df_BLUPs))[idx_col]
+    end
+    # If we have BLUEs (1 column or "1 trait" only)
+    if length(idx_row) == (n - 1)
+        phenomes.entries = df_BLUEs[!, "Name"]
+        phenomes.phenotypes[:, 1] = df_BLUEs[!, "Coef."]
+        phenomes.traits[1] = trait
+    end
+    # Populate populations
+    for (i, entry) in enumerate(phenomes.entries)
+        idx = findall(trials.entries .== entry)[1]
+        phenomes.populations[i] = trials.populations[idx]
+    end
+    # Output
+    (
+        formulae[argmin(deviances)],
+        model,
+        df_BLUEs,
+        df_BLUPs,
+        phenomes
+    )
+end
+
+
 # NOTES: 
 # (1) Avoid over-parameterisation we'll have enough of that with the genomic prediction models
 # (2) We will fit mixed models with unstructure variance-covariance matrix of the random effects
@@ -386,11 +536,11 @@ julia> checkdims(tebv)
 true
 ```
 """
-function analyse(trials::Trials; max_levels::Int64 = 100, max_time_per_model::Int64 = 60, verbose::Bool = true)::TEBV
-    # trials, simulated_effects = simulatetrials(genomes = simulategenomes()); max_levels::Int64=100; max_time_per_model::Int64=60; verbose::Bool = true;
-    # trials, simulated_effects = simulatetrials(genomes = simulategenomes(n=5), n_years=2, n_seasons=2, n_harvests=1, n_sites=2, n_replications=10); max_levels::Int64=100; max_time_per_model::Int64=60; verbose::Bool = true;
-    # trials, simulated_effects = simulatetrials(genomes = simulategenomes(n=5), n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=10); max_levels::Int64=100; max_time_per_model::Int64=60; verbose::Bool = true;
-    # fname = "/mnt/c/Users/jp3h/Downloads/Lucerne-2024-10-leaf_to_stem_ratio.txt"; using GBIO; trials = GBIO.readdelimited(Trials, fname=fname, sep="\t"); max_levels::Int64=10; max_time_per_model::Int64=2; verbose::Bool = true;
+function analyse(trials::Trials, formula::String=""; max_levels::Int64 = 100, max_time_per_model::Int64 = 60, verbose::Bool = true)::TEBV
+    # trials, simulated_effects = simulatetrials(genomes = simulategenomes()); formula="y ~ 1 + (1|entries)"; max_levels::Int64=100; max_time_per_model::Int64=60; verbose::Bool = true;
+    # trials, simulated_effects = simulatetrials(genomes = simulategenomes(n=5), n_years=2, n_seasons=2, n_harvests=1, n_sites=2, n_replications=10); formula=""; max_levels::Int64=100; max_time_per_model::Int64=60; verbose::Bool = true;
+    # trials, simulated_effects = simulatetrials(genomes = simulategenomes(n=5), n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=10); formula=""; max_levels::Int64=100; max_time_per_model::Int64=60; verbose::Bool = true;
+    # fname = "/mnt/c/Users/jp3h/Downloads/Lucerne-2024-10-leaf_to_stem_ratio.txt"; using GBIO; trials = GBIO.readdelimited(Trials, fname=fname, sep="\t"); formula=""; max_levels::Int64=10; max_time_per_model::Int64=2; verbose::Bool = true;
     # Check Arguments
     if !checkdims(trials)
         throw(ArgumentError("Trials struct is corrupted."))
@@ -436,138 +586,26 @@ function analyse(trials::Trials; max_levels::Int64 = 100, max_time_per_model::In
             println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
         end
         # Define the formulae
-        formulae, n_levels = trialsmodelsfomulae!(df; trait = trait, max_levels = max_levels)
-        idx_parallel_models::Vector{Int64} = findall(n_levels .<= (1.5 * max_levels))
-        idx_iterative_models::Vector{Int64} = findall((n_levels .<= (1.5 * max_levels)) .!= true)
-        if verbose
-            println(string("\t ‣ models to fit = ", length(formulae)))
-            println(string("\t ‣ parallel fitting for the ", length(idx_parallel_models), " simplest models"))
-            println(string("\t ‣ iterative fitting for the ", length(idx_iterative_models), " most complex models"))
-            println(string("\t ‣ simplest model: ", formulae[1]))
-            println(string("\t ‣ most complex model: ", formulae[end]))
+        formulae::Vector{String} = []
+        idx_parallel_models::Vector{Int64} = []
+        idx_iterative_models::Vector{Int64} = []
+        if formula == ""
+            formulae, n_levels = trialsmodelsfomulae!(df; trait = trait, max_levels = max_levels)
+            idx_parallel_models = findall(n_levels .<= (1.5 * max_levels))
+            idx_iterative_models = findall((n_levels .<= (1.5 * max_levels)) .!= true)
+        else
+            formula = replace(formula, split(formula, "~")[1] => trait)
+            formulae = [formula]
+            idx_parallel_models = []
+            idx_iterative_models = [1]
         end
-        # Fit the models
-        models::Vector{LinearMixedModel{Float64}} = Vector{LinearMixedModel{Float64}}(undef, length(formulae))
-        deviances::Vector{Float64} = fill(Inf64, length(formulae))
-        # Parallel fitting of models with total number of levels at or below `(1.5 * max_levels)`
-        if verbose
-            pb = Progress(length(idx_parallel_models); desc = "Trials analyses | parallel model fitting: ")
-        end
-        thread_lock::ReentrantLock = ReentrantLock()
-        Threads.@threads for i in idx_parallel_models
-            # for i in idx_parallel_models
-            f = @eval(@string2formula $(formulae[i]))
-            model = MixedModel(f, df)
-            @lock thread_lock model.optsum.REML = true
-            @lock thread_lock model.optsum.maxtime = max_time_per_model
-            @lock thread_lock try
-                fit!(model, progress = false)
-            catch
-                try
-                    fit!(model, progress = false)
-                catch
-                    continue
-                end
-            end
-            @lock thread_lock models[i] = model
-            @lock thread_lock deviances[i] = deviance(model)
-            if verbose
-                next!(pb)
-            end
-        end
-        if verbose
-            finish!(pb)
-        end
-        # Iterative fitting of models with total number of levels above `(1.5 * max_levels)` to minimise OOM errors from occuring
-        if verbose
-            pb = Progress(length(idx_parallel_models); desc = "Trials analyses | iterative model fitting: ")
-        end
-        for i in idx_iterative_models
-            # println(i)
-            f = @eval(@string2formula $(formulae[i]))
-            model = MixedModel(f, df)
-            model.optsum.REML = true
-            model.optsum.maxtime = max_time_per_model
-            try
-                fit!(model, progress = false)
-            catch
-                try
-                    fit!(model, progress = false)
-                catch
-                    continue
-                end
-            end
-            models[i] = model
-            deviances[i] = deviance(model)
-            if verbose
-                next!(pb)
-            end
-        end
-        if verbose
-            finish!(pb)
-        end
-        model = models[argmin(deviances)]
-        # model = models[sample(1:length(deviances), 1)[1]]
-        # # Model stats
-        # plt = UnicodePlots.lineplot(deviances)
-        # UnicodePlots.hline!(plt, deviances[argmin(deviances)]; name = "minimum")
-        # model.optsum.returnvalue
-        # deviances[argmin(deviances)]
-        # # "y = Xβ + Zb"
-        # # X = model.X
-        # # β = model.β
-        # # Z = only(model.reterms)
-        # # b = model.b
-        # # Σ = varest(model) .* (only(model.λ) * only(model.λ)')
-        # # σ = model.σ
-        # Fixed effects
-        df_BLUEs::DataFrame = DataFrame(coeftable(model))
-        # Determine the effect of the first entry and add the intercept to the effects of the other entries
-        idx_row = findall(match.(r"entries: ", df_BLUEs[!, "Name"]) .!= nothing)
-        if length(idx_row) == (n - 1)
-            df_BLUEs[idx_row, "Name"] = replace.(df_BLUEs[idx_row, "Name"], "entries: " => "")
-            df_BLUEs[1, "Name"] = setdiff(entries, df_BLUEs[idx_row, "Name"])[1]
-            df_BLUEs[2:end, "Coef."] .+= df_BLUEs[1, "Coef."]
-        end
-        # BLUPs
-        df_BLUPs::DataFrame = DataFrame(only(raneftables(model)))
-        # Find non-spatial interaction effects with the entries
-        idx_col::Vector{Int64} = findall(
-            (match.(r"^entries$|blocks|rows|cols", names(df_BLUPs)) .== nothing) .&&
-            (match.(r"^\(Intercept\)$", names(df_BLUPs)) .!= nothing)
-        )
-        # Instantiate the Phenomes struct
-        t::Int64 = length(idx_col)
-        if t == 0
-            if length(idx_row) == (n-1)
-                t = 1
-            else
-                # No BLUEs nor BLUPs
-                continue
-            end
-        end
-        phenomes::Phenomes = Phenomes(n = length(entries), t = t)
-        phenomes.mask .= true
-        # If we have BLUPs (multiple columns or "multiple traits")
-        if length(idx_col) > 0
-            phenomes.entries = df_BLUPs[:, :entries]
-            phenomes.phenotypes = Matrix(df_BLUPs[:, idx_col])
-            phenomes.traits = string.(trait, "|", names(df_BLUPs))[idx_col]
-        end
-        # If we have BLUEs (1 column or "1 trait" only)
-        if length(idx_row) == (n - 1)
-            phenomes.entries = df_BLUEs[!, "Name"]
-            phenomes.phenotypes[:, 1] = df_BLUEs[!, "Coef."]
-            phenomes.traits[1] = trait
-        end
-        # Populate populations
-        for (i, entry) in enumerate(phenomes.entries)
-            idx = findall(trials.entries .== entry)[1]
-            phenomes.populations[i] = trials.populations[idx]
+        formula_optim, model, df_BLUEs, df_BLUPs, phenomes = analyse(df; formulae=formulae, idx_parallel_models=idx_parallel_models, idx_iterative_models=idx_iterative_models, max_time_per_model=max_time_per_model, verbose=verbose)
+        if length(phenomes.entries == 0)
+            continue
         end
         # Update output vectors
         push!(out_traits, trait)
-        push!(out_formulae, formulae[argmin(deviances)])
+        push!(out_formulae, formula_optim)
         push!(out_models, model)
         push!(out_df_BLUEs, df_BLUEs)
         push!(out_df_BLUPs, df_BLUPs)
@@ -582,5 +620,3 @@ function analyse(trials::Trials; max_levels::Int64 = 100, max_time_per_model::In
         phenomes = out_phenomes,
     )
 end
-
-function plots(trials::Trials)::Vector{Plots} end
