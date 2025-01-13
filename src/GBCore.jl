@@ -27,7 +27,7 @@ export clone, hash, ==
 export checkdims, dimensions, loci_alleles, loci, plot, slice, filter, tabularise
 export simulategenomes, simulateeffects, simulategenomiceffects, simulatetrials
 export countlevels, @string2formula, trialsmodelsfomulae!, analyse
-export @string2function, addcompositetrait
+export @stringevaluation, addcompositetrait
 
 # Precompile
 @compile_workload begin

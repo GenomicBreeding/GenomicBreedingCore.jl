@@ -173,6 +173,62 @@ function tabularise(trials::Trials)::DataFrame
 end
 
 """
+    addcompositetrait(trials::Trials; composite_trait_name::String, formula_string::String)::Trials
+
+Add a composite trait from existing traits in a Trials struct
+
+```jldoctest; setup = :(using GBCore)
+julia> trials, _ = simulatetrials(genomes = simulategenomes(verbose=false), verbose=false);
+
+julia> trials_new = addcompositetrait(trials, composite_trait_name = "some_wild_composite_trait", formula_string = "trait_1");
+
+julia> trials_new.phenotypes[:, end] == trials.phenotypes[:, 1]
+true
+
+julia> trials_new = addcompositetrait(trials, composite_trait_name = "some_wild_composite_trait", formula_string = "(trait_1^(trait_2/100)) + (trait_3/trait_1) - sqrt(abs(trait_2-trait_1)) + log(1.00 + trait_3)");
+
+julia> trials_new.phenotypes[:, end] == (trials.phenotypes[:,1].^(trials.phenotypes[:,2]/100)) .+ (trials.phenotypes[:,3]./trials.phenotypes[:,1]) .- sqrt.(abs.(trials.phenotypes[:,2].-trials.phenotypes[:,1])) .+ log.(1.00 .+ trials.phenotypes[:,3])
+true
+```
+"""
+function addcompositetrait(trials::Trials; composite_trait_name::String, formula_string::String)::Trials
+    # trials, _ = simulatetrials(genomes = simulategenomes(verbose=false), verbose=false);
+    # composite_trait_name = "some_wild_composite_trait";
+    # formula_string = "((trait_1^(trait_2/100)) + trait_3) + sqrt(abs(log(1.00 / trait_1) - (trait_1 * (trait_2 + trait_3)) / (trait_2 - trait_3)^2))";
+    # formula_string = "trait_1";
+    df = tabularise(trials)
+    formula_parsed_orig = deepcopy(formula_string)
+    formula_parsed = deepcopy(formula_string)
+    symbol_strings = ["=", "+", "-", "*", "/", "^", "%", "abs(", "sqrt(", "log(", "log2(", "log10(", "(", ")"]
+    for s in symbol_strings
+        formula_string = replace(formula_string, s => " ")
+    end
+    component_trait_names = unique(split(formula_string, " "))
+    ϕ = Vector{Float64}(undef, size(df, 1))
+    for i in eachindex(ϕ)
+        # i = 1
+        for var_name in component_trait_names
+            # var_name = component_trait_names[2]
+            if sum(names(df) .== var_name) == 0
+                continue
+            else
+                formula_parsed = replace(formula_parsed, var_name => string(df[i, var_name]))
+            end
+        end
+        ϕ[i] = @eval(@stringevaluation $(formula_parsed))
+        # Reset the formula
+        formula_parsed = deepcopy(formula_parsed_orig)
+    end
+    out = clone(trials)
+    push!(out.traits, composite_trait_name)
+    out.phenotypes = hcat(out.phenotypes, ϕ)
+    if !checkdims(out)
+        throw(ErrorException("Error generating composite trait: `" * composite_trait_name * "`"))
+    end
+    out
+end
+
+"""
     plot(trials::Trials)::Nothing
 
 Plot histogram/s of the trait value/s and a heatmap of trait correlations across the entire trial.
