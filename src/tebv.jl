@@ -80,7 +80,7 @@ end
 Check dimension compatibility of the fields of the TEBV struct
 
 ## Examples
-```jldoctest; setup = :(using GBCore, MixedModels, DataFrames)
+```jldoctest; setup = :(using GBCore, StatsBase, MixedModels, DataFrames)
 julia> tebv = TEBV(traits=[""], formulae=[""], models=[MixedModel(@formula(y~1+(1|x)), DataFrame(y=1, x=1))], df_BLUEs=[DataFrame(x=1)], df_BLUPs=[DataFrame(x=1)], phenomes=[Phenomes(n=1,t=1)]);
 
 julia> checkdims(tebv)
@@ -355,29 +355,110 @@ end
 
 
 """
-analyse(df::DataFrame, formulae::Vector{String})::Phenomes
+    analyse(
+        df::DataFrame; 
+        formulae::Vector{String},
+        idx_parallel_models::Vector{Int64},
+        idx_iterative_models::Vector{Int64},
+        max_time_per_model::Int64 = 60,
+        verbose::Bool=false)::Tuple{String, Any, DataFrame, DataFrame, Phenomes}
+
+Fit univarite (one trait) linear mixed models to extract the effects of the entries the best fitting model.
+
+We have the following guiding principles:
+
+- Avoid over-parameterisation we'll have enough of that with the genomic prediction models
+- We will fit mixed models with unstructure variance-covariance matrix of the random effects
+- We prefer REML over ML
+- We compare BLUEs vs BLUPs of entries
+
+# Examples
+```jldoctest; setup = :(using GBCore, StatsBase, DataFrames, MixedModels)
+julia> trials, _ = simulatetrials(genomes = simulategenomes(verbose=false), verbose=false);
+
+julia> df::DataFrame = tabularise(trials);
+
+julia> formulae, n_levels = trialsmodelsfomulae!(df; trait = "trait_1", max_levels = 10);
+
+julia> idx_parallel_models::Vector{Int64} = findall(n_levels .<= (15));
+
+julia> idx_iterative_models::Vector{Int64} = findall((n_levels .<= (15)) .!= true);
+
+julia> formula_string, model, df_BLUEs, df_BLUPs, phenomes = analyse(df, formulae=formulae, idx_parallel_models=idx_parallel_models, idx_iterative_models=idx_iterative_models);
+
+julia> length(phenomes.entries) == length(unique(df.entries))
+true
+
+julia> df_2 = df[(df.years .== df.years[1]) .&& (df.harvests .== df.harvests[1]) .&& (df.seasons .== df.seasons[1]) .&& (df.sites .== df.sites[1]) .&& (df.replications .== df.replications[1]), :];
+
+julia> formula_string_2, model_2, df_BLUEs_2, df_BLUPs_2, phenomes_2 = analyse(df_2, formulae=["trait_1 ~ 1 + 1|entries"]);
+
+julia> cor(phenomes_2.phenotypes[sortperm(phenomes_2.entries),1], df_2.trait_1[sortperm(df_2.entries)]) == 1.00
+true
+```
 """
 function analyse(
-    df::DataFrame; 
+    df::DataFrame;
     formulae::Vector{String},
-    idx_parallel_models::Vector{Int64},
-    idx_iterative_models::Vector{Int64},
+    idx_parallel_models::Vector{Int64} = [1],
+    idx_iterative_models::Vector{Int64} = [1],
     max_time_per_model::Int64 = 60,
-    verbose::Bool=false)
-    # ::(FormulaTerm, LinearMixedModel, DataFrame, DataFrame, Phenomes)
+    verbose::Bool = false,
+)::Tuple{String,Any,DataFrame,DataFrame,Phenomes}
     # trials, _ = simulatetrials(genomes = simulategenomes()); max_levels::Int64=100; max_time_per_model::Int64=60; verbose::Bool = true;
     # df::DataFrame = tabularise(trials)
     # formulae, n_levels = trialsmodelsfomulae!(df; trait = "trait_1", max_levels = 10)
     # idx_parallel_models::Vector{Int64} = findall(n_levels .<= (1.5 * max_levels))
     # idx_iterative_models::Vector{Int64} = findall((n_levels .<= (1.5 * max_levels)) .!= true)
-    # verbose = true
+    # max_time_per_model = 60; verbose = true
+    # Extract entries
     entries::Vector{String} = sort(unique(df[!, "entries"]))
     n::Int64 = length(entries)
-    trait = split(formulae[1], "~")
+    # Extract the trait
+    trait::String = split(formulae[1], "~")[1]
+    for i in eachindex(formulae)
+        if split(formulae[i], "~")[1] != trait
+            throw(
+                ArgumentError(
+                    "All the formulae need to model the same trait, i.e. " *
+                    trait *
+                    "; but the `formulae[" *
+                    string(i) *
+                    "] models the trait: " *
+                    split(formulae[i], "~")[1] *
+                    ".",
+                ),
+            )
+        end
+    end
+    if length(idx_parallel_models) > 0
+        if (minimum(idx_parallel_models) < 1) || maximum(idx_parallel_models) > length(formulae)
+            throw(
+                ArgumentError(
+                    "Incorrect `idx_parallel_models`: indexes for the formula ranges from 1 to " *
+                    string(length(formulae)) *
+                    ".",
+                ),
+            )
+        end
+    end
+    if length(idx_iterative_models) > 0
+        if (minimum(idx_iterative_models) < 1) || maximum(idx_iterative_models) > length(formulae)
+            throw(
+                ArgumentError(
+                    "Incorrect `idx_iterative_models`.: indexes for the formula ranges from 1 to " *
+                    string(length(formulae)) *
+                    ".",
+                ),
+            )
+        end
+    end
+    # Remove intersection between models to processed in parallel and iteratively
+    idx_parallel_models = setdiff(idx_parallel_models, idx_iterative_models)
     if verbose
         println(string("\t ‣ models to fit = ", length(formulae)))
-        println(string("\t ‣ parallel fitting for the ", length(idx_parallel_models), " simplest models"))
-        println(string("\t ‣ iterative fitting for the ", length(idx_iterative_models), " most complex models"))
+        println(string("\t ‣ parallel fitting for the ", length(idx_parallel_models), " simplest model/s"))
+        println(string("\t ‣ iterative fitting for the ", length(idx_iterative_models), " most complex model/s"))
         println(string("\t ‣ simplest model: ", formulae[1]))
         println(string("\t ‣ most complex model: ", formulae[end]))
     end
@@ -441,9 +522,13 @@ function analyse(
     if verbose
         finish!(pb)
     end
+    if sum(.!isinf.(deviances)) == 0
+        # No mixed model fitting possible
+        return ("", missing, DataFrame(), DataFrame(), Phenomes(n = 0, t = 0))
+    end
     model = models[argmin(deviances)]
     # Fixed effects
-    df_BLUEs::DataFrame = DataFrame(coeftable(model))
+    df_BLUEs = DataFrame(coeftable(model))
     # Determine the effect of the first entry and add the intercept to the effects of the other entries
     idx_row = findall(match.(r"entries: ", df_BLUEs[!, "Name"]) .!= nothing)
     if length(idx_row) == (n - 1)
@@ -452,28 +537,23 @@ function analyse(
         df_BLUEs[2:end, "Coef."] .+= df_BLUEs[1, "Coef."]
     end
     # Random effects
-    df_BLUPs::DataFrame = DataFrame(only(raneftables(model)))
+    df_BLUPs = DataFrame(only(raneftables(model)))
     # Find non-spatial interaction effects with the entries
     idx_col::Vector{Int64} = findall(
-        (match.(r"^entries$|blocks|rows|cols", names(df_BLUPs)) .== nothing) .&&
-        (match.(r"^\(Intercept\)$", names(df_BLUPs)) .!= nothing)
+        (match.(r"^entries$|blocks|rows|cols", names(df_BLUPs)) .== nothing) .||
+        (match.(r"^\(Intercept\)$", names(df_BLUPs)) .!= nothing),
     )
     # Instantiate the Phenomes struct
     t::Int64 = length(idx_col)
     if t == 0
-        if length(idx_row) == (n-1)
+        if length(idx_row) == (n - 1)
             t = 1
         else
             # No BLUEs nor BLUPs
-            return (
-                @formula(y ~ 1),
-                df_BLUEs,
-                df_BLUPs,
-                Phenomes(n=0, t=0)
-            )
+            return ("", missing, df_BLUEs, df_BLUPs, Phenomes(n = 0, t = 0))
         end
     end
-    phenomes::Phenomes = Phenomes(n = length(entries), t = t)
+    phenomes = Phenomes(n = length(entries), t = t)
     phenomes.mask .= true
     # If we have BLUPs (multiple columns or "multiple traits")
     if length(idx_col) > 0
@@ -489,25 +569,14 @@ function analyse(
     end
     # Populate populations
     for (i, entry) in enumerate(phenomes.entries)
-        idx = findall(trials.entries .== entry)[1]
-        phenomes.populations[i] = trials.populations[idx]
+        idx = findall(df.entries .== entry)[1]
+        phenomes.populations[i] = df.populations[idx]
     end
     # Output
-    (
-        formulae[argmin(deviances)],
-        model,
-        df_BLUEs,
-        df_BLUPs,
-        phenomes
-    )
+    (formulae[argmin(deviances)], model, df_BLUEs, df_BLUPs, phenomes)
 end
 
 
-# NOTES: 
-# (1) Avoid over-parameterisation we'll have enough of that with the genomic prediction models
-# (2) We will fit mixed models with unstructure variance-covariance matrix of the random effects
-# (3) We prefer REML over ML
-# (4) We will compare BLUEs vs BLUPs of entries
 """
 # Analyse trials
 
@@ -521,7 +590,7 @@ end
 - `TEBV` struct containing the trait names, the best fitting formulae, models, BLUEs, and BLUPs for each trait
 
 ## Examples
-```jldoctest; setup = :(using GBCore; using StatsBase)
+```jldoctest; setup = :(using GBCore)
 julia> trials, _simulated_effects = simulatetrials(genomes = simulategenomes(n=10, verbose=false), n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=10, verbose=false);
 
 julia> tebv = analyse(trials, max_levels=50, verbose=false);
@@ -536,22 +605,28 @@ julia> checkdims(tebv)
 true
 ```
 """
-function analyse(trials::Trials, formula::String=""; max_levels::Int64 = 100, max_time_per_model::Int64 = 60, verbose::Bool = true)::TEBV
-    # trials, simulated_effects = simulatetrials(genomes = simulategenomes()); formula="y ~ 1 + (1|entries)"; max_levels::Int64=100; max_time_per_model::Int64=60; verbose::Bool = true;
-    # trials, simulated_effects = simulatetrials(genomes = simulategenomes(n=5), n_years=2, n_seasons=2, n_harvests=1, n_sites=2, n_replications=10); formula=""; max_levels::Int64=100; max_time_per_model::Int64=60; verbose::Bool = true;
-    # trials, simulated_effects = simulatetrials(genomes = simulategenomes(n=5), n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=10); formula=""; max_levels::Int64=100; max_time_per_model::Int64=60; verbose::Bool = true;
-    # fname = "/mnt/c/Users/jp3h/Downloads/Lucerne-2024-10-leaf_to_stem_ratio.txt"; using GBIO; trials = GBIO.readdelimited(Trials, fname=fname, sep="\t"); formula=""; max_levels::Int64=10; max_time_per_model::Int64=2; verbose::Bool = true;
+function analyse(
+    trials::Trials,
+    formula_string::String = "";
+    max_levels::Int64 = 100,
+    max_time_per_model::Int64 = 60,
+    verbose::Bool = true,
+)::TEBV
+    # trials, simulated_effects = simulatetrials(genomes = simulategenomes()); formula_string="y ~ 1 + (1|entries)"; max_levels::Int64=100; max_time_per_model::Int64=60; verbose::Bool = true;
+    # trials, simulated_effects = simulatetrials(genomes = simulategenomes(n=5), n_years=2, n_seasons=2, n_harvests=1, n_sites=2, n_replications=10); formula_string=""; max_levels::Int64=100; max_time_per_model::Int64=60; verbose::Bool = true;
+    # trials, simulated_effects = simulatetrials(genomes = simulategenomes(n=5), n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=10); formula_string=""; max_levels::Int64=100; max_time_per_model::Int64=60; verbose::Bool = true;
+    # fname = "/mnt/c/Users/jp3h/Downloads/Lucerne-2024-10-leaf_to_stem_ratio.txt"; using GBIO; trials = GBIO.readdelimited(Trials, fname=fname, sep="\t"); formula_string=""; max_levels::Int64=10; max_time_per_model::Int64=2; verbose::Bool = true;
     # Check Arguments
     if !checkdims(trials)
         throw(ArgumentError("Trials struct is corrupted."))
     end
     # Tabularise
     df::DataFrame = tabularise(trials)
-    # Rename for operation symbols into underscores in the trait names
-    symbols = ["+", "-", "*", "/", "%"]
-    for s in symbols
-        trials.traits = replace.(trials.traits, s => "_")
-        rename!(df, replace.(names(df), s => "_"))
+    # Rename for operation symbol_strings into underscores in the trait names
+    symbol_strings::Vector{String} = ["+", "-", "*", "/", "%"]
+    for i in eachindex(symbol_strings)
+        trials.traits = replace.(trials.traits, symbol_strings[i] => "_")
+        rename!(df, replace.(names(df), symbol_strings[i] => "_"))
     end
     # Number of entries whose BLUEs or BLUPs we wish to extract
     entries::Vector{String} = sort(unique(df[!, "entries"]))
@@ -589,18 +664,27 @@ function analyse(trials::Trials, formula::String=""; max_levels::Int64 = 100, ma
         formulae::Vector{String} = []
         idx_parallel_models::Vector{Int64} = []
         idx_iterative_models::Vector{Int64} = []
-        if formula == ""
+        if formula_string == ""
             formulae, n_levels = trialsmodelsfomulae!(df; trait = trait, max_levels = max_levels)
             idx_parallel_models = findall(n_levels .<= (1.5 * max_levels))
             idx_iterative_models = findall((n_levels .<= (1.5 * max_levels)) .!= true)
+            # Reset formula_string string for the next trait
+            formula_string = ""
         else
-            formula = replace(formula, split(formula, "~")[1] => trait)
-            formulae = [formula]
+            formula_string = replace(formula_string, split(formula_string, "~")[1] => trait)
+            formulae = [formula_string]
             idx_parallel_models = []
             idx_iterative_models = [1]
         end
-        formula_optim, model, df_BLUEs, df_BLUPs, phenomes = analyse(df; formulae=formulae, idx_parallel_models=idx_parallel_models, idx_iterative_models=idx_iterative_models, max_time_per_model=max_time_per_model, verbose=verbose)
-        if length(phenomes.entries == 0)
+        formula_optim, model, df_BLUEs, df_BLUPs, phenomes = analyse(
+            df;
+            formulae = formulae,
+            idx_parallel_models = idx_parallel_models,
+            idx_iterative_models = idx_iterative_models,
+            max_time_per_model = max_time_per_model,
+            verbose = verbose,
+        )
+        if ismissing(model)
             continue
         end
         # Update output vectors
@@ -620,3 +704,5 @@ function analyse(trials::Trials, formula::String=""; max_levels::Int64 = 100, ma
         phenomes = out_phenomes,
     )
 end
+
+function plot(tebv::TEBV) end

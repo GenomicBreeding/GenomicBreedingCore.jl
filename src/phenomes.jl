@@ -452,3 +452,70 @@ function tabularise(phenomes::Phenomes)::DataFrame
     df = innerjoin(df_ids, df_phe; on = :id)
     return df
 end
+
+"""
+    stringevaluation(x)
+
+Macro to `Meta.parse` a string of formula.
+"""
+macro stringevaluation(x)
+    Meta.parse(string("$(x)"))
+end
+
+"""
+    addcompositetrait(phenomes::Phenomes; composite_trait_name::String, formula_string::String)::Phenomes
+
+Add a composite trait from existing traits in a Phenomes struct
+
+```jldoctest; setup = :(using GBCore)
+julia> phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = rand(10,3);
+
+julia> phenomes_new = addcompositetrait(phenomes, composite_trait_name = "some_wild_composite_trait", formula_string = "A");
+
+julia> phenomes_new.phenotypes[:, end] == phenomes.phenotypes[:, 1]
+true
+
+julia> phenomes_new = addcompositetrait(phenomes, composite_trait_name = "some_wild_composite_trait", formula_string = "(A^B) + (C/A) - sqrt(abs(B-A)) + log(1.00 + C)");
+
+julia> phenomes_new.phenotypes[:, end] == (phenomes.phenotypes[:,1].^phenomes.phenotypes[:,2]) .+ (phenomes.phenotypes[:,3]./phenomes.phenotypes[:,1]) .- sqrt.(abs.(phenomes.phenotypes[:,2].-phenomes.phenotypes[:,1])) .+ log.(1.00 .+ phenomes.phenotypes[:,3])
+true
+```
+"""
+function addcompositetrait(phenomes::Phenomes; composite_trait_name::String, formula_string::String)::Phenomes
+    # phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = rand(10,3);
+    # composite_trait_name = "some_wild_composite_trait";
+    # formula_string = "((A^B) + C) + sqrt(abs(log(1.00 / A) - (A * (B + C)) / (B - C)^2))";
+    # formula_string = "A";
+
+    df = tabularise(phenomes)
+    formula_parsed_orig = deepcopy(formula_string)
+    formula_parsed = deepcopy(formula_string)
+    symbol_strings = ["=", "+", "-", "*", "/", "^", "%", "abs(", "sqrt(", "log(", "log2(", "log10(", "(", ")"]
+    for s in symbol_strings
+        formula_string = replace(formula_string, s => " ")
+    end
+    component_trait_names = unique(split(formula_string, " "))
+    ϕ = Vector{Float64}(undef, size(df, 1))
+    for i in eachindex(ϕ)
+        # i = 1
+        for var_name in component_trait_names
+            # var_name = component_trait_names[2]
+            if sum(names(df) .== var_name) == 0
+                continue
+            else
+                formula_parsed = replace(formula_parsed, var_name => string(df[i, var_name]))
+            end
+        end
+        ϕ[i] = @eval(@stringevaluation $(formula_parsed))
+        # Reset the formula
+        formula_parsed = deepcopy(formula_parsed_orig)
+    end
+    out = clone(phenomes)
+    push!(out.traits, composite_trait_name)
+    out.phenotypes = hcat(out.phenotypes, ϕ)
+    out.mask = hcat(out.mask, ones(size(out.mask, 1)))
+    if !checkdims(out)
+        throw(ErrorException("Error generating composite trait: `" * composite_trait_name * "`"))
+    end
+    out
+end
