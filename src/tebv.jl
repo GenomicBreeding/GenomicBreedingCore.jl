@@ -415,9 +415,9 @@ function analyse(
     entries::Vector{String} = sort(unique(df[!, "entries"]))
     n::Int64 = length(entries)
     # Extract the trait
-    trait::String = split(formulae[1], "~")[1]
+    trait::String = strip(split(formulae[1], "~")[1])
     for i in eachindex(formulae)
-        if split(formulae[i], "~")[1] != trait
+        if strip(split(formulae[i], "~")[1]) != trait
             throw(
                 ArgumentError(
                     "All the formulae need to model the same trait, i.e. " *
@@ -425,7 +425,7 @@ function analyse(
                     "; but the `formulae[" *
                     string(i) *
                     "] models the trait: " *
-                    split(formulae[i], "~")[1] *
+                    strip(split(formulae[i], "~")[1]) *
                     ".",
                 ),
             )
@@ -555,11 +555,17 @@ function analyse(
     end
     phenomes = Phenomes(n = length(entries), t = t)
     phenomes.mask .= true
-    # If we have BLUPs (multiple columns or "multiple traits")
-    if length(idx_col) > 0
+    # If we have BLUPs (multiple columns or "multiple traits": i.e. nested effects)
+    if length(idx_col) > 1
         phenomes.entries = df_BLUPs[:, :entries]
         phenomes.phenotypes = Matrix(df_BLUPs[:, idx_col])
         phenomes.traits = string.(trait, "|", names(df_BLUPs))[idx_col]
+    end
+    # If we have a single set of BLUPs for the entries, i.e. no nesting, then we add the intercept
+    if length(idx_col) == 1
+        phenomes.entries = df_BLUPs[:, :entries]
+        phenomes.phenotypes = Matrix(df_BLUPs[:, idx_col]) .+ df_BLUEs[1, "Coef."] # The first row of df_BLUEs is the intercept
+        phenomes.traits[1] = trait
     end
     # If we have BLUEs (1 column or "1 trait" only)
     if length(idx_row) == (n - 1)
@@ -578,6 +584,14 @@ end
 
 
 """
+    analyse(
+        trials::Trials,
+        formula_string::String = "";
+        max_levels::Int64 = 100,
+        max_time_per_model::Int64 = 60,
+        verbose::Bool = true,
+    )::TEBV
+
 # Analyse trials
 
 ## Arguments
@@ -705,4 +719,55 @@ function analyse(
     )
 end
 
-function plot(tebv::TEBV) end
+"""
+    extractphenomes(tebv::TEBV)::Phenomes
+
+Extract Phenomes from TEBV
+
+```jldoctest; setup = :(using GBCore)
+julia> trials, _simulated_effects = simulatetrials(genomes = simulategenomes(n=10, verbose=false), n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=10, verbose=false);
+
+julia> tebv = analyse(trials, max_levels=50, verbose=false);
+
+julia> phenomes = extractphenomes(tebv);
+
+julia> phenomes.traits == ["trait_1", "trait_2", "trait_3"]
+true
+```
+"""
+function extractphenomes(tebv::TEBV)::Phenomes
+    # trials, _simulated_effects = simulatetrials(genomes = simulategenomes(n=10, verbose=false), n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=10, verbose=false);
+    # tebv = analyse(trials, max_levels=50, verbose=false);
+    if !checkdims(tebv)
+        throw(ArgumentError("The TEBV struct is corrupted."))
+    end
+    phenomes = Phenomes(n = length(tebv.phenomes[1].entries), t = 1)
+    phenomes.traits = tebv.phenomes[1].traits
+    phenomes.entries = tebv.phenomes[1].entries
+    phenomes.populations = tebv.phenomes[1].populations
+    phenomes.phenotypes = tebv.phenomes[1].phenotypes
+    phenomes.mask = tebv.phenomes[1].mask
+    for i in eachindex(tebv.phenomes)
+        # i = 2
+        if sum(tebv.phenomes[i].traits .== phenomes.traits) > 0
+            continue
+        end
+        phenomes = merge(phenomes, tebv.phenomes[i])
+    end
+    if !checkdims(phenomes)
+        throw(ArgumentError("The Phenomes struct is corrupted."))
+    end
+    phenomes
+end
+
+"""
+    plot(tebv::TEBV)
+
+Plot TEBV output by plotting the resulting Phenomes struct
+"""
+function plot(tebv::TEBV)
+    # trials, _simulated_effects = simulatetrials(genomes = simulategenomes(n=10, verbose=false), n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=10, verbose=false);
+    # tebv = analyse(trials, max_levels=50, verbose=false);
+    phenomes = extractphenomes(tebv)
+    plot(phenomes)
+end

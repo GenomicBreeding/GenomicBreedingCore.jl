@@ -146,13 +146,13 @@ function plot(phenomes::Phenomes; nbins::Int64 = 10)
     # View distributions per population per trait using histograms
     for pop in unique(phenomes.populations)
         # pop = phenomes.populations[1]
-        idx_pop = findall(phenomes.populations .== pop)
         idx_trait_with_variance::Vector{Int64} = []
         for j in eachindex(phenomes.traits)
             # j = 1
             println("##############################################")
             println("Population: " * pop * " | Trait: " * phenomes.traits[j])
-            ϕ::Vector{Float64} = phenomes.phenotypes[findall(.!ismissing.(phenomes.phenotypes[:, j][idx_pop])), j]
+            idx = findall((phenomes.populations .== pop) .&& .!ismissing.(phenomes.phenotypes[:, j]))
+            ϕ::Vector{Float64} = phenomes.phenotypes[idx, j]
             if StatsBase.var(ϕ) > 1e-10
                 append!(idx_trait_with_variance, j)
             end
@@ -164,6 +164,7 @@ function plot(phenomes::Phenomes; nbins::Int64 = 10)
             end
         end
         # View correlation between traits using scatter plots
+        idx_pop = findall(phenomes.populations .== pop)
         C::Matrix{Float64} = StatsBase.cor(phenomes.phenotypes[idx_pop, idx_trait_with_variance])
         plt = UnicodePlots.heatmap(
             C;
