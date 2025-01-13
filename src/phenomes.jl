@@ -152,7 +152,7 @@ function plot(phenomes::Phenomes; nbins::Int64 = 10)
             # j = 1
             println("##############################################")
             println("Population: " * pop * " | Trait: " * phenomes.traits[j])
-            ϕ::Vector{Float64} = phenomes.phenotypes[.!ismissing.(phenomes.phenotypes[:, j][idx_pop]), j]
+            ϕ::Vector{Float64} = phenomes.phenotypes[findall(.!ismissing.(phenomes.phenotypes[:, j][idx_pop])), j]
             if StatsBase.var(ϕ) > 1e-10
                 append!(idx_trait_with_variance, j)
             end
