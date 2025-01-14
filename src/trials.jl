@@ -316,13 +316,13 @@ function plot(trials::Trials; nbins::Int64 = 10)
     end
     for pop in unique(trials.populations)
         # pop = trials.populations[1]
-        idx_pop = findall(trials.populations .== pop)
         idx_trait_with_variance::Vector{Int64} = []
         for j in eachindex(trials.traits)
             # j = 1
             println("##############################################")
             println("Population: " * pop * " | Trait: " * trials.traits[j])
-            ϕ::Vector{Float64} = trials.phenotypes[findall(.!ismissing.(trials.phenotypes[:, j][idx_pop])), j]
+            idx = findall((trials.populations .== pop) .&& .!ismissing.(trials.phenotypes[:, j]))
+            ϕ::Vector{Float64} = trials.phenotypes[idx, j]
             if StatsBase.var(ϕ) > 1e-10
                 append!(idx_trait_with_variance, j)
             end
@@ -334,6 +334,7 @@ function plot(trials::Trials; nbins::Int64 = 10)
             end
         end
         # View correlation between traits using scatter plots
+        idx_pop = findall(trials.populations .== pop)
         C::Matrix{Float64} = StatsBase.cor(trials.phenotypes[idx_pop, idx_trait_with_variance])
         plt = UnicodePlots.heatmap(
             C;
