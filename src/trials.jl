@@ -152,6 +152,9 @@ julia> size(df)
 """
 function tabularise(trials::Trials)::DataFrame
     # trials::Trials, _ = simulatetrials(genomes = simulategenomes());
+    if !checkdims(trials)
+        throw(ArgumentError("The Trials struct is corrupted."))
+    end
     df_ids::DataFrame = DataFrame(;
         id = 1:length(trials.years),
         years = trials.years,
@@ -170,6 +173,70 @@ function tabularise(trials::Trials)::DataFrame
     df_phe.id = 1:length(trials.years)
     df = innerjoin(df_ids, df_phe; on = :id)
     return df
+end
+
+"""
+    extractphenomes(trials::Trials)::Phenomes
+
+Extract Phenomes from Trials struct.
+Each trait-by-environment variables combination make up the traits in the resulting Phenomes struct.
+The trait names start with trait name in Trials suffixed by the trait-by-environment variables combinations.
+If there is a single environment variables combination, then no suffix is added to the trait name.
+
+# Examples
+```jldoctest; setup = :(using GBCore)
+julia> trials, _ = simulatetrials(genomes = simulategenomes(verbose=false), verbose=false);
+
+julia> phenomes = extractphenomes(trials);
+
+julia> size(phenomes.phenotypes)
+(100, 384)
+```
+"""
+function extractphenomes(trials::Trials)::Phenomes
+    # trials::Trials, _ = simulatetrials(genomes = simulategenomes());
+    df = tabularise(trials)
+    df.id = string.(df.entries, "---X---", df.populations)
+    ids = sort(unique(df.id))
+    entries = [x[1] for x in split.(ids, "---X---")]
+    populations = [x[2] for x in split.(ids, "---X---")]
+    df.grouping = string.(df.years, "-", df.harvests, "-", df.seasons, "-", df.sites, "-", df.replications)
+    base_traits = names(df)[12:(end-1)]
+    traits::Vector{String} = []
+    for trait_base in base_traits
+        for env in sort(unique(df.grouping))
+            push!(traits, string(trait_base, "|", env))
+        end
+    end
+    phenomes = Phenomes(n = length(entries), t = length(traits))
+    phenomes.traits = traits
+    phenomes.entries = entries
+    phenomes.populations = populations
+    for trait_base in base_traits
+        # trait_base = base_traits[1]
+        tmp = unstack(df, :id, :grouping, trait_base)
+        for (i, id) in enumerate(ids)
+            # i, id = 1, ids[1]
+            idx_1 = findall(tmp.id .== id)[1]
+            for (j, env) in enumerate(names(tmp))
+                # j, env = 2, names(tmp)[2]
+                if j == 1
+                    # Skip ids column
+                    continue
+                end
+                idx_2 = findall(phenomes.traits .== string(trait_base, "|", env))[1]
+                phenomes.phenotypes[i, idx_2] = tmp[idx_1, j]
+            end
+        end
+    end
+    if length(unique(df.grouping)) == 1
+        suffix = string("|", unique(df.grouping)[1])
+        phenomes.traits = replace.(phenomes.traits, suffix => "")
+    end
+    if !checkdims(phenomes)
+        throw(ErrorException("Error extracting Phenomes from Trials."))
+    end
+    phenomes
 end
 
 """
