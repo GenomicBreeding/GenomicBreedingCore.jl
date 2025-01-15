@@ -439,6 +439,10 @@ function plot(trials::Trials; nbins::Int64 = 10)
         for class in ["years", "seasons", "harvests", "sites", "replications", "rows", "cols", "populations"]
             # class = "years"
             agg = DataFrames.combine(DataFrames.groupby(df[idx, :], class), trait => mean)
+            if sum(agg[!, 2] .>= 0) == 0
+                # Skip empty aggregate
+                continue
+            end
             plt = UnicodePlots.barplot(agg[!, 1], agg[!, 2], title = class)
             display(plt)
         end
