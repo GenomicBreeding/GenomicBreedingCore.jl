@@ -8,7 +8,7 @@ Clone a Phenomes object
 julia> phenomes = Phenomes(n=2, t=2);
 
 julia> copy_phenomes = clone(phenomes)
-Phenomes(["", ""], ["", ""], ["", ""], Union{Missing, Float64}[missing missing; missing missing], Bool[0 0; 0 0])
+Phenomes(["", ""], ["", ""], ["", ""], Union{Missing, Float64}[missing missing; missing missing], Bool[1 1; 1 1])
 ```
 """
 function clone(x::Phenomes)::Phenomes
@@ -512,7 +512,6 @@ function addcompositetrait(phenomes::Phenomes; composite_trait_name::String, for
     # composite_trait_name = "some_wild_composite_trait";
     # formula_string = "((A^B) + C) + sqrt(abs(log(1.00 / A) - (A * (B + C)) / (B - C)^2))";
     # formula_string = "A";
-
     df = tabularise(phenomes)
     formula_parsed_orig = deepcopy(formula_string)
     formula_parsed = deepcopy(formula_string)
@@ -537,8 +536,15 @@ function addcompositetrait(phenomes::Phenomes; composite_trait_name::String, for
         formula_parsed = deepcopy(formula_parsed_orig)
     end
     out = clone(phenomes)
-    push!(out.traits, composite_trait_name)
-    out.phenotypes = hcat(out.phenotypes, ϕ)
+    idx = findall(out.traits .== composite_trait_name)
+    if length(idx) == 0
+        push!(out.traits, composite_trait_name)
+        out.phenotypes = hcat(out.phenotypes, ϕ)
+    elseif length(idx) == 1
+        out.phenotypes[:, idx] = ϕ
+    else
+        throw(ErrorException("Duplicate traits in phenomes, i.e. trait: " * composite_trait_name))
+    end
     out.mask = hcat(out.mask, ones(size(out.mask, 1)))
     if !checkdims(out)
         throw(ErrorException("Error generating composite trait: `" * composite_trait_name * "`"))

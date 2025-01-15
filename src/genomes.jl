@@ -8,7 +8,7 @@ Clone a Genomes object
 julia> genomes = Genomes(n=2, p=2);
 
 julia> copy_genomes = clone(genomes)
-Genomes(["", ""], ["", ""], ["", ""], Union{Missing, Float64}[missing missing; missing missing], Bool[0 0; 0 0])
+Genomes(["", ""], ["", ""], ["", ""], Union{Missing, Float64}[missing missing; missing missing], Bool[1 1; 1 1])
 ```
 """
 function clone(x::Genomes)::Genomes

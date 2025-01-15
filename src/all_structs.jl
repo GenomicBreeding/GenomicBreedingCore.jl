@@ -26,7 +26,7 @@ chromsome or scaffold name, position, all alleles, and current allele separated 
 ## Examples
 ```jldoctest; setup = :(using GBCore)
 julia> genomes = Genomes(n=2, p=2)
-Genomes(["", ""], ["", ""], ["", ""], Union{Missing, Float64}[missing missing; missing missing], Bool[0 0; 0 0])
+Genomes(["", ""], ["", ""], ["", ""], Union{Missing, Float64}[missing missing; missing missing], Bool[1 1; 1 1])
 
 julia> fieldnames(Genomes)
 (:entries, :populations, :loci_alleles, :allele_frequencies, :mask)
@@ -52,7 +52,7 @@ mutable struct Genomes <: AbstractGB
     allele_frequencies::Matrix{Union{Float64,Missing}}
     mask::Matrix{Bool}
     function Genomes(; n::Int64 = 1, p::Int64 = 2)
-        return new(fill("", n), fill("", n), fill("", p), fill(missing, n, p), fill(false, n, p))
+        return new(fill("", n), fill("", n), fill("", p), fill(missing, n, p), fill(true, n, p))
     end
 end
 
@@ -78,7 +78,7 @@ Phenomes(; n::Int64 = 1, t::Int64 = 2)
 ## Examples
 ```jldoctest; setup = :(using GBCore)
 julia> phenomes = Phenomes(n=2, t=2)
-Phenomes(["", ""], ["", ""], ["", ""], Union{Missing, Float64}[missing missing; missing missing], Bool[0 0; 0 0])
+Phenomes(["", ""], ["", ""], ["", ""], Union{Missing, Float64}[missing missing; missing missing], Bool[1 1; 1 1])
 
 julia> fieldnames(Phenomes)
 (:entries, :populations, :traits, :phenotypes, :mask)
@@ -104,7 +104,7 @@ mutable struct Phenomes <: AbstractGB
     phenotypes::Matrix{Union{Float64,Missing}}
     mask::Matrix{Bool}
     function Phenomes(; n::Int64 = 1, t::Int64 = 2)
-        return new(fill("", n), fill("", n), fill("", t), fill(missing, n, t), fill(false, n, t))
+        return new(fill("", n), fill("", n), fill("", t), fill(missing, n, t), fill(true, n, t))
     end
 end
 

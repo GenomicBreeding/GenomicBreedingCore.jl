@@ -106,7 +106,7 @@ Check dimension compatibility of the fields of the Trials struct
 ```jldoctest; setup = :(using GBCore)
 julia> trials = Trials(n=1, t=2);
 
-julia> trials.entries = ["entry_1"];
+julia> trials.entries = ["entry_1"]; trials.traits = ["trait_1", "trait_2"];
 
 julia> checkdims(trials)
 true
@@ -120,6 +120,7 @@ false
 function checkdims(trials::Trials)::Bool
     n, t = size(trials.phenotypes)
     if (t != length(trials.traits)) ||
+       (t != length(unique(trials.traits))) ||
        (n != length(trials.years)) ||
        (n != length(trials.seasons)) ||
        (n != length(trials.harvests)) ||
@@ -144,7 +145,7 @@ Count the number of entries, populations, and traits in the Trials struct
 ```jldoctest; setup = :(using GBCore)
 julia> trials = Trials(n=1, t=2);
 
-julia> trials.entries = ["entry_1"];
+julia> trials.entries = ["entry_1"]; trials.traits = ["trait_1", "trait_2"];
 
 julia> dimensions(trials)
 Dict{String, Int64} with 16 entries:
@@ -152,7 +153,7 @@ Dict{String, Int64} with 16 entries:
   "n_harvests"     => 1
   "n_nan"          => 0
   "n_entries"      => 1
-  "n_traits"       => 1
+  "n_traits"       => 2
   "n_seasons"      => 1
   "n_rows"         => 1
   "n_blocks"       => 1
@@ -343,8 +344,15 @@ function addcompositetrait(trials::Trials; composite_trait_name::String, formula
         formula_parsed = deepcopy(formula_parsed_orig)
     end
     out = clone(trials)
-    push!(out.traits, composite_trait_name)
-    out.phenotypes = hcat(out.phenotypes, ϕ)
+    idx = findall(out.traits .== composite_trait_name)
+    if length(idx) == 0
+        push!(out.traits, composite_trait_name)
+        out.phenotypes = hcat(out.phenotypes, ϕ)
+    elseif length(idx) == 1
+        out.phenotypes[:, idx] = ϕ
+    else
+        throw(ErrorException("Duplicate traits in trials, i.e. trait: " * composite_trait_name))
+    end
     if !checkdims(out)
         throw(ErrorException("Error generating composite trait: `" * composite_trait_name * "`"))
     end
