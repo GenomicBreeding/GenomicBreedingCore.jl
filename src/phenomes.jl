@@ -184,13 +184,8 @@ function plot(phenomes::Phenomes; nbins::Int64 = 10)
             end
         end
         # View correlation between traits using scatter plots
-        idx = findall(
-            (phenomes.populations .== pop) .&&
-            .!ismissing.(phenomes.phenotypes[:, j]) .&&
-            .!isnan.(phenomes.phenotypes[:, j]) .&&
-            .!isinf.(phenomes.phenotypes[:, j]),
-        )
-        C::Matrix{Float64} = StatsBase.cor(phenomes.phenotypes[idx, idx_trait_with_variance])
+        idx_pop = findall(phenomes.populations .== pop)
+        C::Matrix{Float64} = StatsBase.cor(phenomes.phenotypes[idx_pop, idx_trait_with_variance])
         plt = UnicodePlots.heatmap(
             C;
             height = length(phenomes.traits),
