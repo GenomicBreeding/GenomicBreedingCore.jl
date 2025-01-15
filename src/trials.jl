@@ -136,6 +136,62 @@ function checkdims(trials::Trials)::Bool
 end
 
 """
+    dimensions(trials::Trials)::Dict{String, Int64}
+
+Count the number of entries, populations, and traits in the Trials struct
+
+# Examples
+```jldoctest; setup = :(using GBCore)
+julia> trials = Trials(n=1, t=2);
+
+julia> trials.entries = ["entry_1"];
+
+julia> dimensions(trials)
+Dict{String, Int64} with 16 entries:
+  "n_zeroes"       => 0
+  "n_harvests"     => 1
+  "n_nan"          => 0
+  "n_entries"      => 1
+  "n_traits"       => 1
+  "n_seasons"      => 1
+  "n_rows"         => 1
+  "n_blocks"       => 1
+  "n_missing"      => 2
+  "n_inf"          => 0
+  "n_total"        => 2
+  "n_replications" => 1
+  "n_years"        => 1
+  "n_sites"        => 1
+  "n_cols"         => 1
+  "n_populations"  => 1
+```
+"""
+function dimensions(trials::Trials)::Dict{String,Int64}
+    if !checkdims(trials)
+        throw(ArgumentError("Trials struct is corrupted."))
+    end
+    idx_non_missing = .!ismissing.(trials.phenotypes)
+    Dict(
+        "n_traits" => length(unique(trials.traits)),
+        "n_years" => length(unique(trials.years)),
+        "n_seasons" => length(unique(trials.seasons)),
+        "n_harvests" => length(unique(trials.harvests)),
+        "n_sites" => length(unique(trials.sites)),
+        "n_replications" => length(unique(trials.replications)),
+        "n_blocks" => length(unique(trials.blocks)),
+        "n_rows" => length(unique(trials.rows)),
+        "n_cols" => length(unique(trials.cols)),
+        "n_entries" => length(unique(trials.entries)),
+        "n_populations" => length(unique(trials.populations)),
+        "n_total" => prod(size(trials.phenotypes)),
+        "n_zeroes" => sum(trials.phenotypes[idx_non_missing] .== 0.0),
+        "n_missing" => sum(.!idx_non_missing),
+        "n_nan" => sum(isnan.(trials.phenotypes[idx_non_missing])),
+        "n_inf" => sum(isinf.(trials.phenotypes[idx_non_missing])),
+    )
+end
+
+"""
     tabularise(trials::Trials)::DataFrame
 
 Export the Trials structs into a DataFrames.DataFrame struct
@@ -321,7 +377,16 @@ function plot(trials::Trials; nbins::Int64 = 10)
             # j = 1
             println("##############################################")
             println("Population: " * pop * " | Trait: " * trials.traits[j])
-            idx = findall((trials.populations .== pop) .&& .!ismissing.(trials.phenotypes[:, j]))
+            idx = findall(
+                (trials.populations .== pop) .&&
+                .!ismissing.(trials.phenotypes[:, j]) .&&
+                .!isnan.(trials.phenotypes[:, j]) .&&
+                .!isinf.(trials.phenotypes[:, j]),
+            )
+            if length(idx) == 0
+                println("All values are missing, NaN and/or infinities.")
+                continue
+            end
             ϕ::Vector{Float64} = trials.phenotypes[idx, j]
             if StatsBase.var(ϕ) > 1e-10
                 append!(idx_trait_with_variance, j)

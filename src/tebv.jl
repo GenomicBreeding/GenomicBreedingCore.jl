@@ -99,6 +99,62 @@ function checkdims(tebv::TEBV)::Bool
     true
 end
 
+"""
+    dimensions(tebv::TEBV)::Dict{String, Int64}
+
+Count the number of entries, populations, and traits in the TEBV struct
+
+# Examples
+```jldoctest; setup = :(using GBCore, MixedModels, DataFrames)
+julia> tebv = TEBV(traits=["trait_1"], formulae=["trait_1 ~ 1 + 1|entries"], models=[MixedModel(@formula(y~1+(1|x)), DataFrame(y=1, x=1))], df_BLUEs=[DataFrame(x=1)], df_BLUPs=[DataFrame(x=1)], phenomes=[Phenomes(n=1,t=1)]);
+
+julia> dimensions(tebv)
+Dict{String, Int64} with 8 entries:
+  "n_total"       => 1
+  "n_zeroes"      => 0
+  "n_nan"         => 0
+  "n_entries"     => 1
+  "n_traits"      => 1
+  "n_inf"         => 0
+  "n_populations" => 1
+  "n_missing"     => 1
+```
+"""
+function dimensions(tebv::TEBV)::Dict{String,Int64}
+    if !checkdims(tebv)
+        throw(ArgumentError("TEBV struct is corrupted."))
+    end
+    entries = tebv.phenomes[1].entries
+    populations = tebv.phenomes[1].populations
+    n_traits = length(tebv.traits)
+    n_total = 0
+    n_zeroes = 0
+    n_missing = 0
+    n_nan = 0
+    n_inf = 0
+    for i = 1:n_traits
+        # i, trait = 1, tebv.traits[1]
+        phenomes = tebv.phenomes[i]
+        entries = unique(vcat(entries, tebv.phenomes[1].entries))
+        populations = unique(vcat(populations, tebv.phenomes[1].populations))
+        dims = dimensions(phenomes)
+        n_total += dims["n_total"]
+        n_zeroes += dims["n_zeroes"]
+        n_missing += dims["n_missing"]
+        n_nan += dims["n_nan"]
+        n_inf += dims["n_inf"]
+    end
+    Dict(
+        "n_entries" => length(entries),
+        "n_populations" => length(populations),
+        "n_traits" => n_traits,
+        "n_total" => n_total,
+        "n_zeroes" => n_zeroes,
+        "n_missing" => n_missing,
+        "n_nan" => n_nan,
+        "n_inf" => n_inf,
+    )
+end
 
 """
     countlevels(df::DataFrame; column_names::Vector{String})::Int64

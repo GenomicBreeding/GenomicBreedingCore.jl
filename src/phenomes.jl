@@ -107,20 +107,31 @@ Count the number of entries, populations, and traits in the Phenomes struct
 julia> phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = fill(0.0, 10,3);
 
 julia> dimensions(phenomes)
-Dict{String, Int64} with 3 entries:
+Dict{String, Int64} with 8 entries:
+  "n_total"       => 30
+  "n_zeroes"      => 30
+  "n_nan"         => 0
   "n_entries"     => 10
   "n_traits"      => 3
+  "n_inf"         => 0
   "n_populations" => 1
+  "n_missing"     => 0
 ```
 """
 function dimensions(phenomes::Phenomes)::Dict{String,Int64}
     if !checkdims(phenomes)
         throw(ArgumentError("Phenomes struct is corrupted."))
     end
+    idx_non_missing = .!ismissing.(phenomes.phenotypes)
     Dict(
         "n_entries" => length(unique(phenomes.entries)),
         "n_populations" => length(unique(phenomes.populations)),
         "n_traits" => length(phenomes.traits),
+        "n_total" => prod(size(phenomes.phenotypes)),
+        "n_zeroes" => sum(phenomes.phenotypes[idx_non_missing] .== 0.0),
+        "n_missing" => sum(.!idx_non_missing),
+        "n_nan" => sum(isnan.(phenomes.phenotypes[idx_non_missing])),
+        "n_inf" => sum(isinf.(phenomes.phenotypes[idx_non_missing])),
     )
 end
 
@@ -151,7 +162,16 @@ function plot(phenomes::Phenomes; nbins::Int64 = 10)
             # j = 1
             println("##############################################")
             println("Population: " * pop * " | Trait: " * phenomes.traits[j])
-            idx = findall((phenomes.populations .== pop) .&& .!ismissing.(phenomes.phenotypes[:, j]))
+            idx = findall(
+                (phenomes.populations .== pop) .&&
+                .!ismissing.(phenomes.phenotypes[:, j]) .&&
+                .!isnan.(phenomes.phenotypes[:, j]) .&&
+                .!isinf.(phenomes.phenotypes[:, j]),
+            )
+            if length(idx) == 0
+                println("All values are missing, NaN and/or infinities.")
+                continue
+            end
             ϕ::Vector{Float64} = phenomes.phenotypes[idx, j]
             if StatsBase.var(ϕ) > 1e-10
                 append!(idx_trait_with_variance, j)
@@ -198,10 +218,15 @@ julia> phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10
 julia> sliced_phenomes = slice(phenomes, idx_entries=collect(1:5); idx_traits=collect(2:3));
 
 julia> dimensions(sliced_phenomes)
-Dict{String, Int64} with 3 entries:
+Dict{String, Int64} with 8 entries:
+  "n_total"       => 10
+  "n_zeroes"      => 10
+  "n_nan"         => 0
   "n_entries"     => 5
   "n_traits"      => 2
+  "n_inf"         => 0
   "n_populations" => 1
+  "n_missing"     => 0
 ```
 """
 function slice(phenomes::Phenomes; idx_entries::Vector{Int64}, idx_traits::Vector{Int64})::Phenomes
