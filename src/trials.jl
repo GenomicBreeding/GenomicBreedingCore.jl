@@ -428,11 +428,17 @@ function plot(trials::Trials; nbins::Int64 = 10)
     # Mean trait values across years, seasons, harvests, sites, replications, row, column, and populations
     df = tabularise(trials)
     for trait in trials.traits
-        # trait = trials.traits[1]
+        # trait = trials.traits[end]
         println("##############################################")
         println("Trait: " * trait)
+        idx = findall(.!ismissing.(df[!, trait]) .&& .!isnan.(df[!, trait]) .&& .!isinf.(df[!, trait]))
+        if length(idx) == 0
+            println("All values are missing, NaN and/or infinities.")
+            continue
+        end
         for class in ["years", "seasons", "harvests", "sites", "replications", "rows", "cols", "populations"]
-            agg = DataFrames.combine(DataFrames.groupby(df, class), trait => mean)
+            # class = "years"
+            agg = DataFrames.combine(DataFrames.groupby(df[idx, :], class), trait => mean)
             plt = UnicodePlots.barplot(agg[!, 1], agg[!, 2], title = class)
             display(plt)
         end
