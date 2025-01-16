@@ -348,7 +348,7 @@ mutable struct CV <: AbstractGB
     y_true::Vector{Float64}
     y_pred::Vector{Float64}
     function CV(; n::Int64, l::Int64)
-        ψ = ϕ = Phenomes(n = n, t = 1)
-        new(Fit(l = l), "", "", ϕ.entries, ϕ.populations, "", ϕ.phenotypes, ϕ.phenotypes)
+        empty_strings = repeat([""], n)
+        new(Fit(l = l), "", "", empty_strings, empty_strings, "", zeros(n), zeros(n))
     end
 end
