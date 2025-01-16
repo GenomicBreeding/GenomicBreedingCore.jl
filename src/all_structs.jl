@@ -329,6 +329,7 @@ Contains genomic prediction cross-validation details.
 - `fold`: fold name
 - `entries`: names of the entries used in the current cross-validation replication and fold
 - `populations`: names of the populations used in the current cross-validation replication and fold
+- `trait`: name of the trait
 - `y_true`: corresponding observed phenotype values
 - `y_pred`: corresponding predicted phenotype values
 
@@ -343,10 +344,11 @@ mutable struct CV <: AbstractGB
     fold::String
     entries::Vector{String}
     populations::Vector{String}
+    trait::String
     y_true::Vector{Float64}
     y_pred::Vector{Float64}
     function CV(; n::Int64, l::Int64)
         ψ = ϕ = Phenomes(n = n, t = 1)
-        new(Fit(l = l), "", "", ϕ.entries, ϕ.populations, ϕ.phenotypes, ϕ.phenotypes)
+        new(Fit(l = l), "", "", ϕ.entries, ϕ.populations, "", ϕ.phenotypes, ϕ.phenotypes)
     end
 end
