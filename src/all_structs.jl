@@ -348,9 +348,9 @@ Contains genomic prediction cross-validation details.
 - `replication`: replication name
 - `fold`: fold name
 - `fit`: genomic prediction model fit details
-- `training_population`: vector of training population/s
+- `training_population`: training population
 - `training_entries`: corresponding vector of entries in the training population/s
-- `validation_population`: vector of validation population/s
+- `validation_population`: validation population
 - `validation_entries`: corresponding vector of entries in the validation population/s
 - `validation_y_true`: corresponding vector of observed phenotypes in the validation population/s
 - `validation_y_pred`: corresponding vector of predicted phenotypes in the validation population/s
