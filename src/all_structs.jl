@@ -344,17 +344,31 @@ end
 Contains genomic prediction cross-validation details.
 
 ## Fields
-- `fits`: vector of genomic prediction model fit details
-- `replications`: vector of replication names
-- `folds`: vector of fold names
-- `notes`: vector of notes on which traits, replications and folds were skipped because phenotype values are too sparse (all data are missing) and with zero variance
+- `model`: name of the genomic prediction model used
+- `replication`: replication name
+- `fold`: fold name
+- `fit`: genomic prediction model fit details
+- `training_population`: vector of training population/s
+- `training_entries`: corresponding vector of entries in the training population/s
+- `validation_population`: vector of validation population/s
+- `validation_entries`: corresponding vector of entries in the validation population/s
+- `validation_y_true`: corresponding vector of observed phenotypes in the validation population/s
+- `validation_y_pred`: corresponding vector of predicted phenotypes in the validation population/s
+- `metrics`: dictionary of genomic prediction accuracy metrics on the validation population/s
 
 ## Constructor
 Uses the default contructor.
 """
 mutable struct CV <: AbstractGB
-    fits::Vector{Fit}
-    replications::Vector{String}
-    folds::Vector{String}
-    notes::Vector{String}
+    model::String
+    replication::String
+    fold::String
+    fit::Fit
+    training_population::String
+    training_entries::Vector{String}
+    validation_population::String
+    validation_entries::Vector{String}
+    validation_y_true::Vector{Float64}
+    validation_y_pred::Vector{Float64}
+    metrics::Dict{String,Float64}
 end
