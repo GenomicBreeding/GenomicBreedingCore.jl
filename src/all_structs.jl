@@ -347,7 +347,7 @@ Contains genomic prediction cross-validation details.
 - `replication`: replication name
 - `fold`: fold name
 - `fit`: genomic prediction model fit on the training set
-- `validation_population`: vector of validation populations corresponding to each validation entry
+- `validation_populations`: vector of validation populations corresponding to each validation entry
 - `validation_entries`: corresponding vector of entries in the validation population/s
 - `validation_y_true`: corresponding vector of observed phenotypes in the validation population/s
 - `validation_y_pred`: corresponding vector of predicted phenotypes in the validation population/s
@@ -360,7 +360,7 @@ mutable struct CV <: AbstractGB
     replication::String
     fold::String
     fit::Fit
-    validation_population::Vector{String}
+    validation_populations::Vector{String}
     validation_entries::Vector{String}
     validation_y_true::Vector{Float64}
     validation_y_pred::Vector{Float64}
