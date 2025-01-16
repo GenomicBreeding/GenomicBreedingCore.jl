@@ -300,20 +300,40 @@ Contains genomic prediction model fit details.
 - `model`: name of the genomic prediction model used
 - `b_hat_labels`: names of the loci-alleles used
 - `b_hat`: effects of the loci-alleles
+- `trait`: name of the trait
+- `entries`: names of the entries used in the current cross-validation replication and fold
+- `populations`: names of the populations used in the current cross-validation replication and fold
+- `y_true`: corresponding observed phenotype values
+- `y_pred`: corresponding predicted phenotype values
 - `metrics`: dictionary of genomic prediction accuracy metrics, inluding Pearson's correlation, mean absolute error and root mean-squared error
 
 ## Constructor
 ```julia
-Fit(; l=10)
+Fit(; n=1, l=10)
 ```
 """
 mutable struct Fit <: AbstractGB
     model::String
     b_hat_labels::Vector{String}
     b_hat::Vector{Float64}
+    trait::String
+    entries::Vector{String}
+    populations::Vector{String}
+    y_true::Vector{Float64}
+    y_pred::Vector{Float64}
     metrics::Dict{String,Float64}
-    function Fit(; l::Int64)
-        new("", repeat([""], inner = l), repeat([0.0], inner = l), Dict("" => 0.0))
+    function Fit(; n::Int64, l::Int64)
+        new(
+            "",
+            repeat([""], inner = l),
+            zeros(l),
+            "",
+            repeat([""], inner = n),
+            repeat([""], inner = n),
+            zeros(n),
+            zeros(n),
+            Dict("" => 0.0),
+        )
     end
 end
 
@@ -324,31 +344,17 @@ end
 Contains genomic prediction cross-validation details.
 
 ## Fields
-- `fit`: genomic prediction model fit details
-- `replication`: replication name
-- `fold`: fold name
-- `entries`: names of the entries used in the current cross-validation replication and fold
-- `populations`: names of the populations used in the current cross-validation replication and fold
-- `trait`: name of the trait
-- `y_true`: corresponding observed phenotype values
-- `y_pred`: corresponding predicted phenotype values
+- `fits`: vector of genomic prediction model fit details
+- `replications`: vector of replication names
+- `folds`: vector of fold names
+- `notes`: vector of notes on which traits, replications and folds were skipped because phenotype values are too sparse (all data are missing) and with zero variance
 
 ## Constructor
-```julia
-CV(; n=1, l=10)
-```
+Uses the default contructor.
 """
 mutable struct CV <: AbstractGB
-    fit::Fit
-    replication::String
-    fold::String
-    entries::Vector{String}
-    populations::Vector{String}
-    trait::String
-    y_true::Vector{Float64}
-    y_pred::Vector{Float64}
-    function CV(; n::Int64, l::Int64)
-        empty_strings = repeat([""], n)
-        new(Fit(l = l), "", "", empty_strings, empty_strings, "", zeros(n), zeros(n))
-    end
+    fits::Vector{Fit}
+    replications::Vector{String}
+    folds::Vector{String}
+    notes::Vector{String}
 end

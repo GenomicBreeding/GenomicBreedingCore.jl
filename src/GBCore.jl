@@ -63,7 +63,7 @@ export @stringevaluation, addcompositetrait
     phenomes == phenomes_copy
     merged_genomes, merged_phenomes = merge(genomes, phenomes)
     tebv = analyse(trials, max_levels = 10)
-    fit = Fit(l = 2)
+    fit = Fit(n = 1, l = 2)
     fit_copy = clone(fit)
     fit == fit
     checkdims(fit)
