@@ -10,7 +10,6 @@ abstract type AbstractGB end
 Containes unique entries and loci_alleles where allele frequencies can have missing values
 
 ## Constructor
-
 ```julia
 Genomes(; n::Int64 = 1, p::Int64 = 2)
 ```
@@ -63,7 +62,6 @@ end
 Constains unique entries and traits where phenotype data can have missing values
 
 ## Constructor
-
 ```julia
 Phenomes(; n::Int64 = 1, t::Int64 = 2)
 ```
@@ -115,7 +113,6 @@ end
 Contains phenotype data across years, seasons, harvest, sites, populations, replications, blocks, rows, and columns
 
 ## Constructor
-
 ```julia
 Trials(; n::Int64 = 2, p::Int64 = 2)
 ```
@@ -246,7 +243,6 @@ Contains:
     - epistasis_allele_x_site_x_harvest_x_season_x_year
 
 ## Constructor
-
 ```julia
 SimulatedEffects()
 ```
@@ -297,6 +293,19 @@ end
 
 """
 # Genomic prediction model fit
+
+Contains genomic prediction model fit details.
+
+## Fields
+- `model`: name of the genomic prediction model used
+- `b_hat_labels`: names of the loci-alleles used
+- `b_hat`: effects of the loci-alleles
+- `metrics`: dictionary of genomic prediction accuracy metrics, inluding Pearson's correlation, mean absolute error and root mean-squared error
+
+## Constructor
+```julia
+Fit(; l=10)
+```
 """
 mutable struct Fit <: AbstractGB
     model::String
@@ -311,13 +320,33 @@ end
 
 """
 # Cross-validation struct
+
+Contains genomic prediction cross-validation details.
+
+## Fields
+- `fit`: genomic prediction model fit details
+- `replication`: replication name
+- `fold`: fold name
+- `entries`: names of the entries used in the current cross-validation replication and fold
+- `populations`: names of the populations used in the current cross-validation replication and fold
+- `y_true`: corresponding observed phenotype values
+- `y_pred`: corresponding predicted phenotype values
+
+## Constructor
+```julia
+CV(; n=1, l=10)
+```
 """
 mutable struct CV <: AbstractGB
-    model::String
+    fit::Fit
     replication::String
     fold::String
     entries::Vector{String}
     populations::Vector{String}
     y_true::Vector{Float64}
     y_pred::Vector{Float64}
+    function CV(; n::Int64, l::Int64)
+        ψ = ϕ = Phenomes(n = n, t = 1)
+        new(Fit(l = l), "", "", ϕ.entries, ϕ.populations, ϕ.phenotypes, ϕ.phenotypes)
+    end
 end
