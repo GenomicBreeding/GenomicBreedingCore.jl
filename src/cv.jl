@@ -126,7 +126,7 @@ end
 
 
 """
-    tabularise(cv::CV)::DataFrame
+    tabularise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
 
 Export a vector of CV structs into data frames of metrics across entries and per validation entry
 
