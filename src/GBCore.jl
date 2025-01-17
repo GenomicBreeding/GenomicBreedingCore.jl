@@ -16,6 +16,7 @@ include("phenomes.jl")
 include("trials.jl")
 include("tebv.jl")
 include("fit.jl")
+include("cv.jl")
 
 include("simulation/simulate_effects.jl")
 include("simulation/simulate_genomes.jl")
