@@ -374,7 +374,7 @@ julia> plot(trials);
 ```
 """
 function plot(trials::Trials; nbins::Int64 = 10)
-    # trials, _ = simulatetrials(genomes = simulategenomes()); nbins = 10; 
+    # trials, _ = simulatetrials(genomes = simulategenomes()); nbins = 10;
     if !checkdims(trials)
         throw(ArgumentError("Phenomes struct is corrupted."))
     end
@@ -408,18 +408,29 @@ function plot(trials::Trials; nbins::Int64 = 10)
         end
         # View correlation between traits using scatter plots
         idx_pop = findall(trials.populations .== pop)
-        C::Matrix{Float64} = StatsBase.cor(trials.phenotypes[idx_pop, idx_trait_with_variance])
+        Φ = trials.phenotypes[idx_pop, idx_trait_with_variance]
+        traits = trials.traits[idx_trait_with_variance]
+        # Omit very sparse entries
+        sparsity_threshold = 0.5
+        idx_entries = findall(mean(ismissing.(Φ), dims = 2)[:, 1] .<= sparsity_threshold)
+        Φ = Φ[idx_entries, :]
+        # Omit very sparse traits
+        sparsity_threshold = 0.5
+        idx_traits = findall(mean(ismissing.(Φ), dims = 1)[1, :] .<= sparsity_threshold)
+        Φ = Φ[:, idx_traits]
+        traits = trials.traits[idx_traits]
+        # Remove entries with missing
+        idx_entries = findall(mean(ismissing.(Φ), dims = 2)[:, 1] .== 0.0)
+        Φ = Φ[idx_entries, :]
+        # Correlation matrix with no missing data        
+        C::Matrix{Float64} = StatsBase.cor(Φ)
         plt = UnicodePlots.heatmap(
             C;
-            height = length(trials.traits),
-            width = length(trials.traits),
+            height = length(traits),
+            width = length(traits),
             title = string(
                 "Trait correlations: {",
-                join(
-                    string.(collect(1:length(idx_trait_with_variance))) .* " => " .*
-                    trials.traits[idx_trait_with_variance],
-                    ", ",
-                ),
+                join(string.(collect(1:length(traits))) .* " => " .* traits, ", "),
                 "}",
             ),
         )
@@ -428,7 +439,7 @@ function plot(trials::Trials; nbins::Int64 = 10)
     # Mean trait values across years, seasons, harvests, sites, replications, row, column, and populations
     df = tabularise(trials)
     for trait in trials.traits
-        # trait = trials.traits[end]
+        # trait = trials.traits[1]
         println("##############################################")
         println("Trait: " * trait)
         idx = findall(.!ismissing.(df[!, trait]) .&& .!isnan.(df[!, trait]) .&& .!isinf.(df[!, trait]))

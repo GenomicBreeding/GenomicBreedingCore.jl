@@ -185,7 +185,22 @@ function plot(phenomes::Phenomes; nbins::Int64 = 10)
         end
         # View correlation between traits using scatter plots
         idx_pop = findall(phenomes.populations .== pop)
-        C::Matrix{Float64} = StatsBase.cor(phenomes.phenotypes[idx_pop, idx_trait_with_variance])
+        Φ = phenomes.phenotypes[idx_pop, idx_trait_with_variance]
+        traits = phenomes.traits[idx_trait_with_variance]
+        # Omit very sparse entries
+        sparsity_threshold = 0.5
+        idx_entries = findall(mean(ismissing.(Φ), dims = 2)[:, 1] .<= sparsity_threshold)
+        Φ = Φ[idx_entries, :]
+        # Omit very sparse traits
+        sparsity_threshold = 0.5
+        idx_traits = findall(mean(ismissing.(Φ), dims = 1)[1, :] .<= sparsity_threshold)
+        Φ = Φ[:, idx_traits]
+        traits = phenomes.traits[idx_traits]
+        # Remove entries with missing
+        idx_entries = findall(mean(ismissing.(Φ), dims = 2)[:, 1] .== 0.0)
+        Φ = Φ[idx_entries, :]
+        # Correlation matrix with no missing data  
+        C::Matrix{Float64} = StatsBase.cor(Φ)
         plt = UnicodePlots.heatmap(
             C;
             height = length(phenomes.traits),
