@@ -530,7 +530,11 @@ function analyse(
     Threads.@threads for i in idx_parallel_models
         # for i in idx_parallel_models
         f = @eval(@string2formula $(formulae[i]))
-        model = MixedModel(f, df)
+        model = try
+            MixedModel(f, df)
+        catch
+            continue
+        end
         @lock thread_lock model.optsum.REML = true
         @lock thread_lock model.optsum.maxtime = max_time_per_model
         @lock thread_lock try
@@ -558,7 +562,11 @@ function analyse(
     for i in idx_iterative_models
         # println(i)
         f = @eval(@string2formula $(formulae[i]))
-        model = MixedModel(f, df)
+        model = try
+            MixedModel(f, df)
+        catch
+            continue
+        end
         model.optsum.REML = true
         model.optsum.maxtime = max_time_per_model
         try
