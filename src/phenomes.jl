@@ -143,14 +143,14 @@ Plot histogram/s of the trait value/s and a heatmap of trait correlations
 
 # Examples
 ```
-julia> phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = fill(0.0, 10,3);
+julia> phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = rand(10,3);
 
-julia> plot(phenomes);
+julia> GBCore.plot(phenomes);
 
 ```
 """
 function plot(phenomes::Phenomes; nbins::Int64 = 10)
-    # phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = rand(10,3);
+    # phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = rand(10,3); nbins = 10;
     if !checkdims(phenomes)
         throw(ArgumentError("Phenomes struct is corrupted."))
     end
@@ -183,24 +183,24 @@ function plot(phenomes::Phenomes; nbins::Int64 = 10)
                 println(string("Trait: ", phenomes.traits[j], " has ", length(ϕ), " non-missing data points."))
             end
         end
-        # View correlation between traits using scatter plots
+        # Build the correlation matrix
         idx_pop = findall(phenomes.populations .== pop)
         Φ = phenomes.phenotypes[idx_pop, idx_trait_with_variance]
         traits = phenomes.traits[idx_trait_with_variance]
-        # Omit very sparse entries
-        sparsity_threshold = 0.5
-        idx_entries = findall(mean(ismissing.(Φ), dims = 2)[:, 1] .<= sparsity_threshold)
-        Φ = Φ[idx_entries, :]
-        # Omit very sparse traits
-        sparsity_threshold = 0.5
-        idx_traits = findall(mean(ismissing.(Φ), dims = 1)[1, :] .<= sparsity_threshold)
-        Φ = Φ[:, idx_traits]
-        traits = phenomes.traits[idx_traits]
-        # Remove entries with missing
-        idx_entries = findall(mean(ismissing.(Φ), dims = 2)[:, 1] .== 0.0)
-        Φ = Φ[idx_entries, :]
-        # Correlation matrix with no missing data  
-        C::Matrix{Float64} = StatsBase.cor(Φ)
+        C::Matrix{Float64} = fill(0.0, length(traits), length(traits))
+        for ti in eachindex(traits)
+            for tj in eachindex(traits)
+                idx = findall(
+                    .!ismissing.(Φ[:, ti]) .&&
+                    .!ismissing.(Φ[:, tj]) .&&
+                    .!isnan.(Φ[:, ti]) .&&
+                    .!isnan.(Φ[:, tj]) .&&
+                    .!isinf.(Φ[:, ti]) .&&
+                    .!isinf.(Φ[:, tj]),
+                )
+                C[ti, tj] = StatsBase.cor(Φ[idx, ti], Φ[idx, tj])
+            end
+        end
         plt = UnicodePlots.heatmap(
             C;
             height = length(phenomes.traits),

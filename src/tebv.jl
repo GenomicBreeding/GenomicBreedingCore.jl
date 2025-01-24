@@ -178,6 +178,7 @@ end
     string2formula(x)
 
 Macro to `Meta.parse` a string into a formula.
+TODO: Refactor to make more idiomatic.
 """
 macro string2formula(x)
     @eval(@formula($(Meta.parse(x))))
@@ -432,7 +433,7 @@ We have the following guiding principles:
 ```jldoctest; setup = :(using GBCore, StatsBase, DataFrames, MixedModels)
 julia> trials, _ = simulatetrials(genomes = simulategenomes(verbose=false), verbose=false);
 
-julia> df::DataFrame = tabularise(trials);
+julia> df = tabularise(trials);
 
 julia> formulae, n_levels = trialsmodelsfomulae!(df; trait = "trait_1", max_levels = 10);
 
@@ -464,14 +465,14 @@ function analyse(
     # trials, _ = simulatetrials(genomes = simulategenomes()); max_levels::Int64=100; max_time_per_model::Int64=60; verbose::Bool = true;
     # df::DataFrame = tabularise(trials)
     # formulae, n_levels = trialsmodelsfomulae!(df; trait = "trait_1", max_levels = 10)
+    # # formulae = ["trait_1 ~ 1 + years + (1|entries)"]
     # idx_parallel_models::Vector{Int64} = findall(n_levels .<= (1.5 * max_levels))
     # idx_iterative_models::Vector{Int64} = findall((n_levels .<= (1.5 * max_levels)) .!= true)
     # max_time_per_model = 60; verbose = true
     # Extract entries
     entries::Vector{String} = sort(unique(df[!, "entries"]))
-    n::Int64 = length(entries)
     # Extract the trait
-    trait::String = strip(split(formulae[1], "~")[1])
+    trait = strip(split(formulae[1], "~")[1])
     for i in eachindex(formulae)
         if strip(split(formulae[i], "~")[1]) != trait
             throw(
@@ -578,61 +579,101 @@ function analyse(
     if verbose
         finish!(pb)
     end
+    # Return an empty handed if we failed to fit any model
     if sum(.!isinf.(deviances)) == 0
         # No mixed model fitting possible
         return ("", missing, DataFrame(), DataFrame(), Phenomes(n = 0, t = 0))
     end
+    # Find the best-fitting model
     model = models[argmin(deviances)]
-    # Fixed effects
+    # Extract the dataframes of the fixed and random effects
     df_BLUEs = DataFrame(coeftable(model))
-    # Determine the effect of the first entry and add the intercept to the effects of the other entries
-    idx_row = findall(match.(r"entries: ", df_BLUEs[!, "Name"]) .!= nothing)
-    if length(idx_row) == (n - 1)
-        df_BLUEs[idx_row, "Name"] = replace.(df_BLUEs[idx_row, "Name"], "entries: " => "")
-        df_BLUEs[1, "Name"] = setdiff(entries, df_BLUEs[idx_row, "Name"])[1]
-        df_BLUEs[2:end, "Coef."] .+= df_BLUEs[1, "Coef."]
-    end
-    # Random effects
-    df_BLUPs = DataFrame(only(raneftables(model)))
-    # Find non-spatial interaction effects with the entries
-    idx_col::Vector{Int64} = findall(
-        (match.(r"^entries$|blocks|rows|cols", names(df_BLUPs)) .== nothing) .||
-        (match.(r"^\(Intercept\)$", names(df_BLUPs)) .!= nothing),
-    )
-    # Instantiate the Phenomes struct
-    t::Int64 = length(idx_col)
-    if t == 0
-        if length(idx_row) == (n - 1)
-            t = 1
-        else
-            # No BLUEs nor BLUPs
-            return ("", missing, df_BLUEs, df_BLUPs, Phenomes(n = 0, t = 0))
+    df_BLUEs.Name = replace.(df_BLUEs.Name, "entries: " => "")
+    df_BLUPs = DataFrame(raneftables(model)[1])
+    for i = 1:length(raneftables(model))
+        df_tmp = DataFrame(raneftables(model)[i])
+        if names(df_tmp)[1] == "entries"
+            df_BLUPs = df_tmp
         end
     end
-    phenomes = Phenomes(n = length(entries), t = t)
-    phenomes.mask .= true
-    # If we have BLUPs (multiple columns or "multiple traits": i.e. nested effects)
-    if length(idx_col) > 1
-        phenomes.entries = df_BLUPs[:, :entries]
-        phenomes.phenotypes = Matrix(df_BLUPs[:, idx_col])
-        phenomes.traits = string.(trait, "|", names(df_BLUPs))[idx_col]
+    # Accummulate fixed effects first
+    ϕ_blues::Vector{Float64} = fill(0.0, length(entries))
+    intercept = 0.0
+    idx_intercept = findall(df_BLUEs.Name .== "(Intercept)")
+    if length(idx_intercept) == 1
+        intercept = df_BLUEs[idx_intercept[1], "Coef."]
+        idx_entries = findall([sum(entries .== x) > 0 for x in df_BLUEs.Name])
+        if length(idx_entries) == (length(entries) - 1)
+            df_BLUEs.Name[idx_intercept] = setdiff(entries, df_BLUEs.Name[idx_entries])
+            df_BLUEs[idx_intercept[1], "Coef."] = 0.0
+        end
     end
-    # If we have a single set of BLUPs for the entries, i.e. no nesting, then we add the intercept
-    if length(idx_col) == 1
-        phenomes.entries = df_BLUPs[:, :entries]
-        phenomes.phenotypes = Matrix(df_BLUPs[:, idx_col]) .+ df_BLUEs[1, "Coef."] # The first row of df_BLUEs is the intercept
-        phenomes.traits[1] = trait
+    for (i, entry) in enumerate(entries)
+        # i = 2; entry = entries[i]
+        idx = findall(df_BLUEs.Name .== entry)
+        if length(idx) == 1
+            ϕ_blues[i] = df_BLUEs[idx[1], "Coef."]
+        end
     end
-    # If we have BLUEs (1 column or "1 trait" only)
-    if length(idx_row) == (n - 1)
-        phenomes.entries = df_BLUEs[!, "Name"]
-        phenomes.phenotypes[:, 1] = df_BLUEs[!, "Coef."]
-        phenomes.traits[1] = trait
+    if length(idx_intercept) == 1
+        ϕ_blues .+= intercept
     end
-    # Populate populations
+    # Include the random effects
+    idx_entries = findall(names(df_BLUPs) .== "entries")
+    idx_intercept = findall(names(df_BLUPs) .== "(Intercept)")
+    idx_col::Vector{Int64} = findall(match.(r"^entries$|^\(Intercept\)$|blocks|rows|cols", names(df_BLUPs)) .== nothing)
+    ψ_blups, blup_names =
+        if ((length(idx_entries) == 1) .&& (length(idx_intercept) == 1)) ||
+           ((length(idx_entries) == 1) .&& (length(idx_col) > 0))
+            # Instantiate the output matrix and blup names
+            ψ_blups::Matrix{Float64} = fill(0.0, length(entries), length(idx_intercept) + length(idx_col))
+            blup_names::Vector{String} = fill("", length(idx_intercept) + length(idx_col))
+            if length(idx_intercept) == 1
+                # Find non-spatial interaction effects with the entries (Assumes the random effects have 1 intercept and only 1 intercept)
+                ψ_blups[:, 1] = df_BLUPs[:, idx_intercept[1]]
+                blup_names[1] = "intercept"
+                # Add the intercept effects to the nester variable levels
+                if length(idx_col) > 0
+                    ψ_blups[:, 2:end] .= df_BLUPs[:, idx_col] .+ df_BLUPs[:, idx_intercept[1]]
+                    # Find which nester variable level is the intercept
+                    variables_present = unique([x[1] for x in split.(names(df_BLUPs)[idx_col], ": ")])
+                    levels_present = [x[2] for x in split.(names(df_BLUPs)[idx_col], ": ")]
+                    levels_all = []
+                    for var in variables_present
+                        append!(levels_all, unique(df[!, var]))
+                    end
+                    blup_names[1] = string("intercept_", join(setdiff(levels_all, levels_present), "_"))
+                    blup_names[2:end] = colnames_df_BLUPs[idx_col]
+                end
+            elseif length(idx_col) > 0
+                ψ_blups = Matrix(df_BLUPs[:, idx_col])
+                blup_names = levels_present = [x[2] for x in split.(names(df_BLUPs)[idx_col], ": ")]
+            end
+            (ψ_blups, blup_names)
+        else
+            (fill(0.0, 0, 0), [])
+        end
+    # Find the final set of phenotypes and trait names
+    Y, trait_names = if size(ψ_blups, 1) == length(entries)
+        (ϕ_blues .+ ψ_blups, string.(trait, "|", blup_names))
+    else
+        (hcat(ϕ_blues), [trait])
+    end
+    if size(Y) != (length(entries), length(trait_names))
+        throw(ErrorException("Error extracting and consolidating BLUEs and BLUPs."))
+    end
+    # Output
+    phenomes = Phenomes(n = length(entries), t = length(trait_names))
+    phenomes.entries = entries
     for (i, entry) in enumerate(phenomes.entries)
         idx = findall(df.entries .== entry)[1]
         phenomes.populations[i] = df.populations[idx]
+    end
+    phenomes.traits = trait_names
+    phenomes.phenotypes = Y
+    phenomes.mask .= true
+    if !checkdims(phenomes)
+        throw(ErrorException("Error building the phenomes struct from the BLUEs and BLUPs"))
     end
     # Output
     (formulae[argmin(deviances)], model, df_BLUEs, df_BLUPs, phenomes)
@@ -660,18 +701,32 @@ end
 - `TEBV` struct containing the trait names, the best fitting formulae, models, BLUEs, and BLUPs for each trait
 
 ## Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GBCore, StatsBase, Suppressor)
 julia> trials, _simulated_effects = simulatetrials(genomes = simulategenomes(n=10, verbose=false), n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=10, verbose=false);
 
-julia> tebv = analyse(trials, max_levels=50, verbose=false);
+julia> tebv_1 = analyse(trials, "trait_1 ~ 1 + (1|entries)", max_levels=50, verbose=false);
 
-julia> tebv.traits
+julia> tebv_1.traits
 3-element Vector{String}:
  "trait_1"
  "trait_2"
  "trait_3"
 
-julia> checkdims(tebv)
+julia> tebv_2 = analyse(trials, max_levels=50, verbose=false);
+
+julia> mean(tebv_2.phenomes[1].phenotypes) < mean(tebv_2.phenomes[2].phenotypes)
+true
+
+julia> trials = addcompositetrait(trials, composite_trait_name = "covariate", formula_string = "(trait_1 + trait_2) / (trait_3 + 0.0001)");
+
+julia> tebv_3 = Suppressor.@suppress analyse(trials, "y ~ 1 + covariate + entries + (1|blocks)", max_levels=50, verbose=false);
+
+julia> mean(tebv_3.phenomes[1].phenotypes) < mean(tebv_3.phenomes[2].phenotypes)
+true
+
+julia> tebv_4 = Suppressor.@suppress analyse(trials, max_levels=50, covariates_continuous=["covariate"], verbose=false);
+
+julia> mean(tebv_4.phenomes[1].phenotypes) < mean(tebv_4.phenomes[2].phenotypes)
 true
 ```
 """
@@ -680,6 +735,7 @@ function analyse(
     formula_string::String = "";
     max_levels::Int64 = 100,
     max_time_per_model::Int64 = 60,
+    covariates_continuous::Union{Nothing,Vector{String}} = nothing,
     verbose::Bool = true,
 )::TEBV
     # trials, simulated_effects = simulatetrials(genomes = simulategenomes()); formula_string="y ~ 1 + (1|entries)"; max_levels::Int64=100; max_time_per_model::Int64=60; verbose::Bool = true;
@@ -724,7 +780,7 @@ function analyse(
     out_df_BLUPs::Vector{DataFrame} = []
     out_phenomes::Vector{Phenomes} = []
     for trait in unique(trials.traits)
-        # trait = unique(trials.traits)[1]
+        # trait = unique(trials.traits)[3]
         if verbose
             println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
             println(trait)
@@ -741,10 +797,33 @@ function analyse(
             # Reset formula_string string for the next trait
             formula_string = ""
         else
-            formula_string = replace(formula_string, split(formula_string, "~")[1] => trait)
-            formulae = [formula_string]
+            formulae = [replace(formula_string, split(formula_string, "~")[1] => trait)]
             idx_parallel_models = []
             idx_iterative_models = [1]
+        end
+        # Append the covariates singly or in pairs right after the intercept of each formula,
+        # then add them to the list of models to be iteratively fit 9so that they may be easily debugged)
+        if !isnothing(covariates_continuous)
+            c = length(covariates_continuous)
+            covariates_singly_and_pairs = covariates_continuous
+            if c > 1
+                for i = 1:(c-1)
+                    for j = (i+1):c
+                        push!(
+                            covariates_singly_and_pairs,
+                            string(covariates_continuous[i], " + ", covariates_continuous[j]),
+                        )
+                    end
+                end
+            end
+            f = length(formulae)
+            for i = 1:f
+                for v in covariates_singly_and_pairs
+                    # v = covariates_singly_and_pairs[4]
+                    push!(formulae, replace(formulae[i], "~ 1" => string("~ 1 + ", v)))
+                    push!(idx_iterative_models, length(formulae))
+                end
+            end
         end
         formula_optim, model, df_BLUEs, df_BLUPs, phenomes = analyse(
             df;
@@ -765,7 +844,8 @@ function analyse(
         push!(out_df_BLUPs, df_BLUPs)
         push!(out_phenomes, phenomes)
     end
-    TEBV(
+    # Output
+    tebv = TEBV(
         traits = out_traits,
         formulae = out_formulae,
         models = out_models,
@@ -773,6 +853,10 @@ function analyse(
         df_BLUPs = out_df_BLUPs,
         phenomes = out_phenomes,
     )
+    if !checkdims(tebv)
+        throw(ErrorException("Error analysing the trials."))
+    end
+    tebv
 end
 
 """
@@ -798,18 +882,43 @@ function extractphenomes(tebv::TEBV)::Phenomes
         throw(ArgumentError("The TEBV struct is corrupted."))
     end
     phenomes = Phenomes(n = length(tebv.phenomes[1].entries), t = 1)
-    phenomes.traits = tebv.phenomes[1].traits
-    phenomes.entries = tebv.phenomes[1].entries
-    phenomes.populations = tebv.phenomes[1].populations
-    phenomes.phenotypes = tebv.phenomes[1].phenotypes
-    phenomes.mask = tebv.phenomes[1].mask
     for i in eachindex(tebv.phenomes)
         # i = 2
-        if sum(tebv.phenomes[i].traits .== phenomes.traits) > 0
-            continue
+        phenomes_i = clone(tebv.phenomes[i])
+        # Add intercept effects if present
+        bool_intercept = .!isnothing.(match.(Regex("(Intercept)"), phenomes_i.traits))
+        n = length(phenomes_i.entries)
+        t = length(phenomes_i.traits)
+        if sum(bool_intercept) == 1
+            idx_intercept = findall(bool_intercept)[1]
+            idx_ϕ = findall(.!bool_intercept)
+            traits = repeat([""], t - 1)
+            ϕ::Matrix{Union{Missing,Float64}} = fill(0.0, n, t - 1)
+            μ::Matrix{Bool} = fill(true, n, t - 1)
+            for (i, j) in enumerate(idx_ϕ)
+                traits[i] = phenomes_i.traits[j]
+                ϕ[:, i] = phenomes_i.phenotypes[:, idx_intercept] + phenomes_i.phenotypes[:, j]
+                μ[:, i] = phenomes_i.mask[:, j]
+            end
+            phenomes_i.traits = traits
+            phenomes_i.phenotypes = ϕ
+            phenomes_i.mask = μ
+        else
+            phenomes_i.traits = phenomes_i.traits
+            phenomes_i.phenotypes = phenomes_i.phenotypes
+            phenomes_i.mask = phenomes_i.mask
         end
-        phenomes = merge(phenomes, tebv.phenomes[i])
+        if i == 1
+            phenomes = clone(phenomes_i)
+        else
+            phenomes = merge(phenomes, phenomes_i)
+        end
     end
+    # Rename the traits to match the input TEBV if we have the same number of output traits
+    if length(phenomes.traits) == length(tebv.traits)
+        phenomes.traits = tebv.traits
+    end
+    # Output
     if !checkdims(phenomes)
         throw(ArgumentError("The Phenomes struct is corrupted."))
     end

@@ -254,7 +254,7 @@ Plot allele frequencies
 ```
 julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
 
-julia> plot(genomes)
+julia> GBCore.plot(genomes)
 
 ```
 """
@@ -297,8 +297,22 @@ function plot(genomes::Genomes, seed::Int64 = 42)
         )
         display(plt_2)
         # Correlation between allele frequencies
-        idx_col = findall(sum(ismissing.(Q); dims = 1)[1, :] .== 0)
-        C::Matrix{Float64} = StatsBase.cor(Q[:, findall(sum(ismissing.(Q); dims = 1)[1, :] .== 0)])
+        # idx_col = findall(sum(ismissing.(Q); dims = 1)[1, :] .== 0)
+        # C::Matrix{Float64} = StatsBase.cor(Q[:, findall(sum(ismissing.(Q); dims = 1)[1, :] .== 0)])
+        C::Matrix{Float64} = fill(0.0, length(idx_col), length(idx_col))
+        for i in eachindex(idx_col)
+            for j in eachindex(idx_col)
+                idx = findall(
+                    .!ismissing.(Q[:, i]) .&&
+                    .!ismissing.(Q[:, j]) .&&
+                    .!isnan.(Q[:, i]) .&&
+                    .!isnan.(Q[:, j]) .&&
+                    .!isinf.(Q[:, i]) .&&
+                    .!isinf.(Q[:, j]),
+                )
+                C[i, j] = StatsBase.cor(Q[idx, i], Q[idx, j])
+            end
+        end
         plt_3 = UnicodePlots.heatmap(
             C;
             height = size(C, 2),

@@ -369,7 +369,7 @@ Additionally, plot mean trait values per year, season, harvest, site, replicatio
 ```
 julia> trials, _ = simulatetrials(genomes = simulategenomes(verbose=false), verbose=false);
 
-julia> plot(trials);
+julia> GBCore.plot(trials);
 
 ```
 """
@@ -406,24 +406,24 @@ function plot(trials::Trials; nbins::Int64 = 10)
                 println(string("Trait: ", trials.traits[j], " has ", length(ϕ), " non-missing data points."))
             end
         end
-        # View correlation between traits using scatter plots
+        # Build the correlation matrix
         idx_pop = findall(trials.populations .== pop)
         Φ = trials.phenotypes[idx_pop, idx_trait_with_variance]
         traits = trials.traits[idx_trait_with_variance]
-        # Omit very sparse entries
-        sparsity_threshold = 0.5
-        idx_entries = findall(mean(ismissing.(Φ), dims = 2)[:, 1] .<= sparsity_threshold)
-        Φ = Φ[idx_entries, :]
-        # Omit very sparse traits
-        sparsity_threshold = 0.5
-        idx_traits = findall(mean(ismissing.(Φ), dims = 1)[1, :] .<= sparsity_threshold)
-        Φ = Φ[:, idx_traits]
-        traits = trials.traits[idx_traits]
-        # Remove entries with missing
-        idx_entries = findall(mean(ismissing.(Φ), dims = 2)[:, 1] .== 0.0)
-        Φ = Φ[idx_entries, :]
-        # Correlation matrix with no missing data        
-        C::Matrix{Float64} = StatsBase.cor(Φ)
+        C::Matrix{Float64} = fill(0.0, length(traits), length(traits))
+        for ti in eachindex(traits)
+            for tj in eachindex(traits)
+                idx = findall(
+                    .!ismissing.(Φ[:, ti]) .&&
+                    .!ismissing.(Φ[:, tj]) .&&
+                    .!isnan.(Φ[:, ti]) .&&
+                    .!isnan.(Φ[:, tj]) .&&
+                    .!isinf.(Φ[:, ti]) .&&
+                    .!isinf.(Φ[:, tj]),
+                )
+                C[ti, tj] = StatsBase.cor(Φ[idx, ti], Φ[idx, tj])
+            end
+        end
         plt = UnicodePlots.heatmap(
             C;
             height = length(traits),

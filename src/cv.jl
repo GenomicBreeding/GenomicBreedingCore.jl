@@ -257,3 +257,25 @@ function tabularise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
     )
     (df_across_entries, df_per_entry)
 end
+
+function summarise(csv::Vector{CV})
+    fit_1 = Fit(n = 1, l = 2)
+    fit_1.metrics = Dict("cor" => 0.0, "rmse" => 1.0)
+    cv_1 = CV("replication_1", "fold_1", fit_1, ["population_1"], ["entry_1"], [0.0], [0.0], fit_1.metrics)
+    fit_2 = Fit(n = 1, l = 2)
+    fit_2.metrics = Dict("cor" => 1.0, "rmse" => 0.0)
+    cv_2 = CV("replication_2", "fold_2", fit_2, ["population_2"], ["entry_2"], [0.0], [0.0], fit_2.metrics)
+    cvs = [cv_1, cv_2]
+    # Check arguments
+    for (i, cv) in enumerate(cvs)
+        if !checkdims(cv)
+            throw(ArgumentError("The element number " * string(i) * " in the vector of CV structs is corrupted."))
+        end
+    end
+    # Tabularise
+    df_across_entries, df_per_entry = tabularise(cvs)
+    # Summarise across entries, reps and folds
+    df_summary_per_trait_model = combine(groupby(df_across_entries, [:trait, :model]), [[:cor] => mean, [:cor] => std])
+    # Summa
+
+end
