@@ -231,7 +231,9 @@ function simulatetrials(;
         if size(proportion_of_variance) != (9, n_traits)
             throw(
                 ArgumentError(
-                    "We expect 11 x `n_traits` matrix. " *
+                    "We expect 9 x " *
+                    string(n_traits) *
+                    " (`n_traits`) matrix. " *
                     "Each row corresponding to the scaled/non-scaled proportion of variance of " *
                     "\t (1) additive genetic effects\n" *
                     "\t (2) dominance genetic effects\n" *
@@ -241,7 +243,12 @@ function simulatetrials(;
                     "\t (6) sites effects\n" *
                     "\t (7) environmental interactions\n" *
                     "\t (8) spatial interactions\n" *
-                    "\t (9) GxE interactions",
+                    "\t (9) GxE interactions\n" *
+                    "There were only " *
+                    string(size(proportion_of_variance, 1)) *
+                    " row/s and " *
+                    string(size(proportion_of_variance, 2)) *
+                    " column/s in `proportion_of_variance`.",
                 ),
             )
         end
