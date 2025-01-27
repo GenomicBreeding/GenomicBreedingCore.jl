@@ -108,3 +108,38 @@ function checkdims(fit::Fit)::Bool
     end
     true
 end
+
+"""
+    plot(fit::Fit, distribution::Any=[TDist(1), Normal()][1], α::Float64=0.05)
+
+Manhattan plot
+
+# Examples
+```
+julia> distribution = [TDist(1), Normal()][2];
+
+julia> fit = Fit(n=100, l=10_000); fit.b_hat = rand(distribution, 10_0000);  α = 0.05;
+
+julia> GBCore.plot(fit);
+
+```
+"""
+function plot(fit::Fit, distribution::Any=[TDist(1), Normal()][2], α::Float64=0.05)
+    # distribution::Any=[TDist(1), Normal()][2];
+    # fit = Fit(n=100, l=10_000); fit.b_hat = rand(distribution, 10_0000);  α::Float64=0.05;
+    l = length(fit.b_hat)
+    p1 = UnicodePlots.histogram(fit.b_hat, title = "Distribution of " * string(distribution) * " values")
+    # Manhattan plot
+    pval = 1 .- cdf.(distribution, abs.(fit.b_hat))
+    lod = -log10.(pval)
+    threshold = -log10(α / l)
+    p2 = UnicodePlots.scatterplot(lod, title = "Manhattan plot", xlabel = "Loci-alleles", ylabel = "-log10(pval)")
+    UnicodePlots.lineplot!(p2, [0, l], [threshold, threshold])
+    # QQ plot
+    lod_expected = reverse(-log10.(collect(range(0, 1, l))))
+    p3 = UnicodePlots.scatterplot(sort(lod), lod_expected, xlabel = "Observed LOD", ylabel = "Expected LOD")
+    UnicodePlots.lineplot!(p3, [0, lod_expected[end-1]], [0, lod_expected[end-1]])
+    @show p1
+    @show p2
+    @show p3
+end
