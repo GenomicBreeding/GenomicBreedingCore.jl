@@ -274,9 +274,13 @@ function extractphenomes(trials::Trials)::Phenomes
         tmp = try
             unstack(df, :id, :grouping, trait_base)
         catch
-            throw(ArgumentError("You may have duplicate entries within year-harvest-season-site-replication combinations. " *
-            "These may possibly be controls. " *
-            "Please make sure each entry appears only once within these combinations."))
+            throw(
+                ArgumentError(
+                    "You may have duplicate entries within year-harvest-season-site-replication combinations. " *
+                    "These may possibly be controls. " *
+                    "Please make sure each entry appears only once within these combinations.",
+                ),
+            )
         end
         for (i, id) in enumerate(ids)
             # i, id = 1, ids[1]

@@ -124,7 +124,7 @@ julia> GBCore.plot(fit);
 
 ```
 """
-function plot(fit::Fit, distribution::Any=[TDist(1), Normal()][2], α::Float64=0.05)
+function plot(fit::Fit, distribution::Any = [TDist(1), Normal()][2], α::Float64 = 0.05)
     # distribution::Any=[TDist(1), Normal()][2];
     # fit = Fit(n=100, l=10_000); fit.b_hat = rand(distribution, 10_0000);  α::Float64=0.05;
     l = length(fit.b_hat)

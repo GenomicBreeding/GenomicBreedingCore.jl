@@ -741,6 +741,7 @@ true
 function analyse(
     trials::Trials,
     formula_string::String = "";
+    traits::Union{Nothing,Vector{String}} = nothing,
     max_levels::Int64 = 100,
     max_time_per_model::Int64 = 60,
     covariates_continuous::Union{Nothing,Vector{String}} = nothing,
@@ -753,6 +754,20 @@ function analyse(
     # Check Arguments
     if !checkdims(trials)
         throw(ArgumentError("Trials struct is corrupted."))
+    end
+    traits = if isnothing(traits)
+        unique(trials.traits)
+    else
+        idx_missing_traits = findall([sum(trials.traits .== trait) == 0 for trait in traits])
+        if length(idx_missing_traits) > 0
+            throw(
+                ArgumentError(
+                    "The following requested traits were not found in the Trials struct:\n\t‣ " *
+                    join(traits[idx_missing_traits], "\n\t‣ "),
+                ),
+            )
+        end
+        traits
     end
     # Tabularise
     df::DataFrame = tabularise(trials)
@@ -787,8 +802,8 @@ function analyse(
     out_df_BLUEs::Vector{DataFrame} = []
     out_df_BLUPs::Vector{DataFrame} = []
     out_phenomes::Vector{Phenomes} = []
-    for trait in unique(trials.traits)
-        # trait = unique(trials.traits)[3]
+    for trait in traits
+        # trait = traits[1]
         if verbose
             println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
             println(trait)
@@ -813,7 +828,7 @@ function analyse(
         # then add them to the list of models to be iteratively fit 9so that they may be easily debugged)
         if !isnothing(covariates_continuous)
             c = length(covariates_continuous)
-            covariates_singly_and_pairs = covariates_continuous
+            covariates_singly_and_pairs = deepcopy(covariates_continuous)
             if c > 1
                 for i = 1:(c-1)
                     for j = (i+1):c
