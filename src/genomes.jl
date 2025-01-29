@@ -326,7 +326,11 @@ function plot(genomes::Genomes, seed::Int64 = 42)
 end
 
 """
-    slice(genomes::Genomes; idx_entries::Vector{Int64}, idx_loci_alleles::Vector{Int64})::Genomes
+    slice(
+        genomes::Genomes; 
+        idx_entries::Union{Nothing, Vector{Int64}} = nothing,
+        idx_loci_alleles::Union{Nothing, Vector{Int64}} = nothing,
+    )::Genomes
 
 Slice a Genomes struct by specifing indixes of entries and loci-allele combinations
 
@@ -347,7 +351,11 @@ Dict{String, Int64} with 7 entries:
   "max_n_alleles"  => 4
 ```
 """
-function slice(genomes::Genomes; idx_entries::Vector{Int64}, idx_loci_alleles::Vector{Int64})::Genomes
+function slice(
+    genomes::Genomes;
+    idx_entries::Union{Nothing,Vector{Int64}} = nothing,
+    idx_loci_alleles::Union{Nothing,Vector{Int64}} = nothing,
+)::Genomes
     # genomes::Genomes = simulategenomes(); idx_entries::Vector{Int64}=sample(1:100, 10); idx_loci_alleles::Vector{Int64}=sample(1:10_000, 1000);
     if !checkdims(genomes)
         throw(ArgumentError("Genomes struct is corrupted."))
@@ -355,16 +363,22 @@ function slice(genomes::Genomes; idx_entries::Vector{Int64}, idx_loci_alleles::V
     genomes_dims::Dict{String,Int64} = dimensions(genomes)
     n_entries::Int64 = genomes_dims["n_entries"]
     n_loci_alleles::Int64 = genomes_dims["n_loci_alleles"]
-    if (minimum(idx_entries) < 1) || (maximum(idx_entries) > n_entries)
-        throw(ArgumentError("We accept `idx_entries` from 1 to `n_entries` of `genomes`."))
+    idx_entries = if isnothing(idx_entries)
+        collect(1:n_entries)
+    else
+        if (minimum(idx_entries) < 1) || (maximum(idx_entries) > n_entries)
+            throw(ArgumentError("We accept `idx_entries` from 1 to `n_entries` of `genomes`."))
+        end
+        unique(sort(idx_entries))
     end
-    if (minimum(idx_loci_alleles) < 1) || (maximum(idx_loci_alleles) > n_loci_alleles)
-        throw(ArgumentError("We accept `idx_loci_alleles` from 1 to `n_loci_alleles` of `genomes`."))
+    idx_loci_alleles = if isnothing(idx_loci_alleles)
+        collect(1:n_loci_alleles)
+    else
+        if (minimum(idx_loci_alleles) < 1) || (maximum(idx_loci_alleles) > n_loci_alleles)
+            throw(ArgumentError("We accept `idx_loci_alleles` from 1 to `n_loci_alleles` of `genomes`."))
+        end
+        unique(sort(idx_loci_alleles))
     end
-    sort!(idx_entries)
-    sort!(idx_loci_alleles)
-    unique!(idx_entries)
-    unique!(idx_loci_alleles)
     n, p = length(idx_entries), length(idx_loci_alleles)
     sliced_genomes::Genomes = Genomes(n = n, p = p)
     for (i1, i2) in enumerate(idx_entries)

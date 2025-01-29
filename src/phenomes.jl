@@ -222,9 +222,13 @@ function plot(phenomes::Phenomes; nbins::Int64 = 10)
 end
 
 """
-    slice(phenomes::Phenomes; idx_entries::Vector{Int64}, idx_traits::Vector{Int64})::Phenomes
+    slice(
+        phenomes::Phenomes;
+        idx_entries::Union{Nothing, Vector{Int64}} = nothing,
+        idx_traits::Union{Nothing, Vector{Int64}} = nothing,
+    )::Phenomes
 
-Slice a Phenomes struct by specifing indixes of entries and traits
+Slice a Phenomes struct by specifing indexes of entries and traits
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
@@ -244,7 +248,11 @@ Dict{String, Int64} with 8 entries:
   "n_missing"     => 0
 ```
 """
-function slice(phenomes::Phenomes; idx_entries::Vector{Int64}, idx_traits::Vector{Int64})::Phenomes
+function slice(
+    phenomes::Phenomes;
+    idx_entries::Union{Nothing,Vector{Int64}} = nothing,
+    idx_traits::Union{Nothing,Vector{Int64}} = nothing,
+)::Phenomes
     # phenomes::Phenomes = simulatephenomes(); idx_entries::Vector{Int64}=sample(1:100, 10); idx_traits::Vector{Int64}=sample(1:10_000, 1000);
     if !checkdims(phenomes)
         throw(ArgumentError("Phenomes struct is corrupted."))
@@ -252,16 +260,22 @@ function slice(phenomes::Phenomes; idx_entries::Vector{Int64}, idx_traits::Vecto
     phenomes_dims::Dict{String,Int64} = dimensions(phenomes)
     n_entries::Int64 = phenomes_dims["n_entries"]
     n_traits::Int64 = phenomes_dims["n_traits"]
-    if (minimum(idx_entries) < 1) || (maximum(idx_entries) > n_entries)
-        throw(ArgumentError("We accept `idx_entries` from 1 to `n_entries` of `phenomes`."))
+    idx_entries = if isnothing(idx_entries)
+        collect(1:n_entries)
+    else
+        if (minimum(idx_entries) < 1) || (maximum(idx_entries) > n_entries)
+            throw(ArgumentError("We accept `idx_entries` from 1 to `n_entries` of `phenomes`."))
+        end
+        unique(sort(idx_entries))
     end
-    if (minimum(idx_traits) < 1) || (maximum(idx_traits) > n_traits)
-        throw(ArgumentError("We accept `idx_traits` from 1 to `n_traits` of `phenomes`."))
+    idx_traits = if isnothing(idx_traits)
+        collect(1:n_traits)
+    else
+        if (minimum(idx_traits) < 1) || (maximum(idx_traits) > n_traits)
+            throw(ArgumentError("We accept `idx_traits` from 1 to `n_traits` of `phenomes`."))
+        end
+        unique(sort(idx_traits))
     end
-    sort!(idx_entries)
-    sort!(idx_traits)
-    unique!(idx_entries)
-    unique!(idx_traits)
     n, t = length(idx_entries), length(idx_traits)
     sliced_phenomes::Phenomes = Phenomes(n = n, t = t)
     for (i1, i2) in enumerate(idx_entries)
