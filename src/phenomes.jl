@@ -549,7 +549,7 @@ function addcompositetrait(phenomes::Phenomes; composite_trait_name::String, for
         formula_string = replace(formula_string, s => " ")
     end
     component_trait_names = unique(split(formula_string, " "))
-    ϕ = Vector{Float64}(undef, size(df, 1))
+    ϕ = Vector{Union{Missing,Float64}}(undef, size(df, 1))
     for i in eachindex(ϕ)
         # i = 1
         for var_name in component_trait_names

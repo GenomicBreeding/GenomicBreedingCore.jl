@@ -692,8 +692,10 @@ end
     analyse(
         trials::Trials,
         formula_string::String = "";
+        traits::Union{Nothing,Vector{String}} = nothing,
         max_levels::Int64 = 100,
         max_time_per_model::Int64 = 60,
+        covariates_continuous::Union{Nothing,Vector{String}} = nothing,
         verbose::Bool = true,
     )::TEBV
 
