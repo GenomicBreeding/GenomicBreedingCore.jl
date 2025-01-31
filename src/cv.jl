@@ -132,11 +132,11 @@ Export a vector of CV structs into data frames of metrics across entries and per
 
 # Examples
 ```jldoctest; setup = :(using GBCore, DataFrames)
-julia> fit_1 = Fit(n=1, l=2); fit_1.metrics = Dict("cor" => 0.0, "rmse" => 1.0);
+julia> fit_1 = Fit(n=1, l=2); fit_1.metrics = Dict("cor" => 0.0, "rmse" => 1.0); fit_1.trait = "trait_1";
 
 julia> cv_1 = CV("replication_1", "fold_1", fit_1, ["population_1"], ["entry_1"], [0.0], [0.0], fit_1.metrics);
 
-julia> fit_2 = Fit(n=1, l=2); fit_2.metrics = Dict("cor" => 1.0, "rmse" => 0.0);
+julia> fit_2 = Fit(n=1, l=2); fit_2.metrics = Dict("cor" => 1.0, "rmse" => 0.0); fit_2.trait = "trait_1";
 
 julia> cv_2 = CV("replication_2", "fold_2", fit_2, ["population_2"], ["entry_2"], [0.0], [0.0], fit_2.metrics);
 
@@ -258,14 +258,47 @@ function tabularise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
     (df_across_entries, df_per_entry)
 end
 
-function summarise(csv::Vector{CV})
-    fit_1 = Fit(n = 1, l = 2)
-    fit_1.metrics = Dict("cor" => 0.0, "rmse" => 1.0)
-    cv_1 = CV("replication_1", "fold_1", fit_1, ["population_1"], ["entry_1"], [0.0], [0.0], fit_1.metrics)
-    fit_2 = Fit(n = 1, l = 2)
-    fit_2.metrics = Dict("cor" => 1.0, "rmse" => 0.0)
-    cv_2 = CV("replication_2", "fold_2", fit_2, ["population_2"], ["entry_2"], [0.0], [0.0], fit_2.metrics)
-    cvs = [cv_1, cv_2]
+"""
+    summarise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
+
+Summarise a vector of CV structs into:
+
+- a data frame of mean metrics, and
+- a data frame of mean and standard deviation of phenotype predictions per entry, trait and model.
+
+# Examples
+```jldoctest; setup = :(using GBCore, DataFrames)
+julia> fit_1 = Fit(n=1, l=2); fit_1.metrics = Dict("cor" => 0.0, "rmse" => 1.0); fit_1.trait = "trait_1";
+
+julia> cv_1 = CV("replication_1", "fold_1", fit_1, ["population_1"], ["entry_1"], [0.0], [0.0], fit_1.metrics);
+
+julia> fit_2 = Fit(n=1, l=2); fit_2.metrics = Dict("cor" => 1.0, "rmse" => 0.0); fit_2.trait = "trait_1";
+
+julia> cv_2 = CV("replication_2", "fold_2", fit_2, ["population_2"], ["entry_2"], [0.0], [0.0], fit_2.metrics);
+
+julia> cvs = [cv_1, cv_2];
+
+julia> df_summary, df_summary_per_entry = summarise(cvs)
+(1×4 DataFrame
+ Row │ trait    model   cor_mean  cor_std  
+     │ String   String  Float64   Float64  
+─────┼─────────────────────────────────────
+   1 │ trait_1               0.5  0.707107, 2×5 DataFrame
+ Row │ trait    model   entry    μ        σ       
+     │ String   String  String   Float64  Float64 
+─────┼────────────────────────────────────────────
+   1 │ trait_1          entry_1      0.0      NaN
+   2 │ trait_1          entry_2      0.0      NaN)
+```
+"""
+function summarise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
+    # fit_1 = Fit(n = 1, l = 2); fit_1.trait = "trait_1"
+    # fit_1.metrics = Dict("cor" => 0.0, "rmse" => 1.0)
+    # cv_1 = CV("replication_1", "fold_1", fit_1, ["population_1"], ["entry_1"], [0.0], [0.0], fit_1.metrics)
+    # fit_2 = Fit(n = 1, l = 2); fit_2.trait = "trait_2"
+    # fit_2.metrics = Dict("cor" => 1.0, "rmse" => 0.0)
+    # cv_2 = CV("replication_2", "fold_2", fit_2, ["population_2"], ["entry_2"], [0.0], [0.0], fit_2.metrics)
+    # cvs = [cv_1, cv_2]
     # Check arguments
     for (i, cv) in enumerate(cvs)
         if !checkdims(cv)
@@ -274,8 +307,15 @@ function summarise(csv::Vector{CV})
     end
     # Tabularise
     df_across_entries, df_per_entry = tabularise(cvs)
+    unique(string.(df_per_entry.replication, df_per_entry.fold))
     # Summarise across entries, reps and folds
-    df_summary_per_trait_model = combine(groupby(df_across_entries, [:trait, :model]), [[:cor] => mean, [:cor] => std])
-    # Summa
-
+    df_summary = combine(groupby(df_across_entries, [:trait, :model]), [[:cor] => mean, [:cor] => std])
+    # Mean and standard deviation of phenotype predictions per entry
+    df_summary_per_entry = combine(groupby(df_per_entry, [:trait, :model, :entry])) do g
+        idx = findall(.!ismissing.(g.y_true) .&& .!ismissing.(g.y_pred))
+        μ = mean(g.y_pred[idx])
+        σ = std(g.y_pred[idx])
+        return (μ = μ, σ = σ)
+    end
+    (df_summary, df_summary_per_entry)
 end
