@@ -278,17 +278,13 @@ julia> cv_2 = CV("replication_2", "fold_2", fit_2, ["population_2"], ["entry_2"]
 
 julia> cvs = [cv_1, cv_2];
 
-julia> df_summary, df_summary_per_entry = summarise(cvs)
-(1×4 DataFrame
- Row │ trait    model   cor_mean  cor_std  
-     │ String   String  Float64   Float64  
-─────┼─────────────────────────────────────
-   1 │ trait_1               0.5  0.707107, 2×5 DataFrame
- Row │ trait    model   entry    μ        σ       
-     │ String   String  String   Float64  Float64 
-─────┼────────────────────────────────────────────
-   1 │ trait_1          entry_1      0.0      NaN
-   2 │ trait_1          entry_2      0.0      NaN)
+julia> df_summary, df_summary_per_entry = summarise(cvs);
+
+julia> size(df_summary)
+(2, 6)
+
+julia> size(df_summary_per_entry)
+(2, 7)
 ```
 """
 function summarise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
@@ -307,11 +303,10 @@ function summarise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
     end
     # Tabularise
     df_across_entries, df_per_entry = tabularise(cvs)
-    unique(string.(df_per_entry.replication, df_per_entry.fold))
     # Summarise across entries, reps and folds
-    df_summary = combine(groupby(df_across_entries, [:trait, :model]), [[:cor] => mean, [:cor] => std])
+    df_summary = combine(groupby(df_across_entries, [:training_population, :validation_population, :trait, :model]), [[:cor] => mean, [:cor] => std])
     # Mean and standard deviation of phenotype predictions per entry
-    df_summary_per_entry = combine(groupby(df_per_entry, [:trait, :model, :entry])) do g
+    df_summary_per_entry = combine(groupby(df_per_entry, [:training_population, :validation_population, :trait, :model, :entry])) do g
         idx = findall(.!ismissing.(g.y_true) .&& .!ismissing.(g.y_pred))
         μ = mean(g.y_pred[idx])
         σ = std(g.y_pred[idx])
