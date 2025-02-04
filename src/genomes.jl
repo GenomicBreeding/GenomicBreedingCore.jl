@@ -246,6 +246,202 @@ function loci(genomes::Genomes)::Tuple{Vector{String},Vector{Int64},Vector{Int64
 end
 
 """
+    distances(
+        genomes::Genomes; 
+        metrics::Vector{String}=["euclidean", "correlation", "mad", "rmsd", "χ²"]
+        idx_loci_alleles::Union{Nothing, Vector{Int64}} = nothing,
+    )::Tuple{Vector{String}, Vector{String}, Dict{String, Matrix{Float64}}}
+
+Estimate pairwise distances between loci_alleles and entries. 
+Sparsity leading to less than 2 pairs will yield -Inf values in the resulting matrices. 
+Matrices with how many pairs were used to estimate the distance and correlation matrices are also included as well as the locus-allele and entry names.
+
+```jldoctest; setup = :(using GBCore, LinearAlgebra)
+julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
+
+julia> (loci_alleles, entries, dist) = distances(genomes, metrics=["correlation", "χ²"]);
+
+julia> sort(string.(keys(dist))) == ["entries|correlation", "entries|counts", "entries|χ²", "loci_alleles|correlation", "loci_alleles|counts", "loci_alleles|χ²"]
+true
+
+julia> C = dist["entries|correlation"]; C[diagind(C)] == repeat([1], length(genomes.entries))
+true
+```
+"""
+function distances(
+    genomes::Genomes;
+    metrics::Vector{String} = ["euclidean", "correlation", "mad", "rmsd", "χ²"],
+    idx_loci_alleles::Union{Nothing,Vector{Int64}} = nothing,
+)::Tuple{Vector{String},Vector{String},Dict{String,Matrix{Float64}}}
+    # genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
+    # metrics = ["euclidean", "correlation", "mad", "rmsd", "χ²"]; idx_loci_alleles = nothing
+    if !checkdims(genomes)
+        throw(ArgumentError("The genomes struct is corrupted."))
+    end
+    recognised_metrics = ["euclidean", "correlation", "mad", "rmsd", "χ²"]
+    unique!(metrics)
+    m = length(metrics)
+    if m < 1
+        throw(
+            ArgumentError(
+                "Please supply at least 1 distance metric. Choose from:\n\t‣ " * join(recognised_metrics, "\n\t‣ "),
+            ),
+        )
+    end
+    idx_unrecognised_metrics = findall([sum(recognised_metrics .== m) == 0 for m in metrics])
+    if length(idx_unrecognised_metrics) > 0
+        throw(
+            ArgumentError(
+                "Unrecognised metric/s:\n\t‣ " *
+                join(metrics[idx_unrecognised_metrics], "\n\t‣ ") *
+                "\nPlease choose from:\n\t‣ " *
+                join(recognised_metrics, "\n\t‣ "),
+            ),
+        )
+    end
+    n_loci_alleles = length(genomes.loci_alleles)
+    idx_loci_alleles = if isnothing(idx_loci_alleles)
+        # @warn "Randomly sampling 100 loci-alleles"
+        sort(sample(1:n_loci_alleles, 100, replace = false))
+    else
+        if (minimum(idx_loci_alleles) < 1) || (maximum(idx_loci_alleles) > n_loci_alleles)
+            throw(ArgumentError("We accept `idx_loci_alleles` from 1 to `n_loci_alleles` of `genomes`."))
+        end
+        unique(sort(idx_loci_alleles))
+    end
+    # Instantiate vectors of matrices and metric names
+    dimension::Vector{String} = [] # across loci_alleles and/or entries
+    metric_names::Vector{String} = []
+    matrices::Vector{Matrix{Float64}} = []
+    # Per locus-allele first
+    t = length(idx_loci_alleles)
+    if t > 1
+        counts = fill(0.0, t, t)
+        for metric in metrics
+            # metric = metrics[1]
+            D::Matrix{Float64} = fill(-Inf, t, t)
+            for (i, ix) in enumerate(idx_loci_alleles)
+                for (j, jx) in enumerate(idx_loci_alleles)
+                    # i = 1; j = 3; ix = idx_loci_alleles[i]; jx = idx_loci_alleles[j]
+                    # Make sure we have no missing, NaN or infinite values
+                    y1 = genomes.allele_frequencies[:, ix]
+                    y2 = genomes.allele_frequencies[:, jx]
+                    idx = findall(
+                        .!ismissing.(y1) .&&
+                        .!ismissing.(y2) .&&
+                        .!isnan.(y1) .&&
+                        .!isnan.(y2) .&&
+                        .!isinf.(y1) .&&
+                        .!isinf.(y2),
+                    )
+                    if length(idx) < 2
+                        continue
+                    end
+                    y1 = y1[idx]
+                    y2 = y2[idx]
+                    # Count the number of elements used to estimate the distance
+                    if metric == metrics[1]
+                        counts[i, j] = length(idx)
+                    end
+                    # Estimate the distance/correlation
+                    if metric == "euclidean"
+                        D[i, j] = sqrt(sum((y1 - y2) .^ 2))
+                    elseif metric == "correlation"
+                        (var(y1) < 1e-7) || (var(y2) < 1e-7) ? continue : nothing
+                        D[i, j] = cor(y1, y2)
+                    elseif metric == "mad"
+                        D[i, j] = mean(abs.(y1 - y2))
+                    elseif metric == "rmsd"
+                        D[i, j] = sqrt(mean((y1 - y2) .^ 2))
+                    elseif metric == "χ²"
+                        D[i, j] = sum((y1 - y2) .^ 2 ./ (y2 .+ eps(Float64)))
+                    else
+                        throw(
+                            ErrorException(
+                                "This should not happen as we checked for the validity of the metrics above.",
+                            ),
+                        )
+                    end
+                end
+            end
+            push!(dimension, "loci_alleles")
+            push!(metric_names, metric)
+            push!(matrices, D)
+        end
+        push!(dimension, "loci_alleles")
+        push!(metric_names, "counts")
+        push!(matrices, counts)
+    end
+    # Finally per entry
+    n = length(genomes.entries)
+    if n > 1
+        counts = fill(0.0, n, n)
+        for metric in metrics
+            # metric = metrics[1]
+            D::Matrix{Float64} = fill(-Inf, n, n)
+            for i = 1:n
+                for j = 1:n
+                    # i = 1; j = 3
+                    # Make sure we have no missing, NaN or infinite values
+                    y1 = genomes.allele_frequencies[i, idx_loci_alleles]
+                    y2 = genomes.allele_frequencies[j, idx_loci_alleles]
+                    idx = findall(
+                        .!ismissing.(y1) .&&
+                        .!ismissing.(y2) .&&
+                        .!isnan.(y1) .&&
+                        .!isnan.(y2) .&&
+                        .!isinf.(y1) .&&
+                        .!isinf.(y2),
+                    )
+                    if length(idx) < 2
+                        continue
+                    end
+                    y1 = y1[idx]
+                    y2 = y2[idx]
+                    # Count the number of elements used to estimate the distance
+                    if metric == metrics[1]
+                        counts[i, j] = length(idx)
+                    end
+                    # Estimate the distance/correlation
+                    if metric == "euclidean"
+                        D[i, j] = sqrt(sum((y1 - y2) .^ 2))
+                    elseif metric == "correlation"
+                        (var(y1) < 1e-7) || (var(y2) < 1e-7) ? continue : nothing
+                        D[i, j] = cor(y1, y2)
+                    elseif metric == "mad"
+                        D[i, j] = mean(abs.(y1 - y2))
+                    elseif metric == "rmsd"
+                        D[i, j] = sqrt(mean((y1 - y2) .^ 2))
+                    elseif metric == "χ²"
+                        D[i, j] = sum((y1 - y2) .^ 2 ./ (y2 .+ eps(Float64)))
+                    else
+                        throw(
+                            ErrorException(
+                                "This should not happen as we checked for the validity of the metrics above.",
+                            ),
+                        )
+                    end
+                end
+            end
+            push!(dimension, "entries")
+            push!(metric_names, metric)
+            push!(matrices, D)
+        end
+        push!(dimension, "entries")
+        push!(metric_names, "counts")
+        push!(matrices, counts)
+    end
+    # Output
+    dist::Dict{String,Matrix{Float64}} = Dict()
+    for i in eachindex(dimension)
+        # i = 4
+        key = string(dimension[i], "|", metric_names[i])
+        dist[key] = matrices[i]
+    end
+    (genomes.loci_alleles[idx_loci_alleles], genomes.entries, dist)
+end
+
+"""
     plot(genomes::Genomes)::Nothing
 
 Plot allele frequencies
@@ -469,7 +665,7 @@ function Base.filter(
     if (maf < 0.0) || (maf > 1.0)
         throw(ArgumentError("We accept `maf` from 0.0 to 1.0."))
     end
-    # Filter by entry sparisy, locus sparsity and minimum allele frequency thresholds
+    # Filter by entry sparsity, locus sparsity and minimum allele frequency thresholds
     entry_sparsities::Array{Float64,1} = fill(0.0, length(genomes.entries))
     mean_frequencies::Array{Float64,1} = fill(0.0, length(genomes.loci_alleles))
     locus_sparsities::Array{Float64,1} = fill(0.0, length(genomes.loci_alleles))
