@@ -304,7 +304,10 @@ function summarise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
     # Tabularise
     df_across_entries, df_per_entry = tabularise(cvs)
     # Summarise across entries, reps and folds
-    df_summary = combine(groupby(df_across_entries, [:training_population, :validation_population, :trait, :model]), [[:cor] => mean, [:cor] => std])
+    df_summary = combine(
+        groupby(df_across_entries, [:training_population, :validation_population, :trait, :model]),
+        [[:cor] => mean, [:cor] => std],
+    )
     # Mean and standard deviation of phenotype predictions per entry
     df_summary_per_entry = combine(groupby(df_per_entry, [:training_population, :validation_population, :trait, :model, :entry])) do g
         idx = findall(.!ismissing.(g.y_true) .&& .!ismissing.(g.y_pred))

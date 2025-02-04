@@ -135,6 +135,189 @@ function dimensions(phenomes::Phenomes)::Dict{String,Int64}
     )
 end
 
+"""
+    distances(
+        phenomes::Phenomes; 
+        distance_metrics::Vector{String}=["euclidean", "correlation", "mad", "rmsd", "χ²"]
+    )::Dict{String, Matrix{Float64}}Tuple{Vector{String}, Vector{String}, Dict{String, Matrix{Float64}}}
+
+Estimate pairwise distances between traits and entries. 
+Sparsity leading to less than 2 pairs will yield -Inf values in the resulting matrices. 
+Matrices with how many pairs were used to estimate the distance and correlation matrices are also included as well as the trait and entry names.
+
+```jldoctest; setup = :(using GBCore, LinearAlgebra)
+julia> phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = rand(10,3); phenomes.phenotypes[2,2] = missing;
+
+julia> (traits, entries, dist) = distances(phenomes, distance_metrics=["correlation", "χ²"]);
+
+julia> sort(string.(keys(dist))) == ["entries|correlation", "entries|counts", "entries|χ²", "traits|correlation", "traits|counts", "traits|χ²"]
+true
+
+julia> C = dist["entries|correlation"]; C[diagind(C)] == repeat([1], length(phenomes.entries))
+true
+
+julia> dist["traits|counts"][:, 2] == dist["traits|counts"][2, :] == repeat([9], length(phenomes.traits))
+true
+
+julia> dist["entries|counts"][:, 2] == dist["entries|counts"][2, :] == repeat([2], length(phenomes.entries))
+true
+```
+"""
+function distances(
+    phenomes::Phenomes;
+    distance_metrics::Vector{String} = ["euclidean", "correlation", "mad", "rmsd", "χ²"],
+)::Tuple{Vector{String},Vector{String},Dict{String,Matrix{Float64}}}
+    # phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = rand(10,3);
+    # distance_metrics = ["euclidean", "correlation", "mad", "rmsd", "χ²"]
+    if !checkdims(phenomes)
+        throw(ArgumentError("The phenomes struct is corrupted."))
+    end
+    recognised_distance_metrics = ["euclidean", "correlation", "mad", "rmsd", "χ²"]
+    unique!(distance_metrics)
+    m = length(distance_metrics)
+    if m < 1
+        throw(
+            ArgumentError(
+                "Please supply at least 1 distance metric. Choose from:\n\t‣ " *
+                join(recognised_distance_metrics, "\n\t‣ "),
+            ),
+        )
+    end
+    idx_unrecognised_distance_metrics = findall([sum(recognised_distance_metrics .== m) == 0 for m in distance_metrics])
+    if length(idx_unrecognised_distance_metrics) > 0
+        throw(
+            ArgumentError(
+                "Unrecognised metric/s:\n\t‣ " *
+                join(distance_metrics[idx_unrecognised_distance_metrics], "\n\t‣ ") *
+                "\nPlease choose from:\n\t‣ " *
+                join(recognised_distance_metrics, "\n\t‣ "),
+            ),
+        )
+    end
+    # Instantiate vectors of matrices and metric names
+    dimension::Vector{String} = [] # across traits and/or entries
+    metric_names::Vector{String} = []
+    matrices::Vector{Matrix{Float64}} = []
+    # Number of traits and entries
+    n = length(phenomes.entries)
+    t = length(phenomes.traits)
+    # Per trait first
+    if t > 1
+        y1::Vector{Union{Missing,Float64}} = fill(missing, n)
+        y2::Vector{Union{Missing,Float64}} = fill(missing, n)
+        counts = fill(0.0, t, t)
+        for metric in distance_metrics
+            # metric = distance_metrics[1]
+            D::Matrix{Float64} = fill(-Inf, t, t)
+            for i = 1:t
+                # i = 1
+                y1 .= phenomes.phenotypes[:, i]
+                bool1 = .!ismissing.(y1) .&& .!isnan.(y1) .&& .!isinf.(y1)
+                for j = 1:t
+                    # j = 3
+                    # Make sure we have no missing, NaN or infinite values
+                    y2 .= phenomes.phenotypes[:, j]
+                    bool2 = .!ismissing.(y2) .&& .!isnan.(y2) .&& .!isinf.(y2)
+                    idx = findall(bool1 .&& bool2)
+                    if length(idx) < 2
+                        continue
+                    end
+                    # Count the number of elements used to estimate the distance
+                    if metric == distance_metrics[1]
+                        counts[i, j] = length(idx)
+                    end
+                    # Estimate the distance/correlation
+                    if metric == "euclidean"
+                        D[i, j] = sqrt(sum((y1[idx] - y2[idx]) .^ 2))
+                    elseif metric == "correlation"
+                        (var(y1[idx]) < 1e-7) || (var(y2[idx]) < 1e-7) ? continue : nothing
+                        D[i, j] = cor(y1[idx], y2[idx])
+                    elseif metric == "mad"
+                        D[i, j] = mean(abs.(y1[idx] - y2[idx]))
+                    elseif metric == "rmsd"
+                        D[i, j] = sqrt(mean((y1[idx] - y2[idx]) .^ 2))
+                    elseif metric == "χ²"
+                        D[i, j] = sum((y1[idx] - y2[idx]) .^ 2 ./ (y2[idx] .+ eps(Float64)))
+                    else
+                        throw(
+                            ErrorException(
+                                "This should not happen as we checked for the validity of the distance_metrics above.",
+                            ),
+                        )
+                    end
+                end
+            end
+            push!(dimension, "traits")
+            push!(metric_names, metric)
+            push!(matrices, D)
+        end
+        push!(dimension, "traits")
+        push!(metric_names, "counts")
+        push!(matrices, counts)
+    end
+    # Finally per entry
+    if n > 1
+        ϕ1::Vector{Union{Missing,Float64}} = fill(missing, t)
+        ϕ2::Vector{Union{Missing,Float64}} = fill(missing, t)
+        counts = fill(0.0, n, n)
+        for metric in distance_metrics
+            # metric = distance_metrics[1]
+            D::Matrix{Float64} = fill(-Inf, n, n)
+            for i = 1:n
+                # i = 1
+                ϕ1 .= phenomes.phenotypes[i, :]
+                bool1 = .!ismissing.(ϕ1) .&& .!isnan.(ϕ1) .&& .!isinf.(ϕ1)
+                for j = 1:n
+                    # j = 4
+                    # Make sure we have no missing, NaN or infinite values
+                    ϕ2 .= phenomes.phenotypes[j, :]
+                    bool2 = .!ismissing.(ϕ2) .&& .!isnan.(ϕ2) .&& .!isinf.(ϕ2)
+                    idx = findall(bool1 .&& bool2)
+                    if length(idx) < 2
+                        continue
+                    end
+                    # Count the number of elements used to estimate the distance
+                    if metric == distance_metrics[1]
+                        counts[i, j] = length(idx)
+                    end
+                    # Estimate the distance/correlation
+                    if metric == "euclidean"
+                        D[i, j] = sqrt(sum((ϕ1[idx] - ϕ2[idx]) .^ 2))
+                    elseif metric == "correlation"
+                        (var(ϕ1[idx]) < 1e-7) || (var(ϕ2[idx]) < 1e-7) ? continue : nothing
+                        D[i, j] = cor(ϕ1[idx], ϕ2[idx])
+                    elseif metric == "mad"
+                        D[i, j] = mean(abs.(ϕ1[idx] - ϕ2[idx]))
+                    elseif metric == "rmsd"
+                        D[i, j] = sqrt(mean((ϕ1[idx] - ϕ2[idx]) .^ 2))
+                    elseif metric == "χ²"
+                        D[i, j] = sum((ϕ1[idx] - ϕ2[idx]) .^ 2 ./ (ϕ2[idx] .+ eps(Float64)))
+                    else
+                        throw(
+                            ErrorException(
+                                "This should not happen as we checked for the validity of the distance_metrics above.",
+                            ),
+                        )
+                    end
+                end
+            end
+            push!(dimension, "entries")
+            push!(metric_names, metric)
+            push!(matrices, D)
+        end
+        push!(dimension, "entries")
+        push!(metric_names, "counts")
+        push!(matrices, counts)
+    end
+    # Output
+    dist::Dict{String,Matrix{Float64}} = Dict()
+    for i in eachindex(dimension)
+        # i = 4
+        key = string(dimension[i], "|", metric_names[i])
+        dist[key] = matrices[i]
+    end
+    (phenomes.traits, phenomes.entries, dist)
+end
 
 """
     plot(phenomes::Phenomes)::Nothing
@@ -253,7 +436,8 @@ function slice(
     idx_entries::Union{Nothing,Vector{Int64}} = nothing,
     idx_traits::Union{Nothing,Vector{Int64}} = nothing,
 )::Phenomes
-    # phenomes::Phenomes = simulatephenomes(); idx_entries::Vector{Int64}=sample(1:100, 10); idx_traits::Vector{Int64}=sample(1:10_000, 1000);
+    # phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = rand(10,3); nbins = 10;
+    # idx_entries::Vector{Int64}=collect(2:7); idx_traits::Vector{Int64}=collect(1:2);
     if !checkdims(phenomes)
         throw(ArgumentError("Phenomes struct is corrupted."))
     end
