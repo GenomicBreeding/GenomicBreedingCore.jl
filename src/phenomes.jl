@@ -232,6 +232,9 @@ function distances(
                     elseif metric == "correlation"
                         (var(y1[idx]) < 1e-7) || (var(y2[idx]) < 1e-7) ? continue : nothing
                         D[i, j] = cor(y1[idx], y2[idx])
+                    elseif metric == "correlation_std"
+                        (var(y1[idx]) < 1e-7) || (var(y2[idx]) < 1e-7) ? continue : nothing
+                        D[i, j] = cor((y1[idx] .- mean(y1[idx])) ./ std(y1[idx]), (y2[idx] .- mean(y2[idx])) ./ std(y2[idx]))
                     elseif metric == "mad"
                         D[i, j] = mean(abs.(y1[idx] - y2[idx]))
                     elseif metric == "rmsd"
@@ -286,6 +289,9 @@ function distances(
                     elseif metric == "correlation"
                         (var(ϕ1[idx]) < 1e-7) || (var(ϕ2[idx]) < 1e-7) ? continue : nothing
                         D[i, j] = cor(ϕ1[idx], ϕ2[idx])
+                    elseif metric == "correlation_std"
+                        (var(y1[idx]) < 1e-7) || (var(y2[idx]) < 1e-7) ? continue : nothing
+                        D[i, j] = cor((y1[idx] .- mean(y1[idx])) ./ std(y1[idx]), (y2[idx] .- mean(y2[idx])) ./ std(y2[idx]))
                     elseif metric == "mad"
                         D[i, j] = mean(abs.(ϕ1[idx] - ϕ2[idx]))
                     elseif metric == "rmsd"
