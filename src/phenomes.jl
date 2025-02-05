@@ -201,8 +201,9 @@ function distances(
     Φ = if standardise_traits
         Φ = deepcopy(phenomes)
         Φ.phenotypes = (Φ.phenotypes .- mean(Φ.phenotypes, dims=1)) ./ std(Φ.phenotypes, dims=1)
+        Φ
     else
-        Φ = deepcopy(phenomes)
+        deepcopy(phenomes)
     end
     # Instantiate vectors of matrices and metric names
     dimension::Vector{String} = [] # across traits and/or entries
