@@ -138,7 +138,7 @@ end
 """
     distances(
         phenomes::Phenomes; 
-        distance_metrics::Vector{String}=["euclidean", "correlation", "correlation_std", "mad", "rmsd", "χ²"]
+        distance_metrics::Vector{String}=["euclidean", "correlation", "mad", "rmsd", "χ²"]
     )::Dict{String, Matrix{Float64}}Tuple{Vector{String}, Vector{String}, Dict{String, Matrix{Float64}}}
 
 Estimate pairwise distances between traits and entries. 
@@ -165,14 +165,14 @@ true
 """
 function distances(
     phenomes::Phenomes;
-    distance_metrics::Vector{String} = ["euclidean", "correlation", "correlation_std", "mad", "rmsd", "χ²"],
+    distance_metrics::Vector{String} = ["euclidean", "correlation", "mad", "rmsd", "χ²"],
 )::Tuple{Vector{String},Vector{String},Dict{String,Matrix{Float64}}}
     # phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = rand(10,3);
-    # distance_metrics = ["euclidean", "correlation", "correlation_std", "mad", "rmsd", "χ²"]
+    # distance_metrics = ["euclidean", "correlation", "mad", "rmsd", "χ²"]
     if !checkdims(phenomes)
         throw(ArgumentError("The phenomes struct is corrupted."))
     end
-    recognised_distance_metrics = ["euclidean", "correlation", "correlation_std", "mad", "rmsd", "χ²"]
+    recognised_distance_metrics = ["euclidean", "correlation", "mad", "rmsd", "χ²"]
     unique!(distance_metrics)
     m = length(distance_metrics)
     if m < 1
@@ -232,9 +232,6 @@ function distances(
                     elseif metric == "correlation"
                         (var(y1[idx]) < 1e-7) || (var(y2[idx]) < 1e-7) ? continue : nothing
                         D[i, j] = cor(y1[idx], y2[idx])
-                    elseif metric == "correlation_std"
-                        (var(y1[idx]) < 1e-7) || (var(y2[idx]) < 1e-7) ? continue : nothing
-                        D[i, j] = cor((y1[idx] .- mean(y1[idx])) ./ std(y1[idx]), (y2[idx] .- mean(y2[idx])) ./ std(y2[idx]))
                     elseif metric == "mad"
                         D[i, j] = mean(abs.(y1[idx] - y2[idx]))
                     elseif metric == "rmsd"
@@ -289,9 +286,6 @@ function distances(
                     elseif metric == "correlation"
                         (var(ϕ1[idx]) < 1e-7) || (var(ϕ2[idx]) < 1e-7) ? continue : nothing
                         D[i, j] = cor(ϕ1[idx], ϕ2[idx])
-                    elseif metric == "correlation_std"
-                        (var(y1[idx]) < 1e-7) || (var(y2[idx]) < 1e-7) ? continue : nothing
-                        D[i, j] = cor((y1[idx] .- mean(y1[idx])) ./ std(y1[idx]), (y2[idx] .- mean(y2[idx])) ./ std(y2[idx]))
                     elseif metric == "mad"
                         D[i, j] = mean(abs.(ϕ1[idx] - ϕ2[idx]))
                     elseif metric == "rmsd"
