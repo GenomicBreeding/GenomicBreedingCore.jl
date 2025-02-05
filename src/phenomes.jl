@@ -144,6 +144,7 @@ end
 Estimate pairwise distances between traits and entries. 
 Sparsity leading to less than 2 pairs will yield -Inf values in the resulting matrices. 
 Matrices with how many pairs were used to estimate the distance and correlation matrices are also included as well as the trait and entry names.
+Note that prior to computing correlations between entries, the phenotype matrix was standardised, i.e. each trait was transformed to have a mean of 0 and standard deviation of 1.
 
 ```jldoctest; setup = :(using GBCore, LinearAlgebra)
 julia> phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = rand(10,3); phenomes.phenotypes[2,2] = missing;
@@ -257,6 +258,13 @@ function distances(
     end
     # Finally per entry
     if n > 1
+        Φ = deepcopy(phenomes.phenotypes)
+        for j in 1:length(phenomes.traits)
+            y = phenomes.phenotypes[:, j]
+            idx = findall(.!ismissing.(y) .&& .!isnan.(y) .&& .!isinf.(y))
+            y = y[idx]
+            Φ[idx, j] = (y .- mean(y)) ./ std(y)
+        end
         ϕ1::Vector{Union{Missing,Float64}} = fill(missing, t)
         ϕ2::Vector{Union{Missing,Float64}} = fill(missing, t)
         counts = fill(0.0, n, n)
@@ -284,8 +292,8 @@ function distances(
                     if metric == "euclidean"
                         D[i, j] = sqrt(sum((ϕ1[idx] - ϕ2[idx]) .^ 2))
                     elseif metric == "correlation"
-                        (var(ϕ1[idx]) < 1e-7) || (var(ϕ2[idx]) < 1e-7) ? continue : nothing
-                        D[i, j] = cor(ϕ1[idx], ϕ2[idx])
+                        (var(Φ[i, idx]) < 1e-7) || (var(Φ[j, idx]) < 1e-7) ? continue : nothing
+                        D[i, j] = cor(Φ[i, idx], Φ[j, idx])
                     elseif metric == "mad"
                         D[i, j] = mean(abs.(ϕ1[idx] - ϕ2[idx]))
                     elseif metric == "rmsd"
