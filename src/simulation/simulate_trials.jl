@@ -8,6 +8,7 @@
     + `f_additive`: proportion of the `l` loci with non-zero additive effects on the phenotype
     + `f_dominance`: proportion of the `l*f_additive` additive effects loci with additional dominance effects
     + `f_epistasis`: proportion of the `l*f_additive` additive effects loci with additional epistasis effects
+    + (default = [0.01 0.25 0.10; 0.05 0.50 0.25; 0.10 0.25 0.00])
 - `n_years`: Number of years (default = 2)
 - `n_seasons`: Number of seasons (default = 4)
 - `n_harvests`: Number of harvests (default = 2)

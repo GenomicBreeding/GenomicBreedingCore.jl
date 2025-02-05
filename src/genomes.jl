@@ -248,7 +248,7 @@ end
 """
     distances(
         genomes::Genomes; 
-        distance_metrics::Vector{String}=["euclidean", "correlation", "mad", "rmsd", "χ²"]
+        distance_metrics::Vector{String}=["euclidean", "correlation", "correlation_std", "mad", "rmsd", "χ²"]
         idx_loci_alleles::Union{Nothing, Vector{Int64}} = nothing,
     )::Tuple{Vector{String}, Vector{String}, Dict{String, Matrix{Float64}}}
 
@@ -270,15 +270,15 @@ true
 """
 function distances(
     genomes::Genomes;
-    distance_metrics::Vector{String} = ["euclidean", "correlation", "mad", "rmsd", "χ²"],
+    distance_metrics::Vector{String} = ["euclidean", "correlation", "correlation_std", "mad", "rmsd", "χ²"],
     idx_loci_alleles::Union{Nothing,Vector{Int64}} = nothing,
 )::Tuple{Vector{String},Vector{String},Dict{String,Matrix{Float64}}}
     # genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
-    # distance_metrics = ["euclidean", "correlation", "mad", "rmsd", "χ²"]; idx_loci_alleles = nothing
+    # distance_metrics = ["euclidean", "correlation", "correlation_std", "mad", "rmsd", "χ²"]; idx_loci_alleles = nothing
     if !checkdims(genomes)
         throw(ArgumentError("The genomes struct is corrupted."))
     end
-    recognised_distance_metrics = ["euclidean", "correlation", "mad", "rmsd", "χ²"]
+    recognised_distance_metrics = ["euclidean", "correlation", "correlation_std", "mad", "rmsd", "χ²"]
     unique!(distance_metrics)
     m = length(distance_metrics)
     if m < 1

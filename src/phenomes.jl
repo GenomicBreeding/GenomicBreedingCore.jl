@@ -138,7 +138,7 @@ end
 """
     distances(
         phenomes::Phenomes; 
-        distance_metrics::Vector{String}=["euclidean", "correlation", "mad", "rmsd", "χ²"]
+        distance_metrics::Vector{String}=["euclidean", "correlation", "correlation_std", "mad", "rmsd", "χ²"]
     )::Dict{String, Matrix{Float64}}Tuple{Vector{String}, Vector{String}, Dict{String, Matrix{Float64}}}
 
 Estimate pairwise distances between traits and entries. 
@@ -165,14 +165,14 @@ true
 """
 function distances(
     phenomes::Phenomes;
-    distance_metrics::Vector{String} = ["euclidean", "correlation", "mad", "rmsd", "χ²"],
+    distance_metrics::Vector{String} = ["euclidean", "correlation", "correlation_std", "mad", "rmsd", "χ²"],
 )::Tuple{Vector{String},Vector{String},Dict{String,Matrix{Float64}}}
     # phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = rand(10,3);
-    # distance_metrics = ["euclidean", "correlation", "mad", "rmsd", "χ²"]
+    # distance_metrics = ["euclidean", "correlation", "correlation_std", "mad", "rmsd", "χ²"]
     if !checkdims(phenomes)
         throw(ArgumentError("The phenomes struct is corrupted."))
     end
-    recognised_distance_metrics = ["euclidean", "correlation", "mad", "rmsd", "χ²"]
+    recognised_distance_metrics = ["euclidean", "correlation", "correlation_std", "mad", "rmsd", "χ²"]
     unique!(distance_metrics)
     m = length(distance_metrics)
     if m < 1
