@@ -138,7 +138,8 @@ end
 """
     distances(
         phenomes::Phenomes; 
-        distance_metrics::Vector{String}=["euclidean", "correlation", "mad", "rmsd", "χ²"]
+        distance_metrics::Vector{String}=["euclidean", "correlation", "mad", "rmsd", "χ²"],
+        standardise_traits::Bool = false,
     )::Dict{String, Matrix{Float64}}Tuple{Vector{String}, Vector{String}, Dict{String, Matrix{Float64}}}
 
 Estimate pairwise distances between traits and entries. 
@@ -167,9 +168,10 @@ true
 function distances(
     phenomes::Phenomes;
     distance_metrics::Vector{String} = ["euclidean", "correlation", "mad", "rmsd", "χ²"],
+    standardise_traits::Bool = false,
 )::Tuple{Vector{String},Vector{String},Dict{String,Matrix{Float64}}}
     # phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = rand(10,3);
-    # distance_metrics = ["euclidean", "correlation", "mad", "rmsd", "χ²"]
+    # distance_metrics = ["euclidean", "correlation", "mad", "rmsd", "χ²"]; standardise_traits = true
     if !checkdims(phenomes)
         throw(ArgumentError("The phenomes struct is corrupted."))
     end
@@ -195,13 +197,20 @@ function distances(
             ),
         )
     end
+    # Standardise traits if requested
+    Φ = if standardise_traits
+        Φ = deepcopy(phenomes)
+        Φ.phenotypes = (Φ.phenotypes .- mean(Φ.phenotypes, dims=1)) ./ std(Φ.phenotypes, dims=1)
+    else
+        Φ = deepcopy(phenomes)
+    end
     # Instantiate vectors of matrices and metric names
     dimension::Vector{String} = [] # across traits and/or entries
     metric_names::Vector{String} = []
     matrices::Vector{Matrix{Float64}} = []
     # Number of traits and entries
-    n = length(phenomes.entries)
-    t = length(phenomes.traits)
+    n = length(Φ.entries)
+    t = length(Φ.traits)
     # Per trait first
     if t > 1
         y1::Vector{Union{Missing,Float64}} = fill(missing, n)
@@ -212,12 +221,12 @@ function distances(
             D::Matrix{Float64} = fill(-Inf, t, t)
             for i = 1:t
                 # i = 1
-                y1 .= phenomes.phenotypes[:, i]
+                y1 .= Φ.phenotypes[:, i]
                 bool1 = .!ismissing.(y1) .&& .!isnan.(y1) .&& .!isinf.(y1)
                 for j = 1:t
                     # j = 3
                     # Make sure we have no missing, NaN or infinite values
-                    y2 .= phenomes.phenotypes[:, j]
+                    y2 .= Φ.phenotypes[:, j]
                     bool2 = .!ismissing.(y2) .&& .!isnan.(y2) .&& .!isinf.(y2)
                     idx = findall(bool1 .&& bool2)
                     if length(idx) < 2
@@ -258,13 +267,6 @@ function distances(
     end
     # Finally per entry
     if n > 1
-        Φ = deepcopy(phenomes.phenotypes)
-        for j in 1:length(phenomes.traits)
-            y = phenomes.phenotypes[:, j]
-            idx = findall(.!ismissing.(y) .&& .!isnan.(y) .&& .!isinf.(y))
-            y = y[idx]
-            Φ[idx, j] = (y .- mean(y)) ./ std(y)
-        end
         ϕ1::Vector{Union{Missing,Float64}} = fill(missing, t)
         ϕ2::Vector{Union{Missing,Float64}} = fill(missing, t)
         counts = fill(0.0, n, n)
@@ -273,12 +275,12 @@ function distances(
             D::Matrix{Float64} = fill(-Inf, n, n)
             for i = 1:n
                 # i = 1
-                ϕ1 .= phenomes.phenotypes[i, :]
+                ϕ1 .= Φ.phenotypes[i, :]
                 bool1 = .!ismissing.(ϕ1) .&& .!isnan.(ϕ1) .&& .!isinf.(ϕ1)
                 for j = 1:n
                     # j = 4
                     # Make sure we have no missing, NaN or infinite values
-                    ϕ2 .= phenomes.phenotypes[j, :]
+                    ϕ2 .= Φ.phenotypes[j, :]
                     bool2 = .!ismissing.(ϕ2) .&& .!isnan.(ϕ2) .&& .!isinf.(ϕ2)
                     idx = findall(bool1 .&& bool2)
                     if length(idx) < 2
@@ -292,8 +294,8 @@ function distances(
                     if metric == "euclidean"
                         D[i, j] = sqrt(sum((ϕ1[idx] - ϕ2[idx]) .^ 2))
                     elseif metric == "correlation"
-                        (var(Φ[i, idx]) < 1e-7) || (var(Φ[j, idx]) < 1e-7) ? continue : nothing
-                        D[i, j] = cor(Φ[i, idx], Φ[j, idx])
+                        (var(ϕ1[idx]) < 1e-7) || (var(ϕ2[idx]) < 1e-7) ? continue : nothing
+                        D[i, j] = cor(ϕ1[idx], ϕ2[idx])
                     elseif metric == "mad"
                         D[i, j] = mean(abs.(ϕ1[idx] - ϕ2[idx]))
                     elseif metric == "rmsd"
@@ -324,7 +326,7 @@ function distances(
         key = string(dimension[i], "|", metric_names[i])
         dist[key] = matrices[i]
     end
-    (phenomes.traits, phenomes.entries, dist)
+    (Φ.traits, Φ.entries, dist)
 end
 
 """
