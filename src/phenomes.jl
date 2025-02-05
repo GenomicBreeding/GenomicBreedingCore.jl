@@ -200,7 +200,12 @@ function distances(
     # Standardise traits if requested
     Φ = if standardise_traits
         Φ = deepcopy(phenomes)
-        Φ.phenotypes = (Φ.phenotypes .- mean(Φ.phenotypes, dims=1)) ./ std(Φ.phenotypes, dims=1)
+        for j in 1:size(Φ.phenotypes, 2)
+            y = Φ.phenotypes[:, j]
+            idx = findall(.!ismissing.(y) .&& .!isnan.(y) .&& .!isinf.(y))
+            y = y[idx]
+            Φ.phenotypes[idx] = (y .- mean(y)) ./ std(y)
+        end
         Φ
     else
         deepcopy(phenomes)
