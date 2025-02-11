@@ -174,9 +174,9 @@ Extract chromosomes, positions, and alleles across loci-allele combinations
 ```jldoctest; setup = :(using GBCore)
 julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
 
-julia> chromsomes, positions, alleles = loci_alleles(genomes);
+julia> chromosomes, positions, alleles = loci_alleles(genomes);
 
-julia> length(chromsomes), length(positions), length(alleles)
+julia> length(chromosomes), length(positions), length(alleles)
 (3000, 3000, 3000)
 ```
 """
@@ -206,9 +206,9 @@ Extract chromosome names, positions, start and end indexes of each locus across 
 ```jldoctest; setup = :(using GBCore)
 julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
 
-julia> chromsomes, positions, loci_ini_idx, loci_fin_idx = loci(genomes);
+julia> chromosomes, positions, loci_ini_idx, loci_fin_idx = loci(genomes);
 
-julia> length(chromsomes), length(positions), length(loci_ini_idx), length(loci_fin_idx)
+julia> length(chromosomes), length(positions), length(loci_ini_idx), length(loci_fin_idx)
 (1000, 1000, 1000, 1000)
 ```
 """
