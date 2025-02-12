@@ -140,7 +140,7 @@ end
         phenomes::Phenomes; 
         distance_metrics::Vector{String}=["euclidean", "correlation", "mad", "rmsd", "χ²"],
         standardise_traits::Bool = false,
-    )::Dict{String, Matrix{Float64}}Tuple{Vector{String}, Vector{String}, Dict{String, Matrix{Float64}}}
+    )::Tuple{String, Matrix{Float64}}Tuple{Vector{String}, Vector{String}, Dict{String, Matrix{Float64}}}
 
 Estimate pairwise distances between traits and entries. 
 Sparsity leading to less than 2 pairs will yield -Inf values in the resulting matrices. 
