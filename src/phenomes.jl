@@ -204,7 +204,7 @@ function distances(
             y = Φ.phenotypes[:, j]
             idx = findall(.!ismissing.(y) .&& .!isnan.(y) .&& .!isinf.(y))
             y = y[idx]
-            Φ.phenotypes[idx] = (y .- mean(y)) ./ std(y)
+            Φ.phenotypes[:, idx] = (y .- mean(y)) ./ std(y)
         end
         Φ
     else
