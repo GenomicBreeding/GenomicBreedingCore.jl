@@ -118,7 +118,7 @@ Manhattan plot
 ```
 julia> distribution = [TDist(1), Normal()][2];
 
-julia> fit = Fit(n=100, l=10_000); fit.b_hat = rand(distribution, 10_0000);  α = 0.05;
+julia> fit = Fit(n=100, l=10_000); fit.b_hat = rand(distribution, 10_000);  α = 0.05;
 
 julia> GBCore.plot(fit);
 
@@ -126,7 +126,7 @@ julia> GBCore.plot(fit);
 """
 function plot(fit::Fit, distribution::Any = [TDist(1), Normal()][2], α::Float64 = 0.05)
     # distribution::Any=[TDist(1), Normal()][2];
-    # fit = Fit(n=100, l=10_000); fit.b_hat = rand(distribution, 10_0000);  α::Float64=0.05;
+    # fit = Fit(n=100, l=10_000); fit.b_hat = rand(distribution, 10_000);  α::Float64=0.05;
     l = length(fit.b_hat)
     p1 = UnicodePlots.histogram(fit.b_hat, title = "Distribution of " * string(distribution) * " values")
     # Manhattan plot
@@ -142,4 +142,36 @@ function plot(fit::Fit, distribution::Any = [TDist(1), Normal()][2], α::Float64
     @show p1
     @show p2
     @show p3
+end
+
+"""
+    tabularise(trials::Trials)::DataFrame
+
+Export the Trials structs into a DataFrames.DataFrame struct
+
+# Examples
+```jldoctest; setup = :(using GBCore)
+julia> fit = Fit(n=100, l=10_000); fit.b_hat = rand(10_000); fit.model="some_model"; fit.trait="some_trait"; 
+
+julia> fit.metrics = Dict("cor" => rand(), "rmse" => rand()); fit.populations .= "pop_1";
+
+julia> df = tabularise(fit);
+
+julia> size(df)
+(10000, 6)
+```
+"""
+function tabularise(fit::Fit, metric::String="cor")::DataFrame
+    # fit = Fit(n=100, l=10_000); fit.b_hat = rand(10_000); fit.model="some_model"; fit.trait="some_trait"; fit.metrics = Dict("cor" => rand(), "rmse" => rand()); fit.populations .= "pop_1";
+    # metric = "cor"
+    df = DataFrame(
+        model = fit.model,
+        trait = fit.trait,
+        population = join(sort(unique(fit.populations)), ";"),
+        metric = fit.metrics[metric],
+        b_hat_labels = fit.b_hat_labels,
+        b_hat = fit.b_hat,
+    )
+    rename!(df, :metric => Symbol(metric))
+    df
 end
