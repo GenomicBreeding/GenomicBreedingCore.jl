@@ -220,6 +220,7 @@ function tabularise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
     y_preds::Vector{Float64} = []
     for i = 1:c
         # i = 1
+        # println(i)
         if !checkdims(cvs[i])
             throw(ArgumentError("The CV struct at index " * string(i) * " is corrupted."))
         end
@@ -229,7 +230,12 @@ function tabularise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
         df_across_entries.model[i] = cvs[i].fit.model
         df_across_entries.replication[i] = cvs[i].replication
         df_across_entries.fold[i] = cvs[i].fold
+        if cvs[i].metrics == Dict("" => 0.0)
+            continue
+        end
         for metric in metric_names
+            # metric = metric_names[1]
+            # println(metric)
             df_across_entries[i, metric] = cvs[i].metrics[metric]
         end
         n = length(cvs[i].validation_entries)
