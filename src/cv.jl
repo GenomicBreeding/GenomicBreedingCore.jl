@@ -218,6 +218,7 @@ function tabularise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
     folds::Vector{String} = []
     y_trues::Vector{Float64} = []
     y_preds::Vector{Float64} = []
+    idx_non_missing_across_entries = []
     for i = 1:c
         # i = 1
         # println(i)
@@ -248,7 +249,9 @@ function tabularise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
         append!(folds, repeat([cvs[i].fold], n))
         append!(y_trues, cvs[i].validation_y_true)
         append!(y_preds, cvs[i].validation_y_pred)
+        append!(idx_non_missing_across_entries, i)
     end
+    df_across_entries = df_across_entries[idx_non_missing_across_entries, :]
     # Metrics per entry
     df_per_entry = DataFrames.DataFrame(
         training_population = training_populations,
@@ -261,6 +264,7 @@ function tabularise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
         y_true = y_trues,
         y_pred = y_preds,
     )
+    # Output
     (df_across_entries, df_per_entry)
 end
 
