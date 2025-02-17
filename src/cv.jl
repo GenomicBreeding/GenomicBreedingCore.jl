@@ -251,7 +251,10 @@ function tabularise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
         append!(y_preds, cvs[i].validation_y_pred)
         append!(idx_non_missing_across_entries, i)
     end
-    df_across_entries = df_across_entries[idx_non_missing_across_entries, :]
+    if length(idx_non_missing_across_entries) < nrow(df_across_entries)
+        @warn "Oh naur! This should not have happend!"
+        df_across_entries = df_across_entries[idx_non_missing_across_entries, :]
+    end
     # Metrics per entry
     df_per_entry = DataFrames.DataFrame(
         training_population = training_populations,
