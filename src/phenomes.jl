@@ -396,7 +396,11 @@ function plot(phenomes::Phenomes; nbins::Int64 = 10)
             println("Error in computing distances for the Phenomes struct.")
             continue
         end
-        C = dist["traits|correlation"]
+        C = try
+            dist["traits|correlation"]
+        catch
+            continue
+        end
         plt = UnicodePlots.heatmap(
             C;
             height = length(phenomes.traits),

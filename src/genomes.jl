@@ -498,7 +498,11 @@ function plot(genomes::Genomes, seed::Int64 = 42)
             println("Error in computing distances for the Genomes struct.")
             return nothing
         end
-        C = dist["loci_alleles|correlation"]
+        C = try
+            dist["loci_alleles|correlation"]
+        catch
+            continue
+        end
         idx = []
         for i = 1:size(C, 1)
             # i = 1
