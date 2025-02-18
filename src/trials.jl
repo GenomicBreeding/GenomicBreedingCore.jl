@@ -431,6 +431,10 @@ function plot(trials::Trials; nbins::Int64 = 10)
                     .!isinf.(Φ[:, ti]) .&&
                     .!isinf.(Φ[:, tj]),
                 )
+                if length(idx) == 0
+                    println("All values are missing, NaN and/or infinities.")
+                    continue
+                end
                 C[ti, tj] = StatsBase.cor(Φ[idx, ti], Φ[idx, tj])
             end
         end

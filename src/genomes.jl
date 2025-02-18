@@ -424,6 +424,9 @@ function distances(
         push!(matrices, counts)
     end
     # Output
+    if length(dimension) == 0
+        throw(ErrorException("Genomes struct is too sparse. No distance matrix was calculated."))
+    end
     dist::Dict{String,Matrix{Float64}} = Dict()
     for i in eachindex(dimension)
         # i = 4

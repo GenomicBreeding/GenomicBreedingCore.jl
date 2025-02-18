@@ -326,6 +326,9 @@ function distances(
         push!(matrices, counts)
     end
     # Output
+    if length(dimension) == 0
+        throw(ErrorException("Phenomes struct is too sparse. No distance matrix was calculated."))
+    end
     dist::Dict{String,Matrix{Float64}} = Dict()
     for i in eachindex(dimension)
         # i = 4
@@ -397,6 +400,10 @@ function plot(phenomes::Phenomes; nbins::Int64 = 10)
                     .!isinf.(Φ[:, ti]) .&&
                     .!isinf.(Φ[:, tj]),
                 )
+                if length(idx) == 0
+                    println("All values are missing, NaN and/or infinities.")
+                    continue
+                end
                 C[ti, tj] = StatsBase.cor(Φ[idx, ti], Φ[idx, tj])
             end
         end
