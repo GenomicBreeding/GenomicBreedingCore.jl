@@ -488,11 +488,16 @@ function plot(genomes::Genomes, seed::Int64 = 42)
         )
         display(plt_2)
         # Correlation between allele frequencies
-        _, _, dist = distances(
-            slice(genomes, idx_entries = idx_row, idx_loci_alleles = idx_col),
-            distance_metrics = ["correlation"],
-            idx_loci_alleles = collect(1:length(idx_col)),
-        )
+        _, _, dist = try
+            distances(
+                slice(genomes, idx_entries = idx_row, idx_loci_alleles = idx_col),
+                distance_metrics = ["correlation"],
+                idx_loci_alleles = collect(1:length(idx_col)),
+            )
+        catch
+            println("Error in computing distances for the Genomes struct.")
+            return nothing
+        end
         C = dist["loci_alleles|correlation"]
         idx = []
         for i = 1:size(C, 1)

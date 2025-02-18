@@ -322,12 +322,13 @@ function summarise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
         [[:cor] => mean, [:cor] => std],
     )
     # Mean and standard deviation of phenotype predictions per entry
-    df_summary_per_entry = combine(groupby(df_per_entry, [:training_population, :validation_population, :trait, :model, :entry])) do g
-        idx = findall(.!ismissing.(g.y_true) .&& .!ismissing.(g.y_pred))
-        y_true = mean(g.y_true)
-        μ = mean(g.y_pred[idx])
-        σ = std(g.y_pred[idx])
-        return (y_true= y_true, μ = μ, σ = σ)
-    end
+    df_summary_per_entry =
+        combine(groupby(df_per_entry, [:training_population, :validation_population, :trait, :model, :entry])) do g
+            idx = findall(.!ismissing.(g.y_true) .&& .!ismissing.(g.y_pred))
+            y_true = mean(g.y_true)
+            μ = mean(g.y_pred[idx])
+            σ = std(g.y_pred[idx])
+            return (y_true = y_true, μ = μ, σ = σ)
+        end
     (df_summary, df_summary_per_entry)
 end

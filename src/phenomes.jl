@@ -200,7 +200,7 @@ function distances(
     # Standardise traits if requested
     Φ = if standardise_traits
         Φ = deepcopy(phenomes)
-        for j in 1:size(Φ.phenotypes, 2)
+        for j = 1:size(Φ.phenotypes, 2)
             y = Φ.phenotypes[:, j]
             idx = findall(.!ismissing.(y) .&& .!isnan.(y) .&& .!isinf.(y))
             y = y[idx]
@@ -387,26 +387,16 @@ function plot(phenomes::Phenomes; nbins::Int64 = 10)
         end
         # Build the correlation matrix
         idx_pop = findall(phenomes.populations .== pop)
-        Φ = phenomes.phenotypes[idx_pop, idx_trait_with_variance]
-        traits = phenomes.traits[idx_trait_with_variance]
-        C::Matrix{Float64} = fill(0.0, length(traits), length(traits))
-        for ti in eachindex(traits)
-            for tj in eachindex(traits)
-                idx = findall(
-                    .!ismissing.(Φ[:, ti]) .&&
-                    .!ismissing.(Φ[:, tj]) .&&
-                    .!isnan.(Φ[:, ti]) .&&
-                    .!isnan.(Φ[:, tj]) .&&
-                    .!isinf.(Φ[:, ti]) .&&
-                    .!isinf.(Φ[:, tj]),
-                )
-                if length(idx) == 0
-                    println("All values are missing, NaN and/or infinities.")
-                    continue
-                end
-                C[ti, tj] = StatsBase.cor(Φ[idx, ti], Φ[idx, tj])
-            end
+        _, _, dist = try
+            distances(
+                slice(phenomes, idx_entries = idx_pop, idx_traits = idx_trait_with_variance),
+                distance_metrics = ["correlation"],
+            )
+        catch
+            println("Error in computing distances for the Phenomes struct.")
+            continue
         end
+        C = dist["traits|correlation"]
         plt = UnicodePlots.heatmap(
             C;
             height = length(phenomes.traits),

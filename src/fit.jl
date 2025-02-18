@@ -161,7 +161,7 @@ julia> size(df)
 (10000, 6)
 ```
 """
-function tabularise(fit::Fit, metric::String="cor")::DataFrame
+function tabularise(fit::Fit, metric::String = "cor")::DataFrame
     # fit = Fit(n=100, l=10_000); fit.b_hat = rand(10_000); fit.model="some_model"; fit.trait="some_trait"; fit.metrics = Dict("cor" => rand(), "rmse" => rand()); fit.populations .= "pop_1";
     # metric = "cor"
     df = DataFrame(
