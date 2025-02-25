@@ -145,13 +145,15 @@ julia> cvs = [cv_1, cv_2];
 julia> df_across_entries, df_per_entry = tabularise(cvs);
 
 julia> names(df_across_entries)
-8-element Vector{String}:
+10-element Vector{String}:
  "training_population"
  "validation_population"
  "trait"
  "model"
  "replication"
  "fold"
+ "training_size"
+ "validation_size"
  "cor"
  "rmse"
 
@@ -204,6 +206,8 @@ function tabularise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
         model = fill("", c),
         replication = fill("", c),
         fold = fill("", c),
+        training_size = fill(0, c),
+        validation_size = fill(0, c),
     )
     for metric in metric_names
         df_across_entries[!, metric] = fill(0.0, c)
@@ -231,6 +235,8 @@ function tabularise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
         df_across_entries.model[i] = cvs[i].fit.model
         df_across_entries.replication[i] = cvs[i].replication
         df_across_entries.fold[i] = cvs[i].fold
+        df_across_entries.training_size[i] = length(cvs[i].fit.entries)
+        df_across_entries.validation_size[i] = length(cvs[i].validation_entries)
         if cvs[i].metrics == Dict("" => 0.0)
             continue
         end
@@ -252,7 +258,7 @@ function tabularise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
         append!(idx_non_missing_across_entries, i)
     end
     if length(idx_non_missing_across_entries) < nrow(df_across_entries)
-        @warn "Oh naur! This should not have happend!"
+        @warn "You have empty CV structs resulting from training size/s less than 5 and/or fixed traits."
         df_across_entries = df_across_entries[idx_non_missing_across_entries, :]
     end
     # Metrics per entry
@@ -294,7 +300,7 @@ julia> cvs = [cv_1, cv_2];
 julia> df_summary, df_summary_per_entry = summarise(cvs);
 
 julia> size(df_summary)
-(2, 6)
+(2, 8)
 
 julia> size(df_summary_per_entry)
 (2, 8)
@@ -319,7 +325,7 @@ function summarise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
     # Summarise across entries, reps and folds
     df_summary = combine(
         groupby(df_across_entries, [:training_population, :validation_population, :trait, :model]),
-        [[:cor] => mean, [:cor] => std],
+        [:cor => mean, :cor => std, :training_size => mean, :validation_size => mean],
     )
     # Mean and standard deviation of phenotype predictions per entry
     df_summary_per_entry =
