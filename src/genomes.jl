@@ -660,7 +660,7 @@ function Base.filter(
     maf::Float64;
     max_entry_sparsity::Float64 = 0.0,
     max_locus_sparsity::Float64 = 0.0,
-    chr_pos_allele_ids::Union{Missing,Vector{String}} = missing,
+    chr_pos_allele_ids::Union{Nothing,Vector{String}} = nothing,
 )::Genomes
     # genomes::Genomes = simulategenomes(sparsity=0.01, seed=123456); maf=0.01; max_entry_sparsity=0.1; max_locus_sparsity = 0.25
     # chr_pos_allele_ids = sample(genomes.loci_alleles, Int(floor(0.5*length(genomes.loci_alleles)))); sort!(chr_pos_allele_ids)
@@ -718,7 +718,7 @@ function Base.filter(
         )
     end
     # Are we filtering using a list of loci-allele combination names?
-    if !ismissing(chr_pos_allele_ids) && (length(chr_pos_allele_ids) > 0)
+    if !isnothing(chr_pos_allele_ids) && (length(chr_pos_allele_ids) > 0)
         requested_chr, requested_pos, requested_all = begin
             chr::Vector{String} = fill("", length(chr_pos_allele_ids))
             pos::Vector{Int64} = fill(0, length(chr_pos_allele_ids))
