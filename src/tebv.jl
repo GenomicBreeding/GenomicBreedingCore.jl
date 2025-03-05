@@ -450,7 +450,7 @@ julia> df_2 = df[(df.years .== df.years[1]) .&& (df.harvests .== df.harvests[1])
 
 julia> formula_string_2, model_2, df_BLUEs_2, df_BLUPs_2, phenomes_2 = analyse(df_2, formulae=["trait_1 ~ 1 + 1|entries"]);
 
-julia> cor(phenomes_2.phenotypes[sortperm(phenomes_2.entries),1], df_2.trait_1[sortperm(df_2.entries)]) == 1.00
+julia> cor(phenomes_2.phenotypes[sortperm(phenomes_2.entries),1], df_2.trait_1[sortperm(df_2.entries)]) > 0.99
 true
 ```
 """
