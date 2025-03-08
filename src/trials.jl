@@ -1,9 +1,18 @@
 """
     clone(x::Trials)::Trials
 
-Clone a Trials object
+Create a deep copy of a `Trials` object, including all its fields.
 
-## Example
+This function performs a complete deep copy of the input `Trials` object,
+ensuring that all nested data structures are also copied rather than referenced.
+
+# Arguments
+- `x::Trials`: The source `Trials` object to be cloned
+
+# Returns
+- `Trials`: A new `Trials` object containing copies of all data from the input
+
+# Example
 ```jldoctest; setup = :(using GBCore)
 julia> trials = Trials(n=2, t=2);
 
@@ -33,9 +42,19 @@ end
 """
     Base.hash(x::Trials, h::UInt)::UInt
 
-Hash a Trials struct.
+Compute a hash value for a `Trials` struct by recursively hashing all of its fields.
 
-## Examples
+This method implements hash functionality for the `Trials` type, allowing `Trials` 
+objects to be used as dictionary keys or in hash-based collections.
+
+# Arguments
+- `x::Trials`: The Trials struct to be hashed
+- `h::UInt`: The hash value to be mixed with the object's hash
+
+# Returns
+- `UInt`: A hash value for the entire Trials struct
+
+# Examples
 ```jldoctest; setup = :(using GBCore)
 julia> trials = Trials(n=2, t=2);
 
@@ -73,11 +92,21 @@ end
 
 
 """
-    Base.:(==)(x::Trials, y::Trials)::Bool
+    ==(x::Trials, y::Trials)::Bool
 
-Equality of Trials structs using the hash function defined for Trials structs.
+Compare two `Trials` structs for equality by comparing their hash values.
 
-## Examples
+Two `Trials` structs are considered equal if they have identical hash values, which implies
+they have the same configuration parameters (number of trials `n` and time steps `t`).
+
+# Arguments
+- `x::Trials`: First Trials struct to compare
+- `y::Trials`: Second Trials struct to compare
+
+# Returns
+- `Bool`: `true` if the Trials structs are equal, `false` otherwise
+
+# Examples
 ```jldoctest; setup = :(using GBCore)
 julia> trials_1 = trials = Trials(n=2, t=4);
 
@@ -100,7 +129,31 @@ end
 """
     checkdims(trials::Trials)::Bool
 
-Check dimension compatibility of the fields of the Trials struct
+Check dimension compatibility of all fields in a `Trials` struct.
+
+This function verifies that the dimensions of all vector fields in the `Trials` struct are 
+consistent with the size of the phenotypes matrix. Specifically, it checks:
+
+- Number of traits (`t`) matches number of columns in phenotypes and length of traits vector
+- Number of entries (`n`) matches number of rows in phenotypes and length of:
+  * years
+  * seasons
+  * harvests
+  * sites
+  * replications
+  * blocks
+  * rows
+  * cols
+  * entries
+  * populations
+
+Returns `true` if all dimensions are compatible, `false` otherwise.
+
+# Arguments
+- `trials::Trials`: A Trials struct containing trial data
+
+# Returns
+- `Bool`: `true` if dimensions are compatible, `false` otherwise
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
@@ -139,7 +192,32 @@ end
 """
     dimensions(trials::Trials)::Dict{String, Int64}
 
-Count the number of entries, populations, and traits in the Trials struct
+Calculate dimensional statistics of a `Trials` struct, returning a dictionary with counts of various elements.
+
+# Arguments
+- `trials::Trials`: A `Trials` struct containing trial data
+
+# Returns
+A `Dict{String, Int64}` with the following keys:
+- `"n_traits"`: Number of unique traits
+- `"n_years"`: Number of unique years
+- `"n_seasons"`: Number of unique seasons
+- `"n_harvests"`: Number of unique harvests
+- `"n_sites"`: Number of unique sites
+- `"n_replications"`: Number of unique replications
+- `"n_blocks"`: Number of unique blocks
+- `"n_rows"`: Number of unique rows
+- `"n_cols"`: Number of unique columns
+- `"n_entries"`: Number of unique entries
+- `"n_populations"`: Number of unique populations
+- `"n_total"`: Total number of phenotype observations (entries × traits)
+- `"n_zeroes"`: Count of zero values in phenotypes
+- `"n_missing"`: Count of missing values in phenotypes
+- `"n_nan"`: Count of NaN values in phenotypes
+- `"n_inf"`: Count of Inf values in phenotypes
+
+# Throws
+- `ArgumentError`: If the Trials struct dimensions are inconsistent
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
@@ -195,7 +273,28 @@ end
 """
     tabularise(trials::Trials)::DataFrame
 
-Export the Trials structs into a DataFrames.DataFrame struct
+Convert a Trials struct into a DataFrame representation for easier data manipulation and analysis.
+
+# Arguments
+- `trials::Trials`: A valid Trials struct containing experimental field trial data.
+
+# Returns
+- `DataFrame`: A DataFrame with the following columns:
+  - `id`: Unique identifier for each trial observation
+  - `years`: Year of the trial
+  - `seasons`: Season identifier
+  - `harvests`: Harvest identifier
+  - `sites`: Location/site identifier
+  - `replications`: Replication number
+  - `blocks`: Block identifier
+  - `rows`: Row position
+  - `cols`: Column position
+  - `entries`: Entry identifier
+  - `populations`: Population identifier
+  - Additional columns for each trait in `trials.traits`
+
+# Throws
+- `ArgumentError`: If the Trials struct dimensions are inconsistent
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
@@ -235,10 +334,27 @@ end
 """
     extractphenomes(trials::Trials)::Phenomes
 
-Extract Phenomes from Trials struct.
-Each trait-by-environment variables combination make up the traits in the resulting Phenomes struct.
-The trait names start with trait name in Trials suffixed by the trait-by-environment variables combinations.
-If there is a single environment variables combination, then no suffix is added to the trait name.
+Convert a `Trials` struct into a `Phenomes` struct by extracting phenotypic values across different environments.
+
+# Details
+- Combines trait measurements with their environmental contexts
+- Creates unique trait identifiers by combining trait names with environment variables
+- Environment variables include: years, harvests, seasons, sites, and replications
+- For single environment scenarios, trait names remain without environmental suffixes
+
+# Arguments
+- `trials::Trials`: A Trials struct containing phenotypic measurements across different environments
+
+# Returns
+- A Phenomes struct containing:
+  - `phenotypes`: Matrix of phenotypic values (entries × traits)
+  - `entries`: Vector of entry names
+  - `populations`: Vector of population names
+  - `traits`: Vector of trait names (with environmental contexts)
+
+# Throws
+- `ArgumentError`: If duplicate entries exist within year-harvest-season-site-replication combinations
+- `ErrorException`: If dimensional validation fails during Phenomes construction
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
@@ -309,8 +425,24 @@ end
 """
     addcompositetrait(trials::Trials; composite_trait_name::String, formula_string::String)::Trials
 
-Add a composite trait from existing traits in a Trials struct
+Create a new composite trait by combining existing traits using a mathematical formula.
 
+# Arguments
+- `trials::Trials`: A Trials struct containing phenotypic data
+- `composite_trait_name::String`: Name for the new composite trait
+- `formula_string::String`: Mathematical formula defining how to combine existing traits
+
+# Formula Syntax
+The formula can include:
+- Trait names (e.g., "trait_1", "trait_2")
+- Mathematical operators: +, -, *, /, ^, %
+- Functions: abs(), sqrt(), log(), log2(), log10()
+- Parentheses for grouping operations
+
+# Returns
+- `Trials`: A new Trials struct with the added composite trait
+
+# Examples
 ```jldoctest; setup = :(using GBCore)
 julia> trials, _ = simulatetrials(genomes = simulategenomes(verbose=false), verbose=false);
 
@@ -370,10 +502,37 @@ function addcompositetrait(trials::Trials; composite_trait_name::String, formula
 end
 
 """
-    plot(trials::Trials)::Nothing
+    plot(trials::Trials; nbins::Int64 = 10)::Nothing
 
-Plot histogram/s of the trait value/s and a heatmap of trait correlations across the entire trial.
-Additionally, plot mean trait values per year, season, harvest, site, replications, row, column, and population for each trait.
+Generate a comprehensive visualization of trial data through histograms, correlation heatmaps, and bar plots.
+
+# Arguments
+- `trials::Trials`: A Trials struct containing the trial data to be visualized
+- `nbins::Int64=10`: Number of bins for the histogram plots (optional)
+
+# Details
+The function creates three types of plots:
+1. Histograms for each trait within each population, showing the distribution of trait values
+2. Correlation heatmaps between traits for each population
+3. Bar plots showing mean trait values across different trial factors:
+   - Years
+   - Seasons
+   - Harvests
+   - Sites
+   - Replications
+   - Rows
+   - Columns
+   - Populations
+
+Missing, NaN, or infinite values are automatically filtered out before plotting.
+
+# Returns
+- `Nothing`: The function displays plots but does not return any value
+
+# Notes
+- Requires valid trial data with non-zero variance for correlation plots
+- Uses UnicodePlots for visualization in terminal
+- Skips plotting for traits with insufficient data points
 
 # Examples
 ```
@@ -481,7 +640,32 @@ end
         cols::Union{Nothing, Vector{String}} = nothing,
     )::Trials
 
-Slice a Trials struct by specifing indexes of entries and traits
+Create a subset of a `Trials` struct by filtering its components based on specified criteria.
+
+# Arguments
+- `trials::Trials`: The source trials data structure to be sliced
+- `traits::Vector{String}`: Selected trait names to include
+- `populations::Vector{String}`: Selected population names to include
+- `entries::Vector{String}`: Selected entry names to include
+- `years::Vector{String}`: Selected years to include
+- `harvests::Vector{String}`: Selected harvest identifiers to include
+- `seasons::Vector{String}`: Selected seasons to include
+- `sites::Vector{String}`: Selected site names to include
+- `replications::Vector{String}`: Selected replication identifiers to include
+- `blocks::Vector{String}`: Selected block identifiers to include
+- `rows::Vector{String}`: Selected row identifiers to include
+- `cols::Vector{String}`: Selected column identifiers to include
+
+All arguments except `trials` are optional. When an argument is not provided (i.e., `nothing`), 
+all values for that category are included in the slice.
+
+# Returns
+- A new `Trials` struct containing only the selected data
+
+# Throws
+- `ArgumentError`: If invalid names are provided for any category or if no data remains after filtering
+- `DimensionMismatch`: If the resulting sliced trials structure has inconsistent dimensions
+- `ArgumentError`: If the input trials structure is corrupted
 
 # Examples
 ```jldoctest; setup = :(using GBCore)

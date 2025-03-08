@@ -1,4 +1,5 @@
-using Pkg
+using Pkg;
+Pkg.update();
 using JuliaFormatter
 Pkg.activate(".")
 # Format

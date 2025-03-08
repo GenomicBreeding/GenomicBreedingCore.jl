@@ -1,9 +1,18 @@
 """
     clone(x::TEBV)::TEBV
 
-Clone a TEBV object
+Create a deep copy of a TEBV (Trial-Estimated Breeding Value) object.
 
-## Example
+Returns a new TEBV instance with all fields deeply copied from the input object,
+ensuring complete independence between the original and cloned objects.
+
+# Arguments
+- `x::TEBV`: The source TEBV object to be cloned
+
+# Returns
+- `TEBV`: A new TEBV object containing deep copies of all fields from the input
+
+# Examples
 ```jldoctest; setup = :(using GBCore, MixedModels, DataFrames)
 julia> tebv = TEBV(traits=[""], formulae=[""], models=[MixedModel(@formula(y~1+(1|x)), DataFrame(y=1, x=1))], df_BLUEs=[DataFrame(x=1)], df_BLUPs=[DataFrame(x=1)], phenomes=[Phenomes(n=1,t=1)]);
 
@@ -32,10 +41,26 @@ end
 """
     Base.hash(x::TEBV, h::UInt)::UInt
 
-Hash a TEBV struct using the traits, formualae and phenomes.
-We deliberately excluded the models, df_BLUEs, and df_BLUPs for efficiency.
+Calculate a hash value for a TEBV (Trial-Estimated Breeding Value) struct.
 
-## Examples
+This method implements hashing for TEBV objects by combining the hash values of selected fields:
+- traits: Vector of trait names
+- formulae: Vector of formula strings
+- phenomes: Vector of Phenomes objects
+
+Note: For performance reasons, the following fields are deliberately excluded from the hash calculation:
+- models
+- df_BLUEs
+- df_BLUPs
+
+# Arguments
+- `x::TEBV`: The TEBV struct to be hashed
+- `h::UInt`: The hash value to be mixed with the object's hash
+
+# Returns
+- `UInt`: A unique hash value for the TEBV object
+
+# Examples
 ```jldoctest; setup = :(using GBCore, MixedModels, DataFrames)
 julia> tebv = TEBV(traits=[""], formulae=[""], models=[MixedModel(@formula(y~1+(1|x)), DataFrame(y=1, x=1))], df_BLUEs=[DataFrame(x=1)], df_BLUPs=[DataFrame(x=1)], phenomes=[Phenomes(n=1,t=1)]);
 
@@ -50,11 +75,22 @@ end
 
 
 """
-    Base.:(==)(x::TEBV, y::TEBV)::Bool
+    ==(x::TEBV, y::TEBV)::Bool
 
-Equality of TEBV structs using the hash function defined for TEBV structs.
+Compare two TEBV (Trial-Estimated Breeding Values) objects for equality.
 
-## Examples
+This method implements equality comparison for TEBV structs by comparing their hash values.
+Two TEBV objects are considered equal if they have identical values for all their fields:
+traits, formulae, models, df_BLUEs, df_BLUPs, and phenomes.
+
+# Arguments
+- `x::TEBV`: First TEBV object to compare
+- `y::TEBV`: Second TEBV object to compare
+
+# Returns
+- `Bool`: `true` if the TEBV objects are equal, `false` otherwise
+
+# Examples
 ```jldoctest; setup = :(using GBCore, MixedModels, DataFrames)
 julia> tebv_1 = TEBV(traits=[""], formulae=[""], models=[MixedModel(@formula(y~1+(1|x)), DataFrame(y=1, x=1))], df_BLUEs=[DataFrame(x=1)], df_BLUPs=[DataFrame(x=1)], phenomes=[Phenomes(n=1,t=1)]);
 
@@ -77,10 +113,26 @@ end
 """
     checkdims(y::TEBV)::Bool
 
-Check dimension compatibility of the fields of the TEBV struct
+Check if all fields in the TEBV struct have compatible dimensions. The function verifies that
+the length of all arrays in the TEBV struct match the number of traits.
 
-## Examples
-```jldoctest; setup = :(using GBCore, StatsBase, MixedModels, DataFrames)
+# Arguments
+- `tebv::TEBV`: A TEBV (Trial-estimated Breeding Values) struct containing traits,
+  formulae, models, BLUEs, BLUPs, and phenomes.
+
+# Returns
+- `Bool`: Returns `true` if all fields have matching dimensions (equal to the number of traits),
+  `false` otherwise.
+
+# Details
+The function checks if the following fields have the same length as `traits`:
+- formulae
+- unique models
+- unique BLUEs DataFrames
+- unique BLUPs DataFrames
+- unique phenomes
+
+# Examples
 julia> tebv = TEBV(traits=[""], formulae=[""], models=[MixedModel(@formula(y~1+(1|x)), DataFrame(y=1, x=1))], df_BLUEs=[DataFrame(x=1)], df_BLUPs=[DataFrame(x=1)], phenomes=[Phenomes(n=1,t=1)]);
 
 julia> checkdims(tebv)
@@ -102,7 +154,24 @@ end
 """
     dimensions(tebv::TEBV)::Dict{String, Int64}
 
-Count the number of entries, populations, and traits in the TEBV struct
+Calculate various dimensional metrics for a TEBV (Trial-Estimated Breeding Values) struct.
+
+# Arguments
+- `tebv::TEBV`: A TEBV struct containing traits, formulae, models, BLUEs, BLUPs, and phenomes data
+
+# Returns
+A dictionary containing the following counts:
+- `"n_entries"`: Number of unique entries across all phenomes
+- `"n_populations"`: Number of unique populations across all phenomes
+- `"n_traits"`: Number of traits in the TEBV struct
+- `"n_total"`: Total number of observations across all traits
+- `"n_zeroes"`: Total number of zero values across all traits
+- `"n_missing"`: Total number of missing values across all traits
+- `"n_nan"`: Total number of NaN values across all traits
+- `"n_inf"`: Total number of Infinite values across all traits
+
+# Throws
+- `ArgumentError`: If the TEBV struct dimensions are inconsistent or corrupted
 
 # Examples
 ```jldoctest; setup = :(using GBCore, MixedModels, DataFrames)
@@ -159,7 +228,17 @@ end
 """
     countlevels(df::DataFrame; column_names::Vector{String})::Int64
 
-Count the total number of factor levels across the column names provided.
+Count the total number of unique values (factor levels) across specified columns in a DataFrame.
+
+# Arguments
+- `df::DataFrame`: Input DataFrame to analyze
+- `column_names::Vector{String}`: Vector of column names to count unique values from
+
+# Returns
+- `Int64`: Sum of unique values across all specified columns
+
+# Throws
+- `ArgumentError`: If any of the specified column names are not found in the DataFrame
 """
 function countlevels(df::DataFrame; column_names::Vector{String})::Int64
     # trials, simulated_effects = simulatetrials(genomes = simulategenomes()); df::DataFrame = tabularise(trials); column_names::Vector{String} = ["years", "entries"]
@@ -175,10 +254,18 @@ end
 
 
 """
-    string2formula(x)
+    @string2formula(x::String)
 
-Macro to `Meta.parse` a string into a formula.
-TODO: Refactor to make more idiomatic.
+Convert a string representation of a formula into a `Formula` object.
+
+This macro parses a string containing a formula expression and evaluates it into
+a proper `Formula` object that can be used in statistical modeling.
+
+# Arguments
+- `x::String`: A string containing the formula expression (e.g., "y ~ x + z")
+
+# Returns
+- `Formula`: A Formula object representing the parsed expression
 """
 macro string2formula(x)
     @eval(@formula($(Meta.parse(x))))
@@ -186,13 +273,36 @@ end
 
 
 """
-    trialsmodelsfomulae!(df::DataFrame; trait::String, max_levels::Int64 = 100)::Vector{String}
+    trialsmodelsfomulae!(df::DataFrame; trait::String, max_levels::Int64 = 100)::Tuple{Vector{String},Vector{Int64}}
 
-Define formulae for the mixed models to fit on the tabularised `Trials` struct.
-    - appends interaction effects intto `df`
-    - returns:
-        + a vector of formulae as strings
-        + a vector of the total number of non-entry factor levels
+Generate mixed model formulae for analyzing multi-environment trial data.
+
+# Arguments
+- `df::DataFrame`: Input DataFrame containing trial data, will be modified in-place
+- `trait::String`: Name of the response variable column
+- `max_levels::Int64=100`: Maximum number of factor levels allowed in interaction terms
+
+# Returns
+A tuple containing:
+- `Vector{String}`: Collection of mixed model formulae with increasing complexity
+- `Vector{Int64}`: Corresponding number of factor levels for each formula
+
+# Details
+The function:
+1. Identifies available trial design variables (nesters, spatial components, targets)
+2. Creates interaction terms between variables and adds them to the DataFrame
+3. Generates model formulae considering:
+   - Single and multi-environment models
+   - Fixed and random entry effects
+   - Spatial error components
+   - Nested random effects
+4. Filters redundant models and sorts by complexity
+
+# Notes
+- Warns if trials are unreplicated
+- Throws error if only one entry is present
+- Automatically removes block effects when both row and column effects are present
+- Removes redundant nesting structures
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
@@ -418,16 +528,40 @@ end
         idx_parallel_models::Vector{Int64},
         idx_iterative_models::Vector{Int64},
         max_time_per_model::Int64 = 60,
-        verbose::Bool=false)::Tuple{String, Any, DataFrame, DataFrame, Phenomes}
+        verbose::Bool=false
+    )::Tuple{String, Any, DataFrame, DataFrame, Phenomes}
 
-Fit univarite (one trait) linear mixed models to extract the effects of the entries the best fitting model.
+Fit univariate linear mixed models to extract entry effects from the best-fitting model.
 
-We have the following guiding principles:
+# Arguments
+- `df::DataFrame`: Input data frame containing trial data with columns for entries, traits, and other experimental factors
+- `formulae::Vector{String}`: Vector of model formulae strings to be tested
+- `idx_parallel_models::Vector{Int64}`: Indices of simpler models to be fitted in parallel
+- `idx_iterative_models::Vector{Int64}`: Indices of complex models to be fitted iteratively
+- `max_time_per_model::Int64`: Maximum time in seconds allowed for fitting each model (default: 60)
+- `verbose::Bool`: Whether to display progress information (default: false)
 
-- Avoid over-parameterisation we'll have enough of that with the genomic prediction models
-- We will fit mixed models with unstructure variance-covariance matrix of the random effects
-- We prefer REML over ML
-- We compare BLUEs vs BLUPs of entries
+# Returns
+A tuple containing:
+1. String: Formula of the best-fitting model
+2. Any: The fitted model object
+3. DataFrame: BLUEs (Best Linear Unbiased Estimates) results
+4. DataFrame: BLUPs (Best Linear Unbiased Predictions) results
+5. Phenomes: Struct containing consolidated phenotypic predictions
+
+# Details
+The function implements a mixed model fitting strategy with the following principles:
+- Avoids over-parameterization
+- Uses unstructured variance-covariance matrix for random effects
+- Prefers REML over ML estimation
+- Compares BLUEs vs BLUPs of entries
+- Handles both parallel and iterative model fitting based on model complexity
+
+# Notes
+- All formulae must model the same trait
+- Models are fitted using REML
+- Simple models are fitted in parallel while complex models are fitted iteratively to avoid memory issues
+- Returns empty results if no models can be successfully fitted
 
 # Examples
 ```jldoctest; setup = :(using GBCore, StatsBase, DataFrames, MixedModels)
@@ -696,21 +830,44 @@ end
         max_levels::Int64 = 100,
         max_time_per_model::Int64 = 60,
         covariates_continuous::Union{Nothing,Vector{String}} = nothing,
-        verbose::Bool = true,
+        verbose::Bool = true
     )::TEBV
 
-# Analyse trials
+Analyze trial data using linear mixed models to estimate Best Linear Unbiased Estimates (BLUEs) 
+and Best Linear Unbiased Predictions (BLUPs).
 
-## Arguments
-- `trials`: Trials struct 
-- `max_levels`: maximum number of non-entry factor levels to include in the linear mixed models (default = 100)
-- `max_time_per_model`: maximum time in seconds for fitting each linear mixed model (default = 60)
-- `verbose`: Show trials analysis progress bar? (default = true)
+# Arguments
+- `trials`: A Trials struct containing the experimental data
+- `formula_string`: Optional model formula string. If empty, automatic model selection is performed
+- `traits`: Optional vector of trait names to analyze. If nothing, all traits are analyzed
+- `max_levels`: Maximum number of levels for non-entry random effects (default: 100)
+- `max_time_per_model`: Maximum fitting time in seconds per model (default: 60)
+- `covariates_continuous`: Optional vector of continuous covariates to include in models
+- `verbose`: Whether to display analysis progress (default: true)
 
-## Outputs
-- `TEBV` struct containing the trait names, the best fitting formulae, models, BLUEs, and BLUPs for each trait
+# Returns
+A `TEBV` struct containing:
+- `traits`: Vector of analyzed trait names
+- `formulae`: Vector of best-fitting model formulae
+- `models`: Vector of fitted LinearMixedModel objects
+- `df_BLUEs`: Vector of DataFrames containing BLUEs
+- `df_BLUPs`: Vector of DataFrames containing BLUPs
+- `phenomes`: Vector of Phenomes objects with predicted values
 
-## Examples
+# Details
+The function implements a mixed model fitting strategy with the following principles:
+- Avoids over-parameterization
+- Uses unstructured variance-covariance matrix for random effects
+- Prefers REML over ML estimation
+- Compares BLUEs vs BLUPs of entries
+- Handles both parallel and iterative model fitting based on model complexity
+
+# Notes
+- Models are fitted using REML
+- Simple models are fitted in parallel while complex models are fitted iteratively to avoid memory issues
+- Returns empty results if no models can be successfully fitted
+
+# Examples
 ```jldoctest; setup = :(using GBCore, StatsBase, Suppressor)
 julia> trials, _simulated_effects = simulatetrials(genomes = simulategenomes(n=10, verbose=false), n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=10, verbose=false);
 
@@ -887,8 +1044,30 @@ end
 """
     extractphenomes(tebv::TEBV)::Phenomes
 
-Extract Phenomes from TEBV
+Extract phenotypic values from a Trial-Estimated Breeding Value (TEBV) object.
 
+This function processes phenotypic data from a TEBV object, handling intercept effects
+and merging multiple phenomes if present. It performs the following operations:
+
+1. Validates input TEBV dimensions
+2. Processes intercept effects if present by:
+   - Identifying intercept terms
+   - Combining intercept values with trait effects
+   - Adjusting trait names and phenotypic values accordingly
+3. Merges multiple phenomes if present
+4. Renames traits to match input TEBV traits if dimensions align
+5. Validates output Phenomes dimensions
+
+# Arguments
+- `tebv::TEBV`: A Trial Estimated Breeding Value object containing phenotypic data
+
+# Returns
+- `Phenomes`: A Phenomes object containing processed phenotypic values
+
+# Throws
+- `ArgumentError`: If input TEBV or output Phenomes dimensions are invalid
+
+# Examples
 ```jldoctest; setup = :(using GBCore)
 julia> trials, _simulated_effects = simulatetrials(genomes = simulategenomes(n=10, verbose=false), n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=10, verbose=false);
 
@@ -953,7 +1132,16 @@ end
 """
     plot(tebv::TEBV)
 
-Plot TEBV output by plotting the resulting Phenomes struct
+Create a visualization of True Estimated Breeding Values (TEBV) analysis results.
+
+This function extracts phenomes from the TEBV object and generates a plot to visualize
+the breeding value estimates.
+
+# Arguments
+- `tebv::TEBV`: A TEBV object containing the analysis results
+
+# Returns
+- A plot object representing the visualization of the phenomes data
 """
 function plot(tebv::TEBV)
     # trials, _simulated_effects = simulatetrials(genomes = simulategenomes(n=10, verbose=false), n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=10, verbose=false);

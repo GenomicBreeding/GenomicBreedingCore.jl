@@ -1,9 +1,30 @@
 """
     clone(x::Fit)::Fit
 
-Clone a Fit object
+Create a deep copy of a Fit object, duplicating all its fields.
 
-## Example
+This function performs a deep clone of the input Fit object, ensuring that all nested
+structures and arrays are also copied, preventing any shared references between the
+original and the cloned object.
+
+# Arguments
+- `x::Fit`: The Fit object to be cloned
+
+# Returns
+- `Fit`: A new Fit object with identical but independent values
+
+# Fields copied
+- `model`: The statistical model
+- `b_hat_labels`: Labels for the estimated parameters
+- `b_hat`: Estimated parameters
+- `trait`: The trait being analyzed
+- `entries`: Entry identifiers
+- `populations`: Population identifiers
+- `metrics`: Performance metrics
+- `y_true`: Observed values
+- `y_pred`: Predicted values
+
+# Examples
 ```jldoctest; setup = :(using GBCore)
 julia> fit = Fit(n=1, l=2);
 
@@ -29,10 +50,30 @@ end
 """
     Base.hash(x::Fit, h::UInt)::UInt
 
-Hash a Fit struct using the entries, populations and loci_alleles.
-We deliberately excluded the allele_frequencies, and mask for efficiency.
+Calculate a hash value for a `Fit` struct.
 
-## Examples
+This method implements hashing for the `Fit` type by combining the hashes of its core components
+in a specific order. The hash is computed using the following fields:
+- model
+- b_hat (estimated effects)
+- trait
+- entries
+- populations
+- metrics
+- y_true (observed values)
+- y_pred (predicted values)
+
+Note that `allele_frequencies` and `mask` fields are deliberately excluded from the hash
+calculation for performance reasons.
+
+# Arguments
+- `x::Fit`: The Fit struct to be hashed
+- `h::UInt`: The hash value to be mixed with
+
+# Returns
+- `UInt`: The computed hash value
+
+# Example
 ```jldoctest; setup = :(using GBCore)
 julia> fit = Fit(n=1, l=2);
 
@@ -57,9 +98,20 @@ end
 """
     Base.:(==)(x::Fit, y::Fit)::Bool
 
-Equality of Fit structs using the hash function defined for Fit structs.
+Compare two `Fit` structs for equality based on their hash values.
 
-## Examples
+This method defines equality comparison for `Fit` structs by comparing their hash values.
+Two `Fit` structs are considered equal if they have identical hash values, which means
+they have the same values for all their fields.
+
+# Arguments
+- `x::Fit`: First Fit struct to compare
+- `y::Fit`: Second Fit struct to compare
+
+# Returns
+- `Bool`: `true` if the Fit structs are equal, `false` otherwise
+
+# Examples
 ```jldoctest; setup = :(using GBCore)
 julia> fit_1 = Fit(n=1, l=4);
 
@@ -82,7 +134,19 @@ end
 """
     checkdims(fit::Fit)::Bool
 
-Check dimension compatibility of the fields of the Fit struct
+Check dimension compatibility of the internal fields of a `Fit` struct.
+
+This function verifies that all vector fields in the `Fit` struct have compatible dimensions:
+- Length of `entries`, `populations`, `y_true`, and `y_pred` must be equal (denoted as `n`)
+- Length of `b_hat` and `b_hat_labels` must be equal (denoted as `l`)
+
+Returns `true` if all dimensions are compatible, `false` otherwise.
+
+# Arguments
+- `fit::Fit`: The Fit struct to check dimensions for
+
+# Returns
+- `Bool`: `true` if dimensions are compatible, `false` otherwise
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
@@ -110,9 +174,20 @@ function checkdims(fit::Fit)::Bool
 end
 
 """
-    plot(fit::Fit, distribution::Any=[TDist(1), Normal()][1], α::Float64=0.05)
+    plot(fit::Fit, distribution::Any=[TDist(1), Normal()][2], α::Float64=0.05)
 
-Manhattan plot
+Generate diagnostic plots for genetic association analysis results.
+
+# Arguments
+- `fit::Fit`: A Fit object containing the association analysis results, specifically the `b_hat` field with effect sizes
+- `distribution::Any`: The null distribution for p-value calculation. Defaults to Normal distribution
+- `α::Float64`: Significance level for multiple testing correction (Bonferroni). Defaults to 0.05
+
+# Returns
+Displays three plots:
+- Histogram showing the distribution of effect sizes
+- Manhattan plot showing -log10(p-values) across loci with Bonferroni threshold
+- Q-Q plot comparing observed vs expected -log10(p-values)
 
 # Examples
 ```
@@ -145,9 +220,22 @@ function plot(fit::Fit, distribution::Any = [TDist(1), Normal()][2], α::Float64
 end
 
 """
-    tabularise(trials::Trials)::DataFrame
+    tabularise(fit::Fit, metric::String = "cor")::DataFrame
 
-Export the Trials structs into a DataFrames.DataFrame struct
+Convert a Fit struct into a DataFrame for easier data manipulation and analysis.
+
+# Arguments
+- `fit::Fit`: A Fit struct containing model results and parameters
+- `metric::String = "cor"`: The metric to extract from fit.metrics dictionary (default: "cor")
+
+# Returns
+- `DataFrame`: A DataFrame with the following columns:
+  - `model`: The model name
+  - `trait`: The trait name
+  - `population`: Semicolon-separated string of unique population names
+  - `metric`: The specified metric value from fit.metrics
+  - `b_hat_labels`: Labels for the effect sizes
+  - `b_hat`: Estimated effect sizes
 
 # Examples
 ```jldoctest; setup = :(using GBCore)

@@ -1,7 +1,22 @@
 """
     clone(x::Genomes)::Genomes
 
-Clone a Genomes object
+Create a deep copy of a `Genomes` object.
+
+This function performs a deep clone of all fields in the `Genomes` object, including:
+- entries
+- populations 
+- loci_alleles
+- allele_frequencies
+- mask
+
+Returns a new `Genomes` instance with identical but independent data.
+
+## Arguments
+- `x::Genomes`: The source Genomes object to clone
+
+## Returns
+- `Genomes`: A new Genomes object containing deep copies of all fields
 
 ## Example
 ```jldoctest; setup = :(using GBCore)
@@ -25,10 +40,24 @@ end
 """
     Base.hash(x::Genomes, h::UInt)::UInt
 
-Hash a Genomes struct using the entries, populations and loci_alleles.
-We deliberately excluded the allele_frequencies, and mask for efficiency.
+Compute a hash value for a `Genomes` struct.
 
-## Examples
+This hash function considers three key components of the `Genomes` struct:
+- entries
+- populations
+- loci_alleles
+
+For performance reasons, `allele_frequencies` and `mask` fields are deliberately excluded 
+from the hash computation.
+
+# Arguments
+- `x::Genomes`: The Genomes struct to hash
+- `h::UInt`: The hash seed value
+
+# Returns
+- `UInt`: A hash value for the Genomes struct
+
+# Examples
 ```jldoctest; setup = :(using GBCore)
 julia> genomes = Genomes(n=2, p=2);
 
@@ -43,11 +72,22 @@ end
 
 
 """
-    Base.:(==)(x::Genomes, y::Genomes)::Bool
+    ==(x::Genomes, y::Genomes)::Bool
 
-Equality of Genomes structs using the hash function defined for Genomes structs.
+Compare two `Genomes` structs for equality by comparing their hash values.
 
-## Examples
+This method implements equality comparison for `Genomes` structs by utilizing their hash values,
+ensuring that two genomes are considered equal if and only if they have identical structural
+properties and content.
+
+# Arguments
+- `x::Genomes`: First Genomes struct to compare
+- `y::Genomes`: Second Genomes struct to compare
+
+# Returns
+- `Bool`: `true` if the genomes are equal, `false` otherwise
+
+# Examples
 ```jldoctest; setup = :(using GBCore)
 julia> genomes_1 = genomes = Genomes(n=2,p=4);
 
@@ -70,7 +110,21 @@ end
 """
     checkdims(genomes::Genomes)::Bool
 
-Check dimension compatibility of the fields of the Genomes struct
+Check dimension compatibility of the fields in a `Genomes` struct.
+
+Returns `true` if all dimensions are compatible, `false` otherwise.
+
+# Arguments
+- `genomes::Genomes`: A Genomes struct containing genomic data
+
+# Details
+Verifies that:
+- Number of entries matches number of populations (n)
+- Entry names are unique
+- Number of loci alleles matches width of frequency matrix (p) 
+- Locus-allele combinations are unique
+- Entries are unique
+- Dimensions of frequency matrix (n×p) match mask matrix dimensions
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
@@ -103,7 +157,25 @@ end
 """
     dimensions(genomes::Genomes)::Dict{String, Int64}
 
-Count the number of entries, populations, loci-alleles combination, loci, maximum number of alleles per locus, and number of missing data in the Genomes struct
+Calculate various dimensional metrics of a Genomes struct.
+
+Returns a dictionary containing the following metrics:
+- `"n_entries"`: Number of unique entries/samples
+- `"n_populations"`: Number of unique populations
+- `"n_loci_alleles"`: Total number of loci-allele combinations
+- `"n_chr"`: Number of chromosomes
+- `"n_loci"`: Number of unique loci across all chromosomes
+- `"max_n_alleles"`: Maximum number of alleles observed at any locus
+- `"n_missing"`: Count of missing values in allele frequencies
+
+# Arguments
+- `genomes::Genomes`: A valid Genomes struct containing genetic data
+
+# Returns
+- `Dict{String,Int64}`: Dictionary containing dimensional metrics
+
+# Throws
+- `ArgumentError`: If the Genomes struct is corrupted (fails dimension check)
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
@@ -168,7 +240,26 @@ end
 """
     loci_alleles(genomes::Genomes)::Tuple{Vector{String},Vector{Int64},Vector{String}}
 
-Extract chromosomes, positions, and alleles across loci-allele combinations
+Extract chromosomes, positions, and alleles information from a `Genomes` object.
+
+Returns a tuple of three vectors containing:
+1. Chromosomes identifiers as strings
+2. Base-pair positions as integers
+3. Allele identifiers as strings
+
+Each vector has length equal to the total number of loci-allele combinations in the genome.
+
+# Arguments
+- `genomes::Genomes`: A valid Genomes object containing loci and allele information
+
+# Returns
+- `Tuple{Vector{String},Vector{Int64},Vector{String}}`: A tuple containing three vectors:
+    - chromosomes: Vector of chromosome identifiers
+    - positions: Vector of base-pair positions
+    - alleles: Vector of allele identifiers
+
+# Throws
+- `ArgumentError`: If the Genomes struct dimensions are invalid or corrupted
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
@@ -200,7 +291,18 @@ end
 """
     loci(genomes::Genomes)::Tuple{Vector{String},Vector{Int64},Vector{Int64},Vector{Int64}}
 
-Extract chromosome names, positions, start and end indexes of each locus across loci
+Extract genomic positional information from a `Genomes` object, returning a tuple of vectors containing
+chromosome names, positions, and locus boundary indices.
+
+# Arguments
+- `genomes::Genomes`: A Genomes object containing genomic data
+
+# Returns
+A tuple containing four vectors:
+- `chromosomes::Vector{String}`: Names of chromosomes
+- `positions::Vector{Int64}`: Positions within chromosomes
+- `loci_ini_idx::Vector{Int64}`: Starting indices for each locus
+- `loci_fin_idx::Vector{Int64}`: Ending indices for each locus
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
@@ -248,14 +350,38 @@ end
 """
     distances(
         genomes::Genomes; 
-        distance_metrics::Vector{String}=["euclidean", "correlation", "mad", "rmsd", "χ²"]
-        idx_loci_alleles::Union{Nothing, Vector{Int64}} = nothing,
+        distance_metrics::Vector{String}=["euclidean", "correlation", "mad", "rmsd", "χ²"],
+        idx_loci_alleles::Union{Nothing, Vector{Int64}} = nothing
     )::Tuple{Vector{String}, Vector{String}, Dict{String, Matrix{Float64}}}
 
-Estimate pairwise distances between loci_alleles and entries. 
-Sparsity leading to less than 2 pairs will yield -Inf values in the resulting matrices. 
-Matrices with how many pairs were used to estimate the distance and correlation matrices are also included as well as the locus-allele and entry names.
+Calculate pairwise distances/similarity metrics between loci-alleles and entries in a `Genomes` object.
 
+# Arguments
+- `genomes::Genomes`: Input Genomes object
+- `distance_metrics::Vector{String}`: Vector of distance metrics to calculate. Valid options:
+  - "euclidean": Euclidean distance
+  - "correlation": Pearson correlation coefficient 
+  - "mad": Mean absolute deviation
+  - "rmsd": Root mean square deviation
+  - "χ²": Chi-square distance
+- `idx_loci_alleles::Union{Nothing, Vector{Int64}}`: Optional indices of loci-alleles to include. If nothing, randomly samples 100 loci-alleles.
+
+# Returns
+Tuple containing:
+1. Vector of loci-allele names used
+2. Vector of entry names
+3. Dictionary mapping "{dimension}|{metric}" to distance matrices, where:
+   - dimension is either "loci_alleles" or "entries" 
+   - metric is one of the distance metrics or "counts" (number of valid pairs used)
+   - matrices contain pairwise distances/correlations (-Inf where insufficient data)
+
+# Details
+- For loci-alleles, calculates distances between allele frequency profiles across entries
+- For entries, calculates distances between entries based on their allele frequencies
+- Requires at least 2 valid (non-missing, finite) pairs to calculate metrics
+- Includes count matrices showing number of valid pairs used per calculation
+
+# Examples
 ```jldoctest; setup = :(using GBCore, LinearAlgebra)
 julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
 
@@ -437,9 +563,27 @@ function distances(
 end
 
 """
-    plot(genomes::Genomes)::Nothing
+    plot(genomes::Genomes, seed::Int64 = 42)::Nothing
 
-Plot allele frequencies
+Generate visualization plots for allele frequencies in genomic data.
+
+For each population in the dataset, creates three plots:
+1. Histogram of per-entry allele frequencies
+2. Histogram of mean allele frequencies per locus
+3. Correlation heatmap of allele frequencies between loci
+
+# Arguments
+- `genomes::Genomes`: A Genomes struct containing allele frequency data
+- `seed::Int64=42`: Random seed for reproducibility of sampling loci
+
+# Returns
+- `Nothing`: Displays plots but doesn't return any value
+
+# Notes
+- Uses up to 100 randomly sampled loci for visualization
+- Handles missing values in the data
+- Displays folded frequency spectra (both q and 1-q)
+- Will throw ArgumentError if the Genomes struct is corrupted
 
 # Examples
 ```
@@ -530,10 +674,27 @@ end
     slice(
         genomes::Genomes; 
         idx_entries::Union{Nothing, Vector{Int64}} = nothing,
-        idx_loci_alleles::Union{Nothing, Vector{Int64}} = nothing,
+        idx_loci_alleles::Union{Nothing, Vector{Int64}} = nothing
     )::Genomes
 
-Slice a Genomes struct by specifing indixes of entries and loci-allele combinations
+Create a subset of a `Genomes` struct by selecting specific entries and loci-allele combinations.
+
+# Arguments
+- `genomes::Genomes`: The source genomic data structure to be sliced
+- `idx_entries::Union{Nothing, Vector{Int64}}`: Indices of entries to keep. If `nothing`, all entries are kept
+- `idx_loci_alleles::Union{Nothing, Vector{Int64}}`: Indices of loci-allele combinations to keep. If `nothing`, all loci-alleles are kept
+
+# Returns
+- `Genomes`: A new `Genomes` struct containing only the selected entries and loci-allele combinations
+
+# Notes
+- Both index vectors are automatically sorted and deduplicated
+- Indices must be within valid ranges (1 to n_entries or n_loci_alleles)
+- The function preserves the structure and relationships of the original data
+
+# Throws
+- `ArgumentError`: If the input `Genomes` struct is corrupted or if indices are out of bounds
+- `DimensionMismatch`: If the resulting sliced genome has inconsistent dimensions
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
@@ -605,7 +766,18 @@ end
 """
     filter(genomes::Genomes)::Genomes
 
-Filter a Genomes struct using its mask matrix where all rows and columns with at least one false value are excluded
+Filter a Genomes struct by removing entries and loci with missing data based on the mask matrix.
+
+# Description
+This function filters a Genomes struct by:
+1. Removing rows (entries) where any column has a false value in the mask matrix
+2. Removing columns (loci) where any row has a false value in the mask matrix
+
+# Arguments
+- `genomes::Genomes`: Input Genomes struct containing genetic data and a mask matrix
+
+# Returns
+- `Genomes`: A new filtered Genomes struct with complete data (no missing values)
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
@@ -628,14 +800,36 @@ end
 
 """
     filter(
-        genomes::Genomes;
-        maf::Float64,
+        genomes::Genomes,
+        maf::Float64;
         max_entry_sparsity::Float64 = 0.0,
         max_locus_sparsity::Float64 = 0.0,
-        chr_pos_allele_ids::Union{Missing,Vector{String}} = missing,
+        chr_pos_allele_ids::Union{Nothing,Vector{String}} = nothing
     )::Genomes
 
-Filter a Genomes struct by minimum allele frequency, entries sparsity, loci sparsity, and/or vector of locus-allele names
+Filter a Genomes struct based on multiple criteria.
+
+# Arguments
+- `genomes::Genomes`: Input genomic data structure
+- `maf::Float64`: Minimum allele frequency threshold (0.0 to 1.0)
+- `max_entry_sparsity::Float64`: Maximum allowed proportion of missing values per entry (default: 0.0)
+- `max_locus_sparsity::Float64`: Maximum allowed proportion of missing values per locus (default: 0.0)
+- `chr_pos_allele_ids::Union{Nothing,Vector{String}}`: Optional vector of specific locus-allele combinations to retain, 
+    formatted as tab-separated strings "chromosome\\tposition\\tallele"
+
+# Returns
+- `Genomes`: Filtered genomic data structure
+
+# Description
+Filters genomic data based on four criteria:
+1. Minimum allele frequency (MAF)
+2. Maximum entry sparsity (proportion of missing values per entry)
+3. Maximum locus sparsity (proportion of missing values per locus)
+4. Specific locus-allele combinations (optional)
+
+# Throws
+- `ArgumentError`: If Genomes struct is corrupted or if MAF is outside [0,1]
+- `ErrorException`: If filtering results in empty dataset
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
@@ -794,10 +988,29 @@ end
         genomes::Genomes,
         other::Genomes;
         conflict_resolution::Tuple{Float64,Float64} = (0.5, 0.5),
-        verbose::Bool = true,
+        verbose::Bool = true
     )::Genomes
 
-Merge two Genomes structs using a tuple of conflict resolution weights
+Merge two Genomes structs by combining their entries and loci_alleles while resolving conflicts in allele frequencies.
+
+# Arguments
+- `genomes::Genomes`: First Genomes struct to merge
+- `other::Genomes`: Second Genomes struct to merge
+- `conflict_resolution::Tuple{Float64,Float64}`: Weights for resolving conflicts between allele frequencies (must sum to 1.0)
+- `verbose::Bool`: If true, displays a progress bar during merging
+
+# Returns
+- `Genomes`: A new Genomes struct containing the merged data
+
+# Details
+The function performs the following operations:
+1. Combines unique entries and loci_alleles from both input structs
+2. Resolves population conflicts by concatenating conflicting values
+3. For overlapping entries and loci:
+   - If allele frequencies match, uses the existing value
+   - If frequencies differ, applies weighted average using conflict_resolution
+   - For missing values, uses available non-missing value
+   - Resolves mask conflicts using weighted average
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
@@ -945,7 +1158,24 @@ end
 """
     merge(genomes::Genomes, phenomes::Phenomes; keep_all::Bool=true)::Tuple{Genomes,Phenomes}
 
-Merge a Genomes struct with a Phenomes struct using union or intersection
+Merge `Genomes` and `Phenomes` structs based on their entries, combining genomic and phenotypic data.
+
+# Arguments
+- `genomes::Genomes`: A struct containing genomic data including entries, populations, and allele frequencies
+- `phenomes::Phenomes`: A struct containing phenotypic data including entries, populations, and phenotypes
+- `keep_all::Bool=true`: If true, performs a union of entries; if false, performs an intersection
+
+# Returns
+- `Tuple{Genomes,Phenomes}`: A tuple containing:
+    - A new `Genomes` struct with merged entries and corresponding genomic data
+    - A new `Phenomes` struct with merged entries and corresponding phenotypic data
+
+# Details
+- Maintains dimensional consistency between input and output structs
+- Handles population conflicts by creating a combined population name
+- Preserves allele frequencies and phenotypic data for matched entries
+- When `keep_all=true`, includes all entries from both structs
+- When `keep_all=false`, includes only entries present in both structs
 
 # Examples
 ```jldoctest; setup = :(using GBCore)

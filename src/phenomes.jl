@@ -1,9 +1,24 @@
 """
     clone(x::Phenomes)::Phenomes
 
-Clone a Phenomes object
+Create a deep copy of a `Phenomes` object, including all its fields.
 
-## Example
+This function performs a deep copy of the following fields:
+- entries: Vector of entry names
+- populations: Vector of population identifiers
+- traits: Vector of trait names
+- phenotypes: Matrix of phenotypic values
+- mask: Matrix of boolean masks
+
+Returns a new `Phenomes` object with identical structure but independent memory allocation.
+
+# Arguments
+- `x::Phenomes`: The source Phenomes object to be cloned
+
+# Returns
+- `Phenomes`: A new Phenomes object containing deep copies of all fields
+
+# Example
 ```jldoctest; setup = :(using GBCore)
 julia> phenomes = Phenomes(n=2, t=2);
 
@@ -24,9 +39,21 @@ end
 """
     Base.hash(x::Phenomes, h::UInt)::UInt
 
-Hash a Phenomes struct.
+Compute a hash value for a `Phenomes` struct by recursively hashing its internal fields.
 
-## Examples
+# Arguments
+- `x::Phenomes`: The Phenomes struct to be hashed
+- `h::UInt`: The hash value to be mixed with
+
+# Returns
+- `UInt`: A hash value for the entire Phenomes struct
+
+# Note
+This function is used for dictionary operations and computing hash-based data structures.
+The hash is computed by combining hashes of all internal fields: entries, populations,
+traits, phenotypes, and mask.
+
+# Examples
 ```jldoctest; setup = :(using GBCore)
 julia> phenomes = Phenomes(n=2, t=2);
 
@@ -40,11 +67,21 @@ end
 
 
 """
-    Base.:(==)(x::Phenomes, y::Phenomes)::Bool
+    ==(x::Phenomes, y::Phenomes)::Bool
 
-Equality of Phenomes structs using the hash function defined for Phenomes structs.
+Compare two `Phenomes` structs for equality using their hash values.
 
-## Examples
+This method implements equality comparison for `Phenomes` objects by comparing their hash values,
+ensuring that two phenomes with identical structure and content are considered equal.
+
+# Arguments
+- `x::Phenomes`: First phenomes object to compare
+- `y::Phenomes`: Second phenomes object to compare
+
+# Returns
+- `Bool`: `true` if the phenomes are equal, `false` otherwise
+
+# Examples
 ```jldoctest; setup = :(using GBCore)
 julia> phenomes_1 = phenomes = Phenomes(n=2, t=4);
 
@@ -67,7 +104,21 @@ end
 """
     checkdims(y::Phenomes)::Bool
 
-Check dimension compatibility of the fields of the Phenomes struct
+Verify dimensional compatibility between all fields of a Phenomes struct.
+
+Checks if:
+- Number of entries matches the number of rows in phenotypes matrix
+- All entry names are unique
+- Number of populations matches number of entries
+- Number of traits matches number of columns in phenotypes matrix
+- All trait names are unique
+- Dimensions of mask matrix match phenotypes matrix
+
+# Arguments
+- `y::Phenomes`: A Phenomes struct containing phenotypic data
+
+# Returns
+- `Bool`: `true` if all dimensions are compatible, `false` otherwise
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
@@ -100,7 +151,26 @@ end
 """
     dimensions(phenomes::Phenomes)::Dict{String, Int64}
 
-Count the number of entries, populations, and traits in the Phenomes struct
+Calculate various dimensional statistics of a `Phenomes` struct.
+
+Returns a dictionary containing counts of:
+- `"n_entries"`: unique entries in the dataset
+- `"n_populations"`: unique populations
+- `"n_traits"`: number of traits
+- `"n_total"`: total number of phenotypic observations (entries × traits)
+- `"n_zeroes"`: number of zero values in phenotypes
+- `"n_missing"`: number of missing values
+- `"n_nan"`: number of NaN values
+- `"n_inf"`: number of infinite values
+
+# Arguments
+- `phenomes::Phenomes`: A Phenomes struct containing phenotypic data
+
+# Returns
+- `Dict{String,Int64}`: Dictionary with dimensional statistics
+
+# Throws
+- `ArgumentError`: If the Phenomes struct dimensions are inconsistent
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
@@ -139,14 +209,36 @@ end
     distances(
         phenomes::Phenomes; 
         distance_metrics::Vector{String}=["euclidean", "correlation", "mad", "rmsd", "χ²"],
-        standardise_traits::Bool = false,
-    )::Tuple{String, Matrix{Float64}}Tuple{Vector{String}, Vector{String}, Dict{String, Matrix{Float64}}}
+        standardise_traits::Bool = false
+    )::Tuple{Vector{String}, Vector{String}, Dict{String, Matrix{Float64}}}
 
-Estimate pairwise distances between traits and entries. 
-Sparsity leading to less than 2 pairs will yield -Inf values in the resulting matrices. 
-Matrices with how many pairs were used to estimate the distance and correlation matrices are also included as well as the trait and entry names.
-Note that prior to computing correlations between entries, the phenotype matrix was standardised, i.e. each trait was transformed to have a mean of 0 and standard deviation of 1.
+Calculate pairwise distances/correlations between traits and entries in a phenotypic dataset.
 
+# Arguments
+- `phenomes::Phenomes`: A Phenomes struct containing phenotypic data
+- `distance_metrics::Vector{String}`: Vector of distance metrics to compute. Valid options are:
+  * "euclidean": Euclidean distance
+  * "correlation": Pearson correlation coefficient
+  * "mad": Mean absolute deviation
+  * "rmsd": Root mean square deviation
+  * "χ²": Chi-square distance
+- `standardise_traits::Bool`: If true, standardizes traits to mean=0 and sd=1 before computing distances
+
+# Returns
+A tuple containing:
+1. Vector of trait names
+2. Vector of entry names
+3. Dictionary mapping "{dimension}|{metric}" to distance matrices, where:
+   * dimension ∈ ["traits", "entries"]
+   * metric ∈ distance_metrics ∪ ["counts"]
+   * "counts" matrices contain the number of non-missing pairs used in calculations
+
+# Notes
+- Pairs with fewer than 2 non-missing values result in -Inf distance values
+- For correlation calculations, traits with near-zero variance (< 1e-7) are skipped
+- χ² distance adds machine epsilon to denominator to avoid division by zero
+
+# Examples
 ```jldoctest; setup = :(using GBCore, LinearAlgebra)
 julia> phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = rand(10,3); phenomes.phenotypes[2,2] = missing;
 
@@ -339,9 +431,24 @@ function distances(
 end
 
 """
-    plot(phenomes::Phenomes)::Nothing
+    plot(phenomes::Phenomes; nbins::Int64 = 10)::Nothing
 
-Plot histogram/s of the trait value/s and a heatmap of trait correlations
+Generate diagnostic plots for phenotypic data stored in a `Phenomes` struct.
+
+# Arguments
+- `phenomes::Phenomes`: A Phenomes struct containing phenotypic data
+- `nbins::Int64=10`: Number of bins for the histograms (optional)
+
+# Description
+For each population in the dataset:
+1. Creates histograms showing the distribution of each trait
+2. Generates a heatmap of trait correlations for traits with non-zero variance
+
+# Notes
+- Skips traits with all missing, NaN, or infinite values
+- Only includes traits with variance > 1e-10 in correlation analysis
+- Requires at least 3 data points to generate a histogram
+- Uses UnicodePlots for visualization in terminal
 
 # Examples
 ```
@@ -422,13 +529,27 @@ function plot(phenomes::Phenomes; nbins::Int64 = 10)
 end
 
 """
-    slice(
-        phenomes::Phenomes;
-        idx_entries::Union{Nothing, Vector{Int64}} = nothing,
-        idx_traits::Union{Nothing, Vector{Int64}} = nothing,
-    )::Phenomes
+    slice(phenomes::Phenomes; idx_entries::Union{Nothing, Vector{Int64}}=nothing, idx_traits::Union{Nothing, Vector{Int64}}=nothing)::Phenomes
 
-Slice a Phenomes struct by specifing indexes of entries and traits
+Create a new `Phenomes` object containing a subset of the original data by selecting specific entries and traits.
+
+# Arguments
+- `phenomes::Phenomes`: The original Phenomes object to slice
+- `idx_entries::Union{Nothing, Vector{Int64}}=nothing`: Indices of entries to keep. If `nothing`, all entries are kept
+- `idx_traits::Union{Nothing, Vector{Int64}}=nothing`: Indices of traits to keep. If `nothing`, all traits are kept
+
+# Returns
+- `Phenomes`: A new Phenomes object containing only the selected entries and traits
+
+# Notes
+- The function preserves the original structure while reducing dimensions
+- Indices must be within valid ranges (1 to n_entries/n_traits)
+- Duplicate indices are automatically removed
+- The resulting object maintains all relationships between entries, populations, traits, and phenotypes
+
+# Throws
+- `ArgumentError`: If the input Phenomes struct is corrupted or if indices are out of bounds
+- `DimensionMismatch`: If the slicing operation results in invalid dimensions
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
@@ -502,7 +623,20 @@ end
 """
     filter(phenomes::Phenomes)::Phenomes
 
-Filter a Phenomes struct using its mask matrix where all rows and columns with at least one false value are excluded
+Filter a Phenomes struct by removing rows (entries) and columns (traits) as indicated by the mask matrix. 
+An entry or trait is removed if it contains at least one false value in the mask.
+
+# Arguments
+- `phenomes::Phenomes`: The Phenomes struct to be filtered, containing entries, populations, traits,
+  phenotypes, and a boolean mask matrix.
+
+# Returns
+- `Phenomes`: A new Phenomes struct with filtered entries and traits, where the mask matrix is all true.
+
+# Details
+The function uses the mean of rows and columns in the mask matrix to identify which entries and traits
+should be kept. Only entries and traits with a mean of 1.0 (all true values) are retained in the
+filtered result.
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
@@ -529,10 +663,37 @@ end
         phenomes::Phenomes,
         other::Phenomes;
         conflict_resolution::Tuple{Float64,Float64} = (0.5, 0.5),
-        verbose::Bool = true,
+        verbose::Bool = true
     )::Phenomes
 
-Merge two Phenomes structs using a tuple of conflict resolution weights
+Merge two `Phenomes` structs into a single combined struct, handling overlapping entries and traits.
+
+# Arguments
+- `phenomes::Phenomes`: The first Phenomes struct to merge
+- `other::Phenomes`: The second Phenomes struct to merge
+- `conflict_resolution::Tuple{Float64,Float64}`: Weights for resolving conflicts between overlapping values (must sum to 1.0)
+- `verbose::Bool`: Whether to display a progress bar during merging
+
+# Returns
+- `Phenomes`: A new merged Phenomes struct containing all entries and traits from both input structs
+
+# Details
+The merge operation combines:
+- All unique entries from both structs
+- All unique traits from both structs
+- Phenotype values and masks, using weighted averaging for conflicts
+- Population information, marking conflicts with a "CONFLICT" prefix
+
+For overlapping entries and traits:
+- Identical values are preserved as-is
+- Different values are combined using the weights specified in `conflict_resolution`
+- Missing values are handled by using the available non-missing value
+- Population conflicts are marked in the format "CONFLICT (pop1, pop2)"
+
+# Throws
+- `ArgumentError`: If either Phenomes struct is corrupted (invalid dimensions)
+- `ArgumentError`: If conflict_resolution weights don't sum to 1.0 or aren't a 2-tuple
+- `ErrorException`: If the merging operation produces an invalid result
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
@@ -672,7 +833,22 @@ end
 """
     tabularise(phenomes::Phenomes)::DataFrame
 
-Export the Phenomes structs into a DataFrames.DataFrame struct
+Convert a `Phenomes` struct into a tabular format as a `DataFrame`.
+
+The resulting DataFrame contains the following columns:
+- `id`: Integer index for each entry
+- `entries`: Entry identifiers
+- `populations`: Population assignments
+- Additional columns for each trait in `phenomes.traits`
+
+# Arguments
+- `phenomes::Phenomes`: A valid Phenomes struct containing phenotypic data
+
+# Returns
+- `DataFrame`: A DataFrame with entries as rows and traits as columns
+
+# Throws
+- `ArgumentError`: If the Phenomes struct dimensions are inconsistent
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
@@ -710,9 +886,15 @@ function tabularise(phenomes::Phenomes)::DataFrame
 end
 
 """
-    stringevaluation(x)
+    @stringevaluation(x)
 
-Macro to `Meta.parse` a string of formula.
+Parse and evaluate a string expression at compile time.
+
+# Arguments
+- `x`: A string containing a Julia expression to be parsed.
+
+# Returns
+- The parsed expression as an `Expr` object ready for evaluation.
 """
 macro stringevaluation(x)
     Meta.parse(string("$(x)"))
@@ -721,8 +903,21 @@ end
 """
     addcompositetrait(phenomes::Phenomes; composite_trait_name::String, formula_string::String)::Phenomes
 
-Add a composite trait from existing traits in a Phenomes struct
+Create a new composite trait by combining existing traits using mathematical operations.
 
+# Arguments
+- `phenomes::Phenomes`: A Phenomes struct containing the original trait data
+- `composite_trait_name::String`: Name for the new composite trait
+- `formula_string::String`: Mathematical formula describing how to combine existing traits. 
+  Supports traits as variables and the following operations:
+  * Basic arithmetic: +, -, *, /, ^, %
+  * Functions: abs(), sqrt(), log(), log2(), log10()
+  * Parentheses for operation precedence
+
+# Returns
+- `Phenomes`: A new Phenomes struct with the composite trait added as the last column
+
+# Examples
 ```jldoctest; setup = :(using GBCore)
 julia> phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = rand(10,3);
 

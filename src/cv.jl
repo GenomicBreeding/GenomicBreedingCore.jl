@@ -1,6 +1,20 @@
 """
     clone(x::CV)::CV
 
+Create a deep copy of a CV (cross-validation) object.
+
+Creates a new CV object with deep copies of all fields from the input object.
+The clone function ensures that modifications to the cloned object do not affect 
+the original object.
+
+# Arguments
+- `x::CV`: The CV object to be cloned
+
+# Returns
+- `CV`: A new CV object containing deep copies of all fields from the input
+
+# Example
+
 Clone a CV object
 
 ## Example
@@ -29,10 +43,33 @@ end
 """
     Base.hash(x::CV, h::UInt)::UInt
 
-Hash a CV struct using the entries, populations and loci_alleles.
-We deliberately excluded the allele_frequencies, and mask for efficiency.
+Compute a hash value for a CV (Cross-Validation) struct.
 
-## Examples
+This method defines how CV structs should be hashed, which is useful for
+using CV objects in hash-based collections like Sets or as Dict keys.
+
+# Arguments
+- `x::CV`: The CV struct to be hashed
+- `h::UInt`: The hash value to be mixed with the new hash
+
+# Returns
+- `UInt`: A hash value for the CV struct
+
+# Implementation Details
+The hash is computed by combining the following fields:
+- replication
+- fold
+- fit
+- validation_populations
+- validation_entries
+- validation_y_true
+- validation_y_pred
+- metrics
+
+Note: `allele_frequencies` and `mask` fields are deliberately excluded from
+the hash computation for performance reasons.
+
+# Example
 ```jldoctest; setup = :(using GBCore)
 julia> fit = Fit(n=1, l=2);
 
@@ -68,9 +105,19 @@ end
 """
     Base.:(==)(x::CV, y::CV)::Bool
 
-Equality of CV structs using the hash function defined for CV structs.
+Compare two CV (Cross-Validation) structs for equality.
 
-## Examples
+This method overloads the equality operator (`==`) for CV structs by comparing their hash values.
+Two CV structs are considered equal if they have identical values for all fields.
+
+# Arguments
+- `x::CV`: First CV struct to compare
+- `y::CV`: Second CV struct to compare
+
+# Returns
+- `Bool`: `true` if the CV structs are equal, `false` otherwise
+
+# Examples
 ```jldoctest; setup = :(using GBCore)
 julia> fit = Fit(n=1, l=2);
 
@@ -95,7 +142,17 @@ end
 """
     checkdims(cv::CV)::Bool
 
-Check dimension compatibility of the fields of the CV struct
+Check dimension compatibility of the fields of the CV struct.
+
+The function verifies that:
+- The fit object dimensions are valid
+- The number of validation populations matches the number of validation entries
+- The number of validation true values matches the number of validation predictions
+- The number of metrics matches the number of metrics in the fit object
+
+Returns:
+- `true` if all dimensions are compatible
+- `false` if any dimension mismatch is found
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
@@ -128,7 +185,42 @@ end
 """
     tabularise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
 
-Export a vector of CV structs into data frames of metrics across entries and per validation entry
+Convert a vector of CV (Cross-Validation) structs into two DataFrames containing metrics and predictions.
+
+# Arguments
+- `cvs::Vector{CV}`: Vector of CV structs containing cross-validation results
+
+# Returns
+- `Tuple{DataFrame,DataFrame}`: A tuple of two DataFrames:
+  1. `df_across_entries`: Contains aggregated metrics across entries with columns:
+     - `training_population`: Semicolon-separated list of training populations
+     - `validation_population`: Semicolon-separated list of validation populations
+     - `trait`: Name of the trait
+     - `model`: Name of the model used
+     - `replication`: Replication identifier
+     - `fold`: Fold identifier
+     - `training_size`: Number of entries in training set
+     - `validation_size`: Number of entries in validation set
+     - Additional columns for each metric (e.g., `cor`, `rmse`)
+
+  2. `df_per_entry`: Contains per-entry predictions with columns:
+     - `training_population`: Training population identifier
+     - `validation_population`: Validation population identifier
+     - `entry`: Entry identifier
+     - `trait`: Name of the trait
+     - `model`: Name of the model used
+     - `replication`: Replication identifier
+     - `fold`: Fold identifier
+     - `y_true`: True values
+     - `y_pred`: Predicted values
+
+# Throws
+- `ArgumentError`: If input vector is empty or if any CV struct is corrupted
+
+# Notes
+- Warns if there are empty CV structs resulting from insufficient training sizes or fixed traits
+- Metrics are extracted from the `metrics` dictionary in each CV struct
+- Population identifiers are sorted and joined with semicolons when multiple populations exist
 
 # Examples
 ```jldoctest; setup = :(using GBCore, DataFrames)
@@ -280,10 +372,27 @@ end
 """
     summarise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
 
-Summarise a vector of CV structs into:
+Summarize cross-validation results from a vector of CV structs into two DataFrames.
 
-- a data frame of mean metrics, and
-- a data frame of mean and standard deviation of phenotype predictions per entry, trait and model.
+# Returns
+- A tuple containing two DataFrames:
+  1. Summary DataFrame with mean metrics across entries, replications, and folds
+     - Contains means and standard deviations of correlation coefficients
+     - Includes average training and validation set sizes
+     - Grouped by training population, validation population, trait, and model
+  2. Entry-level DataFrame with phenotype prediction statistics
+     - Contains true phenotype values, predicted means (μ), and standard deviations (σ)
+     - Grouped by training population, validation population, trait, model, and entry
+
+# Arguments
+- `cvs::Vector{CV}`: Vector of CV structs containing cross-validation results
+
+# Notes
+- Validates dimensions of input CV structs before processing
+- Handles missing values in phenotype predictions
+
+# Throws
+- `ArgumentError`: If any CV struct in the input vector has inconsistent dimensions
 
 # Examples
 ```jldoctest; setup = :(using GBCore, DataFrames)
