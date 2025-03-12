@@ -278,12 +278,13 @@ function loci_alleles(genomes::Genomes)::Tuple{Vector{String},Vector{Int64},Vect
     chromosomes::Vector{String} = []
     positions::Vector{Int64} = []
     alleles::Vector{String} = []
-    for locus in genomes.loci_alleles
+    thread_lock::ReentrantLock = ReentrantLock()
+    Threads.@threads for locus in genomes.loci_alleles
         # locus = genomes.loci_alleles[1]
         locus_ids::Vector{String} = split(locus, '\t')
-        push!(chromosomes, locus_ids[1])
-        push!(positions, parse(Int64, locus_ids[2]))
-        push!(alleles, locus_ids[4])
+        @lock thread_lock push!(chromosomes, locus_ids[1])
+        @lock thread_lock push!(positions, parse(Int64, locus_ids[2]))
+        @lock thread_lock push!(alleles, locus_ids[4])
     end
     return (chromosomes, positions, alleles)
 end
@@ -323,21 +324,22 @@ function loci(genomes::Genomes)::Tuple{Vector{String},Vector{Int64},Vector{Int64
     loci_ini_idx::Vector{Int64} = []
     loci_fin_idx::Vector{Int64} = []
     idx::Int64 = 0
-    for locus in genomes.loci_alleles
+    thread_lock::ReentrantLock = ReentrantLock()
+    Threads.@threads for locus in genomes.loci_alleles
         # locus = genomes.loci_alleles[1]
-        idx += 1
+        @lock thread_lock idx += 1
         locus_ids::Vector{String} = split(locus, '\t')
         if length(chromosomes) == 0
-            push!(chromosomes, locus_ids[1])
-            push!(positions, parse(Int64, locus_ids[2]))
-            push!(loci_ini_idx, idx)
+            @lock thread_lock push!(chromosomes, locus_ids[1])
+            @lock thread_lock push!(positions, parse(Int64, locus_ids[2]))
+            @lock thread_lock push!(loci_ini_idx, idx)
         else
             if ((chromosomes[end] == locus_ids[1]) && (positions[end] != parse(Int64, locus_ids[2]))) ||
                (chromosomes[end] != locus_ids[1])
-                push!(chromosomes, locus_ids[1])
-                push!(positions, parse(Int64, locus_ids[2]))
-                push!(loci_ini_idx, idx)
-                push!(loci_fin_idx, idx - 1)
+                @lock thread_lock push!(chromosomes, locus_ids[1])
+                @lock thread_lock push!(positions, parse(Int64, locus_ids[2]))
+                @lock thread_lock push!(loci_ini_idx, idx)
+                @lock thread_lock push!(loci_fin_idx, idx - 1)
             end
         end
     end
@@ -743,15 +745,16 @@ function slice(
     end
     n, p = length(idx_entries), length(idx_loci_alleles)
     sliced_genomes::Genomes = Genomes(n = n, p = p)
-    for (i1, i2) in enumerate(idx_entries)
-        sliced_genomes.entries[i1] = genomes.entries[i2]
-        sliced_genomes.populations[i1] = genomes.populations[i2]
+    thread_lock::ReentrantLock = ReentrantLock()
+    Threads.@threads for (i1, i2) in enumerate(idx_entries)
+        @lock thread_lock sliced_genomes.entries[i1] = genomes.entries[i2]
+        @lock thread_lock sliced_genomes.populations[i1] = genomes.populations[i2]
         for (j1, j2) in enumerate(idx_loci_alleles)
             if i1 == 1
-                sliced_genomes.loci_alleles[j1] = genomes.loci_alleles[j2]
+                @lock thread_lock sliced_genomes.loci_alleles[j1] = genomes.loci_alleles[j2]
             end
-            sliced_genomes.allele_frequencies[i1, j1] = genomes.allele_frequencies[i2, j2]
-            sliced_genomes.mask[i1, j1] = genomes.mask[i2, j2]
+            @lock thread_lock sliced_genomes.allele_frequencies[i1, j1] = genomes.allele_frequencies[i2, j2]
+            @lock thread_lock sliced_genomes.mask[i1, j1] = genomes.mask[i2, j2]
         end
     end
     ### Check dimensions
@@ -864,16 +867,18 @@ function Base.filter(
     if (maf < 0.0) || (maf > 1.0)
         throw(ArgumentError("We accept `maf` from 0.0 to 1.0."))
     end
+    # Define thread lock
+    thread_lock::ReentrantLock = ReentrantLock()
     # Filter by entry sparsity, locus sparsity and minimum allele frequency thresholds
     entry_sparsities::Array{Float64,1} = fill(0.0, length(genomes.entries))
     mean_frequencies::Array{Float64,1} = fill(0.0, length(genomes.loci_alleles))
     locus_sparsities::Array{Float64,1} = fill(0.0, length(genomes.loci_alleles))
-    for i in eachindex(entry_sparsities)
-        entry_sparsities[i] = mean(Float64.(ismissing.(genomes.allele_frequencies[i, :])))
+    Threads.@threads for i in eachindex(entry_sparsities)
+        @lock thread_lock entry_sparsities[i] = mean(Float64.(ismissing.(genomes.allele_frequencies[i, :])))
     end
-    for j in eachindex(mean_frequencies)
-        mean_frequencies[j] = mean(skipmissing(genomes.allele_frequencies[:, j]))
-        locus_sparsities[j] = mean(Float64.(ismissing.(genomes.allele_frequencies[:, j])))
+    Threads.@threads for j in eachindex(mean_frequencies)
+        @lock thread_lock mean_frequencies[j] = mean(skipmissing(genomes.allele_frequencies[:, j]))
+        @lock thread_lock locus_sparsities[j] = mean(Float64.(ismissing.(genomes.allele_frequencies[:, j])))
     end
     idx_entries::Array{Int64,1} = findall((entry_sparsities .<= max_entry_sparsity))
     idx_loci_alleles::Array{Int64,1} = findall(
@@ -913,12 +918,13 @@ function Base.filter(
     end
     # Are we filtering using a list of loci-allele combination names?
     if !isnothing(chr_pos_allele_ids) && (length(chr_pos_allele_ids) > 0)
-        requested_chr, requested_pos, requested_all = begin
+        # Parse and make sure the input loci-allele combination names are valid
+        requested_chr_pos_allele_ids = begin
             chr::Vector{String} = fill("", length(chr_pos_allele_ids))
             pos::Vector{Int64} = fill(0, length(chr_pos_allele_ids))
             ale::Vector{String} = fill("", length(chr_pos_allele_ids))
             ids::Vector{String} = []
-            for i in eachindex(chr_pos_allele_ids)
+            Threads.@threads for i in eachindex(chr_pos_allele_ids)
                 ids = split(chr_pos_allele_ids[i], "\t")
                 if length(ids) < 3
                     throw(
@@ -932,8 +938,8 @@ function Base.filter(
                         ),
                     )
                 end
-                chr[i] = ids[1]
-                pos[i] = try
+                @lock thread_lock chr[i] = ids[1]
+                @lock thread_lock pos[i] = try
                     Int64(parse(Float64, ids[2]))
                 catch
                     throw(
@@ -947,21 +953,24 @@ function Base.filter(
                         ),
                     )
                 end
-                ale[i] = ids[end]
+                @lock thread_lock ale[i] = ids[end]
             end
-            chr, pos, ale
+            string.(chr, "\t", pos, "\t", ale)
         end
+        # Extract the loci-allele combination names from the genomes struct
         chromosomes, positions, alleles = loci_alleles(genomes)
-        idx_loci_alleles = filter(
-            i -> (
-                sum(
-                    (chromosomes[i] .== requested_chr) .&&
-                    (positions[i] .== requested_pos) .&&
-                    (alleles[i] .== requested_all),
-                ) > 0
-            ),
-            idx_loci_alleles,
-        )
+        available_chr_pos_allele_ids = string.(chromosomes, "\t", positions, "\t", alleles)
+        # Find the loci-allele combination indices to retain
+        idx_loci_alleles = []
+        Threads.@threads for i in eachindex(available_chr_pos_allele_ids)
+            # i = 1
+            if length(idx_loci_alleles) == length(requested_chr_pos_allele_ids)
+                continue
+            end
+            if available_chr_pos_allele_ids[i] ∈ requested_chr_pos_allele_ids
+                @lock thread_lock push!(idx_loci_alleles, i)
+            end
+        end
         if length(idx_loci_alleles) == 0
             throw(
                 ErrorException(
