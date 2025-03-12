@@ -934,7 +934,7 @@ function Base.filter(
                 end
                 chr[i] = ids[1]
                 pos[i] = try
-                    parse(Int64, ids[2])
+                    Int64(parse(Float64, ids[2]))
                 catch
                     throw(
                         ArgumentError(
