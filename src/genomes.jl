@@ -275,16 +275,17 @@ function loci_alleles(genomes::Genomes)::Tuple{Vector{String},Vector{Int64},Vect
     if !checkdims(genomes)
         throw(ArgumentError("Genomes struct is corrupted."))
     end
-    chromosomes::Vector{String} = []
-    positions::Vector{Int64} = []
-    alleles::Vector{String} = []
+    p = length(genomes.loci_alleles)
+    chromosomes = Vector{String}(undef, p)
+    positions = Vector{Int64}(undef, p)
+    alleles = Vector{String}(undef, p)
     thread_lock::ReentrantLock = ReentrantLock()
-    Threads.@threads for locus in genomes.loci_alleles
-        # locus = genomes.loci_alleles[1]
+    Threads.@threads for i = 1:p
+        locus = genomes.loci_alleles[i]
         locus_ids::Vector{String} = split(locus, '\t')
-        @lock thread_lock push!(chromosomes, locus_ids[1])
-        @lock thread_lock push!(positions, parse(Int64, locus_ids[2]))
-        @lock thread_lock push!(alleles, locus_ids[4])
+        @lock thread_lock chromosomes[i] = locus_ids[1]
+        @lock thread_lock positions[i] = parse(Int64, locus_ids[2])
+        @lock thread_lock alleles[i] = locus_ids[4]
     end
     return (chromosomes, positions, alleles)
 end
@@ -323,23 +324,21 @@ function loci(genomes::Genomes)::Tuple{Vector{String},Vector{Int64},Vector{Int64
     positions::Vector{Int64} = []
     loci_ini_idx::Vector{Int64} = []
     loci_fin_idx::Vector{Int64} = []
-    idx::Int64 = 0
-    thread_lock::ReentrantLock = ReentrantLock()
-    Threads.@threads for locus in genomes.loci_alleles
-        # locus = genomes.loci_alleles[1]
-        @lock thread_lock idx += 1
+    # Cannot be multi-threaded as we need the loci-alleles sorted
+    for i in eachindex(genomes.loci_alleles)
+        locus = genomes.loci_alleles[i]
         locus_ids::Vector{String} = split(locus, '\t')
-        if length(chromosomes) == 0
-            @lock thread_lock push!(chromosomes, locus_ids[1])
-            @lock thread_lock push!(positions, parse(Int64, locus_ids[2]))
-            @lock thread_lock push!(loci_ini_idx, idx)
+        if i == 1
+            push!(chromosomes, locus_ids[1])
+            push!(positions, parse(Int64, locus_ids[2]))
+            push!(loci_ini_idx, i)
         else
             if ((chromosomes[end] == locus_ids[1]) && (positions[end] != parse(Int64, locus_ids[2]))) ||
                (chromosomes[end] != locus_ids[1])
-                @lock thread_lock push!(chromosomes, locus_ids[1])
-                @lock thread_lock push!(positions, parse(Int64, locus_ids[2]))
-                @lock thread_lock push!(loci_ini_idx, idx)
-                @lock thread_lock push!(loci_fin_idx, idx - 1)
+                push!(chromosomes, locus_ids[1])
+                push!(positions, parse(Int64, locus_ids[2]))
+                push!(loci_ini_idx, i)
+                push!(loci_fin_idx, i - 1)
             end
         end
     end
@@ -702,7 +701,7 @@ Create a subset of a `Genomes` struct by selecting specific entries and loci-all
 ```jldoctest; setup = :(using GBCore)
 julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
 
-julia> sliced_genomes = slice(genomes, idx_entries=collect(1:10); idx_loci_alleles=collect(1:300));
+julia> sliced_genomes = slice(genomes, idx_entries=collect(1:10), idx_loci_alleles=collect(1:300));
 
 julia> dimensions(sliced_genomes)
 Dict{String, Int64} with 7 entries:
@@ -746,10 +745,11 @@ function slice(
     n, p = length(idx_entries), length(idx_loci_alleles)
     sliced_genomes::Genomes = Genomes(n = n, p = p)
     thread_lock::ReentrantLock = ReentrantLock()
-    Threads.@threads for (i1, i2) in enumerate(idx_entries)
-        @lock thread_lock sliced_genomes.entries[i1] = genomes.entries[i2]
-        @lock thread_lock sliced_genomes.populations[i1] = genomes.populations[i2]
-        for (j1, j2) in enumerate(idx_loci_alleles)
+    for (i1, i2) in enumerate(idx_entries)
+        sliced_genomes.entries[i1] = genomes.entries[i2]
+        sliced_genomes.populations[i1] = genomes.populations[i2]
+        Threads.@threads for j1 in eachindex(idx_loci_alleles)
+            j2 = idx_loci_alleles[j1]
             if i1 == 1
                 @lock thread_lock sliced_genomes.loci_alleles[j1] = genomes.loci_alleles[j2]
             end
@@ -916,14 +916,16 @@ function Base.filter(
             ),
         )
     end
+    # Slice the genomes struct
+    filtered_genomes = slice(genomes, idx_entries = idx_entries, idx_loci_alleles = idx_loci_alleles)
+    # @show dimensions(filtered_genomes)
     # Are we filtering using a list of loci-allele combination names?
-    if !isnothing(chr_pos_allele_ids) && (length(chr_pos_allele_ids) > 0)
+    filtered_genomes = if !isnothing(chr_pos_allele_ids) && (length(chr_pos_allele_ids) > 0)
         # Parse and make sure the input loci-allele combination names are valid
         requested_chr_pos_allele_ids = begin
             chr::Vector{String} = fill("", length(chr_pos_allele_ids))
             pos::Vector{Int64} = fill(0, length(chr_pos_allele_ids))
             ale::Vector{String} = fill("", length(chr_pos_allele_ids))
-            ids::Vector{String} = []
             Threads.@threads for i in eachindex(chr_pos_allele_ids)
                 ids = split(chr_pos_allele_ids[i], "\t")
                 if length(ids) < 3
@@ -955,22 +957,23 @@ function Base.filter(
                 end
                 @lock thread_lock ale[i] = ids[end]
             end
-            string.(chr, "\t", pos, "\t", ale)
+            sort(string.(chr, "\t", pos, "\t", ale))
         end
-        # Extract the loci-allele combination names from the genomes struct
-        chromosomes, positions, alleles = loci_alleles(genomes)
+        # @show length(requested_chr_pos_allele_ids)
+        # @show hash(requested_chr_pos_allele_ids)
+        # Extract the loci-allele combination names from the filtered_genomes struct
+        chromosomes, positions, alleles = loci_alleles(filtered_genomes)
         available_chr_pos_allele_ids = string.(chromosomes, "\t", positions, "\t", alleles)
+        # @show length(available_chr_pos_allele_ids)
+        # @show hash(available_chr_pos_allele_ids)
         # Find the loci-allele combination indices to retain
-        idx_loci_alleles = []
-        Threads.@threads for i in eachindex(available_chr_pos_allele_ids)
+        bool_loci_alleles::Vector{Bool} = fill(false, length(available_chr_pos_allele_ids))
+        for i in eachindex(available_chr_pos_allele_ids)
             # i = 1
-            if length(idx_loci_alleles) == length(requested_chr_pos_allele_ids)
-                continue
-            end
-            if available_chr_pos_allele_ids[i] ∈ requested_chr_pos_allele_ids
-                @lock thread_lock push!(idx_loci_alleles, i)
-            end
+            bool_loci_alleles[i] = available_chr_pos_allele_ids[i] ∈ requested_chr_pos_allele_ids
         end
+        idx_loci_alleles = findall(bool_loci_alleles)
+        # @show length(idx_loci_alleles)
         if length(idx_loci_alleles) == 0
             throw(
                 ErrorException(
@@ -985,9 +988,12 @@ function Base.filter(
                 ),
             )
         end
+        slice(filtered_genomes, idx_loci_alleles = idx_loci_alleles)
+    else
+        filtered_genomes
     end
+    # @show dimensions(filtered_genomes)
     # Output
-    filtered_genomes::Genomes = slice(genomes, idx_entries = idx_entries; idx_loci_alleles = idx_loci_alleles)
     filtered_genomes
 end
 
