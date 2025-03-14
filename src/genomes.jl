@@ -1299,7 +1299,57 @@ function Base.merge(genomes::Genomes, phenomes::Phenomes; keep_all::Bool = true)
 end
 
 # TODO: implement AOPTIM with automatic arbitrary classification into mock scaffolds based on data size
-function impute(genomes::Genomes)::Genomes
-    # genomes = simulategenomes(n=10, sparsity=0.3, verbose=false);
-
+function impute(genomes::Genomes, max_n_loci_per_chrom::Int64 = 100_000, verbose::Bool = false)::Genomes
+    # genomes = simulategenomes(n=10, sparsity=0.3, verbose=false); max_n_loci_per_chrom = 100; verbose = true
+    # Check input arguments
+    if !checkdims(genomes)
+        throw(ArgumentError("The Genomes struct is corrupted."))
+    end
+    # Instantiate the output Genomes struct
+    n, p = size(genomes.allele_frequencies)
+    out::Genomes = Genomes(n = n, p = p)
+    # Divide the allele frequencies into mock scaffolds if we have more than 100,000 loci per scaffold for at least 1 scaffold
+    chromosomes, positions, alleles = loci_alleles(genomes)
+    max_m = 1
+    for chrom in unique(chromosomes)
+        m = sum(chromosomes .== chrom)
+        max_m = if max_m < m
+            m
+        else
+            max_m
+        end
+    end
+    chromosomes = if max_m > max_n_loci_per_chrom
+        # Divide the loci into mock scaffolds
+        n_scaffolds = Int(ceil(p / max_n_loci_per_chrom))
+        mock_scalfolds = fill("", p)
+        for i = 1:n_scaffolds
+            # i = 1
+            idx_ini = ((i - 1) * max_n_loci_per_chrom) + 1
+            idx_fin = if i == n_scaffolds
+                p
+            else
+                i * max_n_loci_per_chrom
+            end
+            mock_scalfolds[idx_ini:idx_fin] .= string("mock_scaffold_", i)
+        end
+        mock_scalfolds
+    else
+        chromosomes
+    end
+    # Estimate linkage disequilibrium (LD) between loci using Pearson's correlation per chromosome
+    LDs::Vector{Matrix{Float64}} = []
+    for chrom in unique(chromosomes)
+        # chrom = unique(chromosomes)[1]
+        (_loci_alleles, _entries, dist) =
+            distances(genomes, distance_metrics = ["correlation"], idx_loci_alleles = findall(chromosomes .== chrom))
+        push!(LDs, dist["loci_alleles|correlation"])
+    end
+    # TODO: 
+    # distance estimation via MAE
+    # simulate missing data per locus-allele with at least 1 missing data
+    # optimise for minimum loci correlation and maximum pool distance per locus-allele
+    # impute missing data per locus-allele
+    # Output
+    out
 end
