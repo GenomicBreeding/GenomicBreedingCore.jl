@@ -27,13 +27,12 @@ Genomes(["", ""], ["", ""], ["", ""], Union{Missing, Float64}[missing missing; m
 ```
 """
 function clone(x::Genomes)::Genomes
-    y::Genomes = Genomes(n = length(x.entries), p = length(x.loci_alleles))
-    y.entries = deepcopy(x.entries)
-    y.populations = deepcopy(x.populations)
-    y.loci_alleles = deepcopy(x.loci_alleles)
-    y.allele_frequencies = deepcopy(x.allele_frequencies)
-    y.mask = deepcopy(x.mask)
-    y
+    out = Genomes(n = length(x.entries), p = length(x.loci_alleles))
+    for field in fieldnames(typeof(x))
+        # field = fieldnames(typeof(x))[1]
+        setfield!(out, field, deepcopy(getfield(x, field)))
+    end
+    out
 end
 
 
@@ -66,8 +65,14 @@ UInt64
 ```
 """
 function Base.hash(x::Genomes, h::UInt)::UInt
-    # hash(Genomes, hash(x.entries, hash(x.populations, hash(x.loci_alleles, hash(x.allele_frequencies, hash(x.mask, h))))))
-    hash(Genomes, hash(x.entries, hash(x.populations, hash(x.loci_alleles, h))))
+    for field in fieldnames(typeof(x))
+        # field = fieldnames(typeof(x))[1]
+        if field == :allele_frequencies || field == :mask
+            continue
+        end
+        h = hash(getfield(x, field), h)
+    end
+    h
 end
 
 
@@ -1291,4 +1296,10 @@ function Base.merge(genomes::Genomes, phenomes::Phenomes; keep_all::Bool = true)
         throw(ErrorException("Error merging Genomes and Phenomes structs"))
     end
     out_genomes, out_phenomes
+end
+
+# TODO: implement AOPTIM with automatic arbitrary classification into mock scaffolds based on data size
+function impute(genomes::Genomes)::Genomes
+    # genomes = simulategenomes(n=10, sparsity=0.3, verbose=false);
+
 end

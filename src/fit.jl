@@ -29,21 +29,16 @@ original and the cloned object.
 julia> fit = Fit(n=1, l=2);
 
 julia> copy_fit = clone(fit)
-Fit("", ["", ""], [0.0, 0.0], "", [""], [""], [0.0], [0.0], Dict("" => 0.0))
+Fit("", ["", ""], [0.0, 0.0], "", [""], [""], [0.0], [0.0], Dict("" => 0.0), nothing)
 ```
 """
 function clone(x::Fit)::Fit
-    y::Fit = Fit(n = length(x.y_true), l = length(x.b_hat_labels))
-    y.model = deepcopy(x.model)
-    y.b_hat_labels = deepcopy(x.b_hat_labels)
-    y.b_hat = deepcopy(x.b_hat)
-    y.trait = deepcopy(x.trait)
-    y.entries = deepcopy(x.entries)
-    y.populations = deepcopy(x.populations)
-    y.metrics = deepcopy(x.metrics)
-    y.y_true = deepcopy(x.y_true)
-    y.y_pred = deepcopy(x.y_pred)
-    y
+    out = Fit(n = length(x.y_true), l = length(x.b_hat_labels))
+    for field in fieldnames(typeof(x))
+        # field = fieldnames(typeof(x))[1]
+        setfield!(out, field, deepcopy(getfield(x, field)))
+    end
+    out
 end
 
 
@@ -63,9 +58,6 @@ in a specific order. The hash is computed using the following fields:
 - y_true (observed values)
 - y_pred (predicted values)
 
-Note that `allele_frequencies` and `mask` fields are deliberately excluded from the hash
-calculation for performance reasons.
-
 # Arguments
 - `x::Fit`: The Fit struct to be hashed
 - `h::UInt`: The hash value to be mixed with
@@ -82,16 +74,11 @@ UInt64
 ```
 """
 function Base.hash(x::Fit, h::UInt)::UInt
-    hash(
-        Fit,
-        hash(
-            x.model,
-            hash(
-                x.b_hat,
-                hash(x.trait, hash(x.entries, hash(x.populations, hash(x.metrics, hash(x.y_true, hash(x.y_pred, h)))))),
-            ),
-        ),
-    )
+    for field in fieldnames(typeof(x))
+        # field = fieldnames(typeof(x))[1]
+        h = hash(getfield(x, field), h)
+    end
+    h
 end
 
 
@@ -196,7 +183,6 @@ julia> distribution = [TDist(1), Normal()][2];
 julia> fit = Fit(n=100, l=10_000); fit.b_hat = rand(distribution, 10_000);  α = 0.05;
 
 julia> GBCore.plot(fit);
-
 ```
 """
 function plot(fit::Fit, distribution::Any = [TDist(1), Normal()][2], α::Float64 = 0.05)

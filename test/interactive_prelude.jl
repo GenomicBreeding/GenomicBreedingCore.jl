@@ -16,3 +16,4 @@ using UnicodePlots, Plots
 using ProgressMeter
 using Suppressor
 using Suppressor
+using Lux # for Fit deep learning model

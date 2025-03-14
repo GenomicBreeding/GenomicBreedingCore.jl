@@ -9,6 +9,7 @@ using MixedModels
 using UnicodePlots, Plots
 using ProgressMeter
 using Suppressor
+using Lux # for Fit deep learning model
 using PrecompileTools: @compile_workload
 
 include("all_structs.jl")

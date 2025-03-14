@@ -21,21 +21,12 @@ Trials(Union{Missing, Float64}[missing missing; missing missing], ["", ""], ["",
 ```
 """
 function clone(x::Trials)::Trials
-    y::Trials = Trials(n = length(x.entries), t = length(x.traits))
-    y.entries = deepcopy(x.entries)
-    y.phenotypes = deepcopy(x.phenotypes)
-    y.traits = deepcopy(x.traits)
-    y.years = deepcopy(x.years)
-    y.seasons = deepcopy(x.seasons)
-    y.harvests = deepcopy(x.harvests)
-    y.sites = deepcopy(x.sites)
-    y.replications = deepcopy(x.replications)
-    y.blocks = deepcopy(x.blocks)
-    y.rows = deepcopy(x.rows)
-    y.cols = deepcopy(x.cols)
-    y.entries = deepcopy(x.entries)
-    y.populations = deepcopy(x.populations)
-    y
+    out = Trials(n = length(x.entries), t = length(x.traits))
+    for field in fieldnames(typeof(x))
+        # field = fieldnames(typeof(x))[1]
+        setfield!(out, field, deepcopy(getfield(x, field)))
+    end
+    out
 end
 
 
@@ -63,31 +54,11 @@ UInt64
 ```
 """
 function Base.hash(x::Trials, h::UInt)::UInt
-    hash(
-        Trials,
-        hash(
-            x.phenotypes,
-            hash(
-                x.traits,
-                hash(
-                    x.years,
-                    hash(
-                        x.seasons,
-                        hash(
-                            x.harvests,
-                            hash(
-                                x.sites,
-                                hash(
-                                    x.replications,
-                                    hash(x.blocks, hash(x.rows, hash(x.cols, hash(x.entries, hash(x.populations, h))))),
-                                ),
-                            ),
-                        ),
-                    ),
-                ),
-            ),
-        ),
-    )
+    for field in fieldnames(typeof(x))
+        # field = fieldnames(typeof(x))[1]
+        h = hash(getfield(x, field), h)
+    end
+    h
 end
 
 

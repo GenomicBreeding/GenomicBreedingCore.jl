@@ -344,6 +344,7 @@ mutable struct Fit <: AbstractGB
     y_true::Vector{Float64}
     y_pred::Vector{Float64}
     metrics::Dict{String,Float64}
+    lux_model::Union{Nothing,Chain}
     function Fit(; n::Int64, l::Int64)
         new(
             "",
@@ -355,6 +356,7 @@ mutable struct Fit <: AbstractGB
             zeros(n),
             zeros(n),
             Dict("" => 0.0),
+            nothing,
         )
     end
 end

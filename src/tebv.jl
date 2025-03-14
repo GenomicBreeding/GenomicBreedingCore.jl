@@ -69,8 +69,14 @@ UInt64
 ```
 """
 function Base.hash(x::TEBV, h::UInt)::UInt
-    # hash(TEBV, hash(x.traits, hash(x.formulae, hash(x.models, hash(x.df_BLUEs, hash(x.df_BLUPs, hash(x.phenomes, h)))))))
-    hash(TEBV, hash(x.traits, hash(x.formulae, hash(x.phenomes, h))))
+    for field in fieldnames(typeof(x))
+        # field = fieldnames(typeof(x))[1]
+        if field == :df_BLUEs || field == :df_BLUPs || field == :models
+            continue
+        end
+        h = hash(getfield(x, field), h)
+    end
+    h
 end
 
 
@@ -94,7 +100,7 @@ traits, formulae, models, df_BLUEs, df_BLUPs, and phenomes.
 ```jldoctest; setup = :(using GBCore, MixedModels, DataFrames)
 julia> tebv_1 = TEBV(traits=[""], formulae=[""], models=[MixedModel(@formula(y~1+(1|x)), DataFrame(y=1, x=1))], df_BLUEs=[DataFrame(x=1)], df_BLUPs=[DataFrame(x=1)], phenomes=[Phenomes(n=1,t=1)]);
 
-julia> tebv_2 = TEBV(traits=[""], formulae=[""], models=[MixedModel(@formula(y~1+(1|x)), DataFrame(y=1, x=1))], df_BLUEs=[DataFrame(x=1)], df_BLUPs=[DataFrame(x=1)], phenomes=[Phenomes(n=1,t=1)]);
+julia> tebv_2 = clone(tebv_1);
 
 julia> tebv_3 = TEBV(traits=["SOMETHING_ELSE"], formulae=[""], models=[MixedModel(@formula(y~1+(1|x)), DataFrame(y=1, x=1))], df_BLUEs=[DataFrame(x=1)], df_BLUPs=[DataFrame(x=1)], phenomes=[Phenomes(n=1,t=1)]);
 

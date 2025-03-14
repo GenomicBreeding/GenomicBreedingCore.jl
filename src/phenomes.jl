@@ -27,13 +27,12 @@ Phenomes(["", ""], ["", ""], ["", ""], Union{Missing, Float64}[missing missing; 
 ```
 """
 function clone(x::Phenomes)::Phenomes
-    y::Phenomes = Phenomes(n = length(x.entries), t = length(x.traits))
-    y.entries = deepcopy(x.entries)
-    y.populations = deepcopy(x.populations)
-    y.traits = deepcopy(x.traits)
-    y.phenotypes = deepcopy(x.phenotypes)
-    y.mask = deepcopy(x.mask)
-    y
+    out = Phenomes(n = length(x.entries), t = length(x.traits))
+    for field in fieldnames(typeof(x))
+        # field = fieldnames(typeof(x))[1]
+        setfield!(out, field, deepcopy(getfield(x, field)))
+    end
+    out
 end
 
 """
@@ -62,7 +61,11 @@ UInt64
 ```
 """
 function Base.hash(x::Phenomes, h::UInt)::UInt
-    hash(Phenomes, hash(x.entries, hash(x.populations, hash(x.traits, hash(x.phenotypes, hash(x.mask, h))))))
+    for field in fieldnames(typeof(x))
+        # field = fieldnames(typeof(x))[1]
+        h = hash(getfield(x, field), h)
+    end
+    h
 end
 
 

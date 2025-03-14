@@ -24,7 +24,7 @@ julia> fit = Fit(n=1, l=2);
 julia> cv = CV("replication_1", "fold_1", fit, ["population_1"], ["entry_1"], [0.0], [0.0], fit.metrics);
 
 julia> copy_cv = clone(cv)
-CV("replication_1", "fold_1", Fit("", ["", ""], [0.0, 0.0], "", [""], [""], [0.0], [0.0], Dict("" => 0.0)), ["population_1"], ["entry_1"], [0.0], [0.0], Dict("" => 0.0))
+CV("replication_1", "fold_1", Fit("", ["", ""], [0.0, 0.0], "", [""], [""], [0.0], [0.0], Dict("" => 0.0), nothing), ["population_1"], ["entry_1"], [0.0], [0.0], Dict("" => 0.0))
 ```
 """
 function clone(x::CV)::CV
@@ -66,9 +66,6 @@ The hash is computed by combining the following fields:
 - validation_y_pred
 - metrics
 
-Note: `allele_frequencies` and `mask` fields are deliberately excluded from
-the hash computation for performance reasons.
-
 # Example
 ```jldoctest; setup = :(using GBCore)
 julia> fit = Fit(n=1, l=2);
@@ -80,25 +77,11 @@ UInt64
 ```
 """
 function Base.hash(x::CV, h::UInt)::UInt
-    hash(
-        CV,
-        hash(
-            x.replication,
-            hash(
-                x.fold,
-                hash(
-                    x.fit,
-                    hash(
-                        x.validation_populations,
-                        hash(
-                            x.validation_entries,
-                            hash(x.validation_y_true, hash(x.validation_y_pred, hash(x.metrics, h))),
-                        ),
-                    ),
-                ),
-            ),
-        ),
-    )
+    for field in fieldnames(typeof(x))
+        # field = fieldnames(typeof(x))[1]
+        h = hash(getfield(x, field), h)
+    end
+    h
 end
 
 
