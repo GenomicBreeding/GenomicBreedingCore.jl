@@ -381,6 +381,9 @@ end
         genomes::Genomes; 
         distance_metrics::Vector{String}=["euclidean", "correlation", "mad", "rmsd", "χ²"],
         idx_loci_alleles::Union{Nothing, Vector{Int64}} = nothing,
+        include_loci_alleles::Bool = true,
+        include_entries::Bool = true,
+        include_counts::Bool = true,
         verbose::Bool = false
     )::Tuple{Vector{String},Vector{String},Dict{String,Matrix{Float64}}}
 
@@ -395,6 +398,9 @@ Calculate pairwise distances/similarity metrics between loci-alleles and entries
   - "rmsd": Root mean square deviation 
   - "χ²": Chi-square distance
 - `idx_loci_alleles::Union{Nothing, Vector{Int64}}`: Optional indices of loci-alleles to include. If nothing, randomly samples 100 loci-alleles.
+- `include_loci_alleles::Bool`: Whether to calculate distances between loci-alleles. Defaults to true.
+- `include_entries::Bool`: Whether to calculate distances between entries. Defaults to true.
+- `include_counts::Bool`: Whether to include matrices showing number of valid pairs used. Defaults to true.
 - `verbose::Bool`: Whether to show progress bars. Defaults to false.
 
 # Returns
@@ -430,10 +436,14 @@ function distances(
     genomes::Genomes;
     distance_metrics::Vector{String} = ["euclidean", "correlation", "mad", "rmsd", "χ²"],
     idx_loci_alleles::Union{Nothing,Vector{Int64}} = nothing,
+    include_loci_alleles::Bool = true,
+    include_entries::Bool = true,
+    include_counts::Bool = true,
     verbose::Bool = false,
 )::Tuple{Vector{String},Vector{String},Dict{String,Matrix{Float64}}}
     # genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
     # distance_metrics = ["euclidean", "correlation", "mad", "rmsd", "χ²"]; idx_loci_alleles = nothing
+    # include_loci_alleles = true; include_entries = false; include_counts = false; verbose = true
     if !checkdims(genomes)
         throw(ArgumentError("The genomes struct is corrupted."))
     end
@@ -477,46 +487,49 @@ function distances(
     n = length(genomes.entries)
     t = length(idx_loci_alleles)
     # Per locus-allele first
-    if t > 1
-        y1::Vector{Union{Missing,Float64}} = fill(missing, n)
-        y2::Vector{Union{Missing,Float64}} = fill(missing, n)
-        counts = fill(0.0, t, t)
+    if include_loci_alleles && (t > 1)
+        if include_counts
+            counts = fill(0.0, t, t)
+        end
         for metric in distance_metrics
-            # metric = distance_metrics[1]
+            # metric = distance_metrics[2]
             D::Matrix{Float64} = fill(-Inf, t, t)
             thread_lock::ReentrantLock = ReentrantLock()
             if verbose
                 pb = ProgressMeter.Progress(length(idx_loci_alleles), desc = "Calculate distances for loci-alleles")
             end
             Threads.@threads for i in eachindex(idx_loci_alleles)
+                # i = 1
+                # println(i)
                 ix = idx_loci_alleles[i]
-                y1 .= genomes.allele_frequencies[:, ix]
+                y1 = genomes.allele_frequencies[:, ix]
                 bool1 = .!ismissing.(y1) .&& .!isnan.(y1) .&& .!isinf.(y1)
                 for (j, jx) in enumerate(idx_loci_alleles)
                     # i = 1; j = 3; ix = idx_loci_alleles[i]; jx = idx_loci_alleles[j]
+                    # println(j)
                     # Make sure we have no missing, NaN or infinite values
-                    y2 .= genomes.allele_frequencies[:, jx]
+                    y2 = genomes.allele_frequencies[:, jx]
                     bool2 = .!ismissing.(y2) .&& .!isnan.(y2) .&& .!isinf.(y2)
                     idx = findall(bool1 .&& bool2)
                     if length(idx) < 2
                         continue
                     end
                     # Count the number of elements used to estimate the distance
-                    if metric == distance_metrics[1]
+                    if include_counts && (metric == distance_metrics[1])
                         @lock thread_lock counts[i, j] = length(idx)
                     end
                     # Estimate the distance/correlation
-                    if metric == "euclidean"
-                        @lock thread_lock D[i, j] = sqrt(sum((y1[idx] - y2[idx]) .^ 2))
+                    @lock thread_lock D[i, j] = if metric == "euclidean"
+                        sqrt(sum((y1[idx] - y2[idx]) .^ 2))
                     elseif metric == "correlation"
                         (var(y1[idx]) < 1e-7) || (var(y2[idx]) < 1e-7) ? continue : nothing
-                        @lock thread_lock D[i, j] = cor(y1[idx], y2[idx])
+                        cor(y1[idx], y2[idx])
                     elseif metric == "mad"
-                        @lock thread_lock D[i, j] = mean(abs.(y1[idx] - y2[idx]))
+                        mean(abs.(y1[idx] - y2[idx]))
                     elseif metric == "rmsd"
-                        @lock thread_lock D[i, j] = sqrt(mean((y1[idx] - y2[idx]) .^ 2))
+                        sqrt(mean((y1[idx] - y2[idx]) .^ 2))
                     elseif metric == "χ²"
-                        @lock thread_lock D[i, j] = sum((y1[idx] - y2[idx]) .^ 2 ./ (y2[idx] .+ eps(Float64)))
+                        sum((y1[idx] - y2[idx]) .^ 2 ./ (y2[idx] .+ eps(Float64)))
                     else
                         throw(
                             ErrorException(
@@ -536,15 +549,19 @@ function distances(
             push!(metric_names, metric)
             push!(matrices, D)
         end
-        push!(dimension, "loci_alleles")
-        push!(metric_names, "counts")
-        push!(matrices, counts)
+        if include_counts
+            push!(dimension, "loci_alleles")
+            push!(metric_names, "counts")
+            push!(matrices, counts)
+        end
     end
     # Finally per entry
-    if n > 1
+    if include_entries && (n > 1)
         ϕ1::Vector{Union{Missing,Float64}} = fill(missing, t)
         ϕ2::Vector{Union{Missing,Float64}} = fill(missing, t)
-        counts = fill(0.0, n, n)
+        if include_counts
+            counts = fill(0.0, n, n)
+        end
         for metric in distance_metrics
             # metric = distance_metrics[1]
             D::Matrix{Float64} = fill(-Inf, n, n)
@@ -561,7 +578,7 @@ function distances(
                         continue
                     end
                     # Count the number of elements used to estimate the distance
-                    if metric == distance_metrics[1]
+                    if include_counts && (metric == distance_metrics[1])
                         counts[i, j] = length(idx)
                     end
                     # Estimate the distance/correlation
@@ -589,21 +606,24 @@ function distances(
             push!(metric_names, metric)
             push!(matrices, D)
         end
-        push!(dimension, "entries")
-        push!(metric_names, "counts")
-        push!(matrices, counts)
+        if include_counts
+            push!(dimension, "entries")
+            push!(metric_names, "counts")
+            push!(matrices, counts)
+        end
     end
     # Output
     if length(dimension) == 0
         throw(ErrorException("Genomes struct is too sparse. No distance matrix was calculated."))
     end
-    dist::Dict{String,Matrix{Float64}} = Dict()
+    distance_matrices::Dict{String,Matrix{Float64}} = Dict()
     for i in eachindex(dimension)
         # i = 4
+        # println(i)
         key = string(dimension[i], "|", metric_names[i])
-        dist[key] = matrices[i]
+        distance_matrices[key] = matrices[i]
     end
-    (genomes.loci_alleles[idx_loci_alleles], genomes.entries, dist)
+    (genomes.loci_alleles[idx_loci_alleles], genomes.entries, distance_matrices)
 end
 
 """
@@ -1373,60 +1393,4 @@ function Base.merge(genomes::Genomes, phenomes::Phenomes; keep_all::Bool = true)
         throw(ErrorException("Error merging Genomes and Phenomes structs"))
     end
     out_genomes, out_phenomes
-end
-
-# TODO: implement AOPTIM with automatic arbitrary classification into mock scaffolds based on data size
-function impute(genomes::Genomes, max_n_loci_per_chrom::Int64 = 100_000; verbose::Bool = false)::Genomes
-    # genomes = simulategenomes(n=10, sparsity=0.3, verbose=false); max_n_loci_per_chrom = 100; verbose = true
-    # Check input arguments
-    if !checkdims(genomes)
-        throw(ArgumentError("The Genomes struct is corrupted."))
-    end
-    # Instantiate the output Genomes struct
-    n, p = size(genomes.allele_frequencies)
-    out::Genomes = Genomes(n = n, p = p)
-    # Divide the allele frequencies into mock scaffolds if we have more than 100,000 loci per scaffold for at least 1 scaffold
-    chromosomes, positions, alleles = loci_alleles(genomes)
-    max_m = 1
-    for chrom in unique(chromosomes)
-        m = sum(chromosomes .== chrom)
-        max_m = if max_m < m
-            m
-        else
-            max_m
-        end
-    end
-    chromosomes = if max_m > max_n_loci_per_chrom
-        # Divide the loci into mock scaffolds
-        n_scaffolds = Int(ceil(p / max_n_loci_per_chrom))
-        mock_scalfolds = fill("", p)
-        for i = 1:n_scaffolds
-            # i = 1
-            idx_ini = ((i - 1) * max_n_loci_per_chrom) + 1
-            idx_fin = if i == n_scaffolds
-                p
-            else
-                i * max_n_loci_per_chrom
-            end
-            mock_scalfolds[idx_ini:idx_fin] .= string("mock_scaffold_", i)
-        end
-        mock_scalfolds
-    else
-        chromosomes
-    end
-    # Estimate linkage disequilibrium (LD) between loci using Pearson's correlation per chromosome
-    LDs::Vector{Matrix{Float64}} = []
-    for chrom in unique(chromosomes)
-        # chrom = unique(chromosomes)[1]
-        (_loci_alleles, _entries, dist) =
-            distances(genomes, distance_metrics = ["correlation"], idx_loci_alleles = findall(chromosomes .== chrom))
-        push!(LDs, dist["loci_alleles|correlation"])
-    end
-    # TODO: 
-    # distance estimation via MAE
-    # simulate missing data per locus-allele with at least 1 missing data
-    # optimise for minimum loci correlation and maximum pool distance per locus-allele
-    # impute missing data per locus-allele
-    # Output
-    out
 end
