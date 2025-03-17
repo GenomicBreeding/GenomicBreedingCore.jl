@@ -243,7 +243,7 @@ function dimensions(genomes::Genomes)::Dict{String,Int64}
 end
 
 """
-    loci_alleles(genomes::Genomes)::Tuple{Vector{String},Vector{Int64},Vector{String}}
+    loci_alleles(genomes::Genomes; verbose::Bool = false)::Tuple{Vector{String},Vector{Int64},Vector{String}}
 
 Extract chromosomes, positions, and alleles information from a `Genomes` object.
 
@@ -256,6 +256,7 @@ Each vector has length equal to the total number of loci-allele combinations in 
 
 # Arguments
 - `genomes::Genomes`: A valid Genomes object containing loci and allele information
+- `verbose::Bool = false`: If true, displays a progress bar during extraction
 
 # Returns
 - `Tuple{Vector{String},Vector{Int64},Vector{String}}`: A tuple containing three vectors:
@@ -276,7 +277,7 @@ julia> length(chromosomes), length(positions), length(alleles)
 (3000, 3000, 3000)
 ```
 """
-function loci_alleles(genomes::Genomes)::Tuple{Vector{String},Vector{Int64},Vector{String}}
+function loci_alleles(genomes::Genomes; verbose::Bool = false)::Tuple{Vector{String},Vector{Int64},Vector{String}}
     if !checkdims(genomes)
         throw(ArgumentError("Genomes struct is corrupted."))
     end
@@ -285,24 +286,34 @@ function loci_alleles(genomes::Genomes)::Tuple{Vector{String},Vector{Int64},Vect
     positions = Vector{Int64}(undef, p)
     alleles = Vector{String}(undef, p)
     thread_lock::ReentrantLock = ReentrantLock()
+    if verbose
+        pb = ProgressMeter.Progress(p, desc = "Extract locus-allele names")
+    end
     Threads.@threads for i = 1:p
         locus = genomes.loci_alleles[i]
         locus_ids::Vector{String} = split(locus, '\t')
         @lock thread_lock chromosomes[i] = locus_ids[1]
         @lock thread_lock positions[i] = parse(Int64, locus_ids[2])
         @lock thread_lock alleles[i] = locus_ids[4]
+        if verbose
+            ProgressMeter.next!(pb)
+        end
+    end
+    if verbose
+        ProgressMeter.finish!(pb)
     end
     return (chromosomes, positions, alleles)
 end
 
 """
-    loci(genomes::Genomes)::Tuple{Vector{String},Vector{Int64},Vector{Int64},Vector{Int64}}
+    loci(genomes::Genomes; verbose::Bool = false)::Tuple{Vector{String},Vector{Int64},Vector{Int64},Vector{Int64}}
 
 Extract genomic positional information from a `Genomes` object, returning a tuple of vectors containing
 chromosome names, positions, and locus boundary indices.
 
 # Arguments
 - `genomes::Genomes`: A Genomes object containing genomic data
+- `verbose::Bool = false`: If true, displays a progress bar during computation
 
 # Returns
 A tuple containing four vectors:
@@ -321,7 +332,7 @@ julia> length(chromosomes), length(positions), length(loci_ini_idx), length(loci
 (1000, 1000, 1000, 1000)
 ```
 """
-function loci(genomes::Genomes)::Tuple{Vector{String},Vector{Int64},Vector{Int64},Vector{Int64}}
+function loci(genomes::Genomes; verbose::Bool = false)::Tuple{Vector{String},Vector{Int64},Vector{Int64},Vector{Int64}}
     if !checkdims(genomes)
         throw(ArgumentError("Genomes struct is corrupted."))
     end
@@ -330,6 +341,12 @@ function loci(genomes::Genomes)::Tuple{Vector{String},Vector{Int64},Vector{Int64
     loci_ini_idx::Vector{Int64} = []
     loci_fin_idx::Vector{Int64} = []
     # Cannot be multi-threaded as we need the loci-alleles sorted
+    if verbose
+        pb = ProgressMeter.Progress(
+            length(genomes.loci_alleles),
+            desc = "Extract loci identities iteratively (single-threaded)",
+        )
+    end
     for i in eachindex(genomes.loci_alleles)
         locus = genomes.loci_alleles[i]
         locus_ids::Vector{String} = split(locus, '\t')
@@ -346,6 +363,12 @@ function loci(genomes::Genomes)::Tuple{Vector{String},Vector{Int64},Vector{Int64
                 push!(loci_fin_idx, i - 1)
             end
         end
+        if verbose
+            ProgressMeter.next!(pb)
+        end
+    end
+    if verbose
+        ProgressMeter.finish!(pb)
     end
     if loci_fin_idx[end] < length(genomes.loci_alleles)
         push!(loci_fin_idx, length(genomes.loci_alleles))
@@ -357,8 +380,9 @@ end
     distances(
         genomes::Genomes; 
         distance_metrics::Vector{String}=["euclidean", "correlation", "mad", "rmsd", "χ²"],
-        idx_loci_alleles::Union{Nothing, Vector{Int64}} = nothing
-    )::Tuple{Vector{String}, Vector{String}, Dict{String, Matrix{Float64}}}
+        idx_loci_alleles::Union{Nothing, Vector{Int64}} = nothing,
+        verbose::Bool = false
+    )::Tuple{Vector{String},Vector{String},Dict{String,Matrix{Float64}}}
 
 Calculate pairwise distances/similarity metrics between loci-alleles and entries in a `Genomes` object.
 
@@ -368,16 +392,17 @@ Calculate pairwise distances/similarity metrics between loci-alleles and entries
   - "euclidean": Euclidean distance
   - "correlation": Pearson correlation coefficient 
   - "mad": Mean absolute deviation
-  - "rmsd": Root mean square deviation
+  - "rmsd": Root mean square deviation 
   - "χ²": Chi-square distance
 - `idx_loci_alleles::Union{Nothing, Vector{Int64}}`: Optional indices of loci-alleles to include. If nothing, randomly samples 100 loci-alleles.
+- `verbose::Bool`: Whether to show progress bars. Defaults to false.
 
 # Returns
 Tuple containing:
 1. Vector of loci-allele names used
-2. Vector of entry names
+2. Vector of entry names  
 3. Dictionary mapping "{dimension}|{metric}" to distance matrices, where:
-   - dimension is either "loci_alleles" or "entries" 
+   - dimension is either "loci_alleles" or "entries"
    - metric is one of the distance metrics or "counts" (number of valid pairs used)
    - matrices contain pairwise distances/correlations (-Inf where insufficient data)
 
@@ -386,12 +411,13 @@ Tuple containing:
 - For entries, calculates distances between entries based on their allele frequencies
 - Requires at least 2 valid (non-missing, finite) pairs to calculate metrics
 - Includes count matrices showing number of valid pairs used per calculation
+- Thread-safe implementation with locks for concurrent operations
 
 # Examples
 ```jldoctest; setup = :(using GBCore, LinearAlgebra)
 julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
 
-julia> (loci_alleles, entries, dist) = distances(genomes, distance_metrics=["correlation", "χ²"]);
+julia> (loci_alleles_names, entries, dist) = distances(genomes, distance_metrics=["correlation", "χ²"]);
 
 julia> sort(string.(keys(dist))) == ["entries|correlation", "entries|counts", "entries|χ²", "loci_alleles|correlation", "loci_alleles|counts", "loci_alleles|χ²"]
 true
@@ -404,6 +430,7 @@ function distances(
     genomes::Genomes;
     distance_metrics::Vector{String} = ["euclidean", "correlation", "mad", "rmsd", "χ²"],
     idx_loci_alleles::Union{Nothing,Vector{Int64}} = nothing,
+    verbose::Bool = false,
 )::Tuple{Vector{String},Vector{String},Dict{String,Matrix{Float64}}}
     # genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
     # distance_metrics = ["euclidean", "correlation", "mad", "rmsd", "χ²"]; idx_loci_alleles = nothing
@@ -457,7 +484,12 @@ function distances(
         for metric in distance_metrics
             # metric = distance_metrics[1]
             D::Matrix{Float64} = fill(-Inf, t, t)
-            for (i, ix) in enumerate(idx_loci_alleles)
+            thread_lock::ReentrantLock = ReentrantLock()
+            if verbose
+                pb = ProgressMeter.Progress(length(idx_loci_alleles), desc = "Calculate distances for loci-alleles")
+            end
+            Threads.@threads for i in eachindex(idx_loci_alleles)
+                ix = idx_loci_alleles[i]
                 y1 .= genomes.allele_frequencies[:, ix]
                 bool1 = .!ismissing.(y1) .&& .!isnan.(y1) .&& .!isinf.(y1)
                 for (j, jx) in enumerate(idx_loci_alleles)
@@ -471,20 +503,20 @@ function distances(
                     end
                     # Count the number of elements used to estimate the distance
                     if metric == distance_metrics[1]
-                        counts[i, j] = length(idx)
+                        @lock thread_lock counts[i, j] = length(idx)
                     end
                     # Estimate the distance/correlation
                     if metric == "euclidean"
-                        D[i, j] = sqrt(sum((y1[idx] - y2[idx]) .^ 2))
+                        @lock thread_lock D[i, j] = sqrt(sum((y1[idx] - y2[idx]) .^ 2))
                     elseif metric == "correlation"
                         (var(y1[idx]) < 1e-7) || (var(y2[idx]) < 1e-7) ? continue : nothing
-                        D[i, j] = cor(y1[idx], y2[idx])
+                        @lock thread_lock D[i, j] = cor(y1[idx], y2[idx])
                     elseif metric == "mad"
-                        D[i, j] = mean(abs.(y1[idx] - y2[idx]))
+                        @lock thread_lock D[i, j] = mean(abs.(y1[idx] - y2[idx]))
                     elseif metric == "rmsd"
-                        D[i, j] = sqrt(mean((y1[idx] - y2[idx]) .^ 2))
+                        @lock thread_lock D[i, j] = sqrt(mean((y1[idx] - y2[idx]) .^ 2))
                     elseif metric == "χ²"
-                        D[i, j] = sum((y1[idx] - y2[idx]) .^ 2 ./ (y2[idx] .+ eps(Float64)))
+                        @lock thread_lock D[i, j] = sum((y1[idx] - y2[idx]) .^ 2 ./ (y2[idx] .+ eps(Float64)))
                     else
                         throw(
                             ErrorException(
@@ -493,6 +525,12 @@ function distances(
                         )
                     end
                 end
+                if verbose
+                    ProgressMeter.next!(pb)
+                end
+            end
+            if verbose
+                ProgressMeter.finish!(pb)
             end
             push!(dimension, "loci_alleles")
             push!(metric_names, metric)
@@ -680,7 +718,8 @@ end
     slice(
         genomes::Genomes; 
         idx_entries::Union{Nothing, Vector{Int64}} = nothing,
-        idx_loci_alleles::Union{Nothing, Vector{Int64}} = nothing
+        idx_loci_alleles::Union{Nothing, Vector{Int64}} = nothing,
+        verbose::Bool = false
     )::Genomes
 
 Create a subset of a `Genomes` struct by selecting specific entries and loci-allele combinations.
@@ -689,6 +728,7 @@ Create a subset of a `Genomes` struct by selecting specific entries and loci-all
 - `genomes::Genomes`: The source genomic data structure to be sliced
 - `idx_entries::Union{Nothing, Vector{Int64}}`: Indices of entries to keep. If `nothing`, all entries are kept
 - `idx_loci_alleles::Union{Nothing, Vector{Int64}}`: Indices of loci-allele combinations to keep. If `nothing`, all loci-alleles are kept
+- `verbose::Bool`: If true, displays a progress bar during slicing. Defaults to false
 
 # Returns
 - `Genomes`: A new `Genomes` struct containing only the selected entries and loci-allele combinations
@@ -697,6 +737,7 @@ Create a subset of a `Genomes` struct by selecting specific entries and loci-all
 - Both index vectors are automatically sorted and deduplicated
 - Indices must be within valid ranges (1 to n_entries or n_loci_alleles)
 - The function preserves the structure and relationships of the original data
+- Thread-safe implementation with locks for concurrent operations
 
 # Throws
 - `ArgumentError`: If the input `Genomes` struct is corrupted or if indices are out of bounds
@@ -723,6 +764,7 @@ function slice(
     genomes::Genomes;
     idx_entries::Union{Nothing,Vector{Int64}} = nothing,
     idx_loci_alleles::Union{Nothing,Vector{Int64}} = nothing,
+    verbose::Bool = false,
 )::Genomes
     # genomes::Genomes = simulategenomes(); idx_entries::Vector{Int64}=sample(1:100, 10); idx_loci_alleles::Vector{Int64}=sample(1:10_000, 1000);
     if !checkdims(genomes)
@@ -750,6 +792,9 @@ function slice(
     n, p = length(idx_entries), length(idx_loci_alleles)
     sliced_genomes::Genomes = Genomes(n = n, p = p)
     thread_lock::ReentrantLock = ReentrantLock()
+    if verbose
+        pb = ProgressMeter.Progress(length(idx_entries), desc = "Slicing genomes")
+    end
     for (i1, i2) in enumerate(idx_entries)
         sliced_genomes.entries[i1] = genomes.entries[i2]
         sliced_genomes.populations[i1] = genomes.populations[i2]
@@ -761,6 +806,12 @@ function slice(
             @lock thread_lock sliced_genomes.allele_frequencies[i1, j1] = genomes.allele_frequencies[i2, j2]
             @lock thread_lock sliced_genomes.mask[i1, j1] = genomes.mask[i2, j2]
         end
+        if verbose
+            ProgressMeter.next!(pb)
+        end
+    end
+    if verbose
+        ProgressMeter.finish!(pb)
     end
     ### Check dimensions
     if !checkdims(sliced_genomes)
@@ -772,7 +823,7 @@ end
 
 
 """
-    filter(genomes::Genomes)::Genomes
+    filter(genomes::Genomes; verbose::Bool = false)::Genomes
 
 Filter a Genomes struct by removing entries and loci with missing data based on the mask matrix.
 
@@ -783,6 +834,7 @@ This function filters a Genomes struct by:
 
 # Arguments
 - `genomes::Genomes`: Input Genomes struct containing genetic data and a mask matrix
+- `verbose::Bool`: Optional flag to control verbose output (default: false)
 
 # Returns
 - `Genomes`: A new filtered Genomes struct with complete data (no missing values)
@@ -797,11 +849,12 @@ julia> size(filtered_genomes.allele_frequencies)
 (90, 9941)
 ```
 """
-function Base.filter(genomes::Genomes)::Genomes
+function Base.filter(genomes::Genomes; verbose::Bool = false)::Genomes
     # genomes = simulategenomes(); genomes.mask[1:10, 42:100] .= false;
     idx_entries = findall(mean(genomes.mask, dims = 2)[:, 1] .== 1.0)
     idx_loci_alleles = findall(mean(genomes.mask, dims = 1)[1, :] .== 1.0)
-    filtered_genomes::Genomes = slice(genomes, idx_entries = idx_entries; idx_loci_alleles = idx_loci_alleles)
+    filtered_genomes::Genomes =
+        slice(genomes, idx_entries = idx_entries; idx_loci_alleles = idx_loci_alleles, verbose = verbose)
     filtered_genomes
 end
 
@@ -812,7 +865,8 @@ end
         maf::Float64;
         max_entry_sparsity::Float64 = 0.0,
         max_locus_sparsity::Float64 = 0.0,
-        chr_pos_allele_ids::Union{Nothing,Vector{String}} = nothing
+        chr_pos_allele_ids::Union{Nothing,Vector{String}} = nothing,
+        verbose::Bool = false
     )::Genomes
 
 Filter a Genomes struct based on multiple criteria.
@@ -824,6 +878,7 @@ Filter a Genomes struct based on multiple criteria.
 - `max_locus_sparsity::Float64`: Maximum allowed proportion of missing values per locus (default: 0.0)
 - `chr_pos_allele_ids::Union{Nothing,Vector{String}}`: Optional vector of specific locus-allele combinations to retain, 
     formatted as tab-separated strings "chromosome\\tposition\\tallele"
+- `verbose::Bool`: Whether to display progress bars during filtering (default: false)
 
 # Returns
 - `Genomes`: Filtered genomic data structure
@@ -836,7 +891,7 @@ Filters genomic data based on four criteria:
 4. Specific locus-allele combinations (optional)
 
 # Throws
-- `ArgumentError`: If Genomes struct is corrupted or if MAF is outside [0,1]
+- `ArgumentError`: If Genomes struct is corrupted, if MAF is outside [0,1], or if chr_pos_allele_ids format is invalid
 - `ErrorException`: If filtering results in empty dataset
 
 # Examples
@@ -863,6 +918,7 @@ function Base.filter(
     max_entry_sparsity::Float64 = 0.0,
     max_locus_sparsity::Float64 = 0.0,
     chr_pos_allele_ids::Union{Nothing,Vector{String}} = nothing,
+    verbose::Bool = false,
 )::Genomes
     # genomes::Genomes = simulategenomes(sparsity=0.01, seed=123456); maf=0.01; max_entry_sparsity=0.1; max_locus_sparsity = 0.25
     # chr_pos_allele_ids = sample(genomes.loci_alleles, Int(floor(0.5*length(genomes.loci_alleles)))); sort!(chr_pos_allele_ids)
@@ -922,7 +978,7 @@ function Base.filter(
         )
     end
     # Slice the genomes struct
-    filtered_genomes = slice(genomes, idx_entries = idx_entries, idx_loci_alleles = idx_loci_alleles)
+    filtered_genomes = slice(genomes, idx_entries = idx_entries, idx_loci_alleles = idx_loci_alleles, verbose = verbose)
     # @show dimensions(filtered_genomes)
     # Are we filtering using a list of loci-allele combination names?
     filtered_genomes = if !isnothing(chr_pos_allele_ids) && (length(chr_pos_allele_ids) > 0)
@@ -931,6 +987,9 @@ function Base.filter(
             chr::Vector{String} = fill("", length(chr_pos_allele_ids))
             pos::Vector{Int64} = fill(0, length(chr_pos_allele_ids))
             ale::Vector{String} = fill("", length(chr_pos_allele_ids))
+            if verbose
+                pb = ProgressMeter.Progress(length(chr_pos_allele_ids), desc = "Parsing loci-allele combination names")
+            end
             Threads.@threads for i in eachindex(chr_pos_allele_ids)
                 ids = split(chr_pos_allele_ids[i], "\t")
                 if length(ids) < 3
@@ -961,6 +1020,12 @@ function Base.filter(
                     )
                 end
                 @lock thread_lock ale[i] = ids[end]
+                if verbose
+                    ProgressMeter.next!(pb)
+                end
+            end
+            if verbose
+                ProgressMeter.finish!(pb)
             end
             sort(string.(chr, "\t", pos, "\t", ale))
         end
@@ -973,9 +1038,21 @@ function Base.filter(
         # @show hash(available_chr_pos_allele_ids)
         # Find the loci-allele combination indices to retain
         bool_loci_alleles::Vector{Bool} = fill(false, length(available_chr_pos_allele_ids))
+        if verbose
+            pb = ProgressMeter.Progress(
+                length(available_chr_pos_allele_ids),
+                desc = "Filtering loci-allele combination names",
+            )
+        end
         for i in eachindex(available_chr_pos_allele_ids)
             # i = 1
             bool_loci_alleles[i] = available_chr_pos_allele_ids[i] ∈ requested_chr_pos_allele_ids
+            if verbose
+                ProgressMeter.next!(pb)
+            end
+        end
+        if verbose
+            ProgressMeter.finish!(pb)
         end
         idx_loci_alleles = findall(bool_loci_alleles)
         # @show length(idx_loci_alleles)
@@ -993,7 +1070,7 @@ function Base.filter(
                 ),
             )
         end
-        slice(filtered_genomes, idx_loci_alleles = idx_loci_alleles)
+        slice(filtered_genomes, idx_loci_alleles = idx_loci_alleles, verbose = verbose)
     else
         filtered_genomes
     end
@@ -1299,7 +1376,7 @@ function Base.merge(genomes::Genomes, phenomes::Phenomes; keep_all::Bool = true)
 end
 
 # TODO: implement AOPTIM with automatic arbitrary classification into mock scaffolds based on data size
-function impute(genomes::Genomes, max_n_loci_per_chrom::Int64 = 100_000, verbose::Bool = false)::Genomes
+function impute(genomes::Genomes, max_n_loci_per_chrom::Int64 = 100_000; verbose::Bool = false)::Genomes
     # genomes = simulategenomes(n=10, sparsity=0.3, verbose=false); max_n_loci_per_chrom = 100; verbose = true
     # Check input arguments
     if !checkdims(genomes)
