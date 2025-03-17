@@ -276,6 +276,9 @@ function estimateld(
             verbose = verbose,
         )
         LDs[i] = corr["loci_alleles|correlation"]
+        # Save the correlation matrix in case the run gets interrupted
+        fname_LD_matrix = string("LD_matrix-", hash(genomes), "-", chrom, ".tmp.jld2")
+        save(fname_LD_matrix, corr, compress = true)
     end
     # Output
     LDs
@@ -308,22 +311,8 @@ function impute(genomes::Genomes; max_n_loci_per_chrom::Int64 = 100_000, verbose
     else
         chromosomes
     end
-    # # Estimate linkage disequilibrium (LD) between loci using Pearson's correlation per chromosome
-    # LDs::Vector{Matrix{Float64}} = []
-    # for chrom in unique(chromosomes)
-    #     # chrom = chromosomes[1]
-    #     (_loci_alleles, _entries, corr) =
-    #         distances(
-    #             genomes, 
-    #             distance_metrics = ["correlation"], 
-    #             idx_loci_alleles = findall(chromosomes .== chrom), 
-    #             include_loci_alleles = true,
-    #             include_counts = false,
-    #             include_entries = false,
-    #             verbose=verbose
-    #         )
-    #     push!(LDs, corr["loci_alleles|correlation"])
-    # end
+    # Estimate linkage disequilibrium (LD) between loci using Pearson's correlation per chromosome
+    LDs::Vector{Matrix{Float64}} = estimateld(genomes, chromosomes=chromosomes, verbose=verbose)
     # TODO: 
     # distance estimation via MAE
     # simulate missing data per locus-allele with at least 1 missing data
