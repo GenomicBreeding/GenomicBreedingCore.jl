@@ -786,9 +786,17 @@ function slice(
     idx_loci_alleles::Union{Nothing,Vector{Int64}} = nothing,
     verbose::Bool = false,
 )::Genomes
-    # genomes::Genomes = simulategenomes(); idx_entries::Vector{Int64}=sample(1:100, 10); idx_loci_alleles::Vector{Int64}=sample(1:10_000, 1000);
+    # genomes::Genomes = simulategenomes(); idx_entries::Vector{Int64}=sample(1:100, 10); idx_loci_alleles::Vector{Int64}=sample(1:10_000, 1000); verbose=true
+    # Check genomes struct
     if !checkdims(genomes)
         throw(ArgumentError("Genomes struct is corrupted."))
+    end
+    # Return early if not slicing needed
+    if isnothing(idx_entries) && isnothing(idx_loci_alleles)
+        if verbose
+            println("Slicing not needed as `idx_entries` and `idx_loci` are both unset or equal to `nothing`.")
+        end
+        return clone(genomes)
     end
     genomes_dims::Dict{String,Int64} = dimensions(genomes)
     n_entries::Int64 = genomes_dims["n_entries"]
@@ -811,20 +819,25 @@ function slice(
     end
     n, p = length(idx_entries), length(idx_loci_alleles)
     sliced_genomes::Genomes = Genomes(n = n, p = p)
-    thread_lock::ReentrantLock = ReentrantLock()
     if verbose
         pb = ProgressMeter.Progress(length(idx_entries), desc = "Slicing genomes")
     end
+    # Iterative slicing as using multiple threads with locks is slower due to the lock lag and we are simply copying data from one place to another with no complex calculations in between
+    # thread_lock::ReentrantLock = ReentrantLock()
     for (i1, i2) in enumerate(idx_entries)
         sliced_genomes.entries[i1] = genomes.entries[i2]
         sliced_genomes.populations[i1] = genomes.populations[i2]
-        Threads.@threads for j1 in eachindex(idx_loci_alleles)
+        # Threads.@threads for j1 in eachindex(idx_loci_alleles)
+        for j1 in eachindex(idx_loci_alleles)
             j2 = idx_loci_alleles[j1]
             if i1 == 1
-                @lock thread_lock sliced_genomes.loci_alleles[j1] = genomes.loci_alleles[j2]
+                # @lock thread_lock sliced_genomes.loci_alleles[j1] = genomes.loci_alleles[j2]
+                sliced_genomes.loci_alleles[j1] = genomes.loci_alleles[j2]
             end
-            @lock thread_lock sliced_genomes.allele_frequencies[i1, j1] = genomes.allele_frequencies[i2, j2]
-            @lock thread_lock sliced_genomes.mask[i1, j1] = genomes.mask[i2, j2]
+            # @lock thread_lock sliced_genomes.allele_frequencies[i1, j1] = genomes.allele_frequencies[i2, j2]
+            # @lock thread_lock sliced_genomes.mask[i1, j1] = genomes.mask[i2, j2]
+            sliced_genomes.allele_frequencies[i1, j1] = genomes.allele_frequencies[i2, j2]
+            sliced_genomes.mask[i1, j1] = genomes.mask[i2, j2]
         end
         if verbose
             ProgressMeter.next!(pb)
