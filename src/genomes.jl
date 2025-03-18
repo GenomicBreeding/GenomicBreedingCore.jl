@@ -908,6 +908,7 @@ end
         maf::Float64;
         max_entry_sparsity::Float64 = 0.0,
         max_locus_sparsity::Float64 = 0.0,
+        max_prop_pc_varexp::Float64 = 1.0,
         chr_pos_allele_ids::Union{Nothing,Vector{String}} = nothing,
         verbose::Bool = false
     )::Genomes
@@ -919,6 +920,7 @@ Filter a Genomes struct based on multiple criteria.
 - `maf::Float64`: Minimum allele frequency threshold (0.0 to 1.0)
 - `max_entry_sparsity::Float64`: Maximum allowed proportion of missing values per entry (default: 0.0)
 - `max_locus_sparsity::Float64`: Maximum allowed proportion of missing values per locus (default: 0.0)
+- `max_prop_pc_varexp::Float64`: Maximum proportion of variance explained by PC1 and PC2 for outlier detection. Set to `Inf` for no filtering by PCA. (default: 1.0)
 - `chr_pos_allele_ids::Union{Nothing,Vector{String}}`: Optional vector of specific locus-allele combinations to retain, 
     formatted as tab-separated strings "chromosome\\tposition\\tallele"
 - `verbose::Bool`: Whether to display progress bars during filtering (default: false)
@@ -927,15 +929,16 @@ Filter a Genomes struct based on multiple criteria.
 - `Genomes`: Filtered genomic data structure
 
 # Description
-Filters genomic data based on four criteria:
+Filters genomic data based on five criteria:
 1. Minimum allele frequency (MAF)
 2. Maximum entry sparsity (proportion of missing values per entry)
 3. Maximum locus sparsity (proportion of missing values per locus)
-4. Specific locus-allele combinations (optional)
+4. PCA-based outlier detection using variance explained threshold
+5. Specific locus-allele combinations (optional)
 
 # Throws
 - `ArgumentError`: If Genomes struct is corrupted, if MAF is outside [0,1], or if chr_pos_allele_ids format is invalid
-- `ErrorException`: If filtering results in empty dataset
+- `ErrorException`: If filtering results in empty dataset or if PCA cannot be performed due to insufficient data
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
@@ -960,29 +963,29 @@ function Base.filter(
     maf::Float64;
     max_entry_sparsity::Float64 = 0.0,
     max_locus_sparsity::Float64 = 0.0,
+    max_prop_pc_varexp::Float64 = 1.00,
     chr_pos_allele_ids::Union{Nothing,Vector{String}} = nothing,
     verbose::Bool = false,
 )::Genomes
-    # genomes::Genomes = simulategenomes(sparsity=0.01, seed=123456); maf=0.01; max_entry_sparsity=0.1; max_locus_sparsity = 0.25
-    # chr_pos_allele_ids = sample(genomes.loci_alleles, Int(floor(0.5*length(genomes.loci_alleles)))); sort!(chr_pos_allele_ids)
+    # genomes::Genomes = simulategenomes(n_populations=3, sparsity=0.01, seed=123456); maf=0.01; max_entry_sparsity=0.1; max_locus_sparsity = 0.25; max_prop_pc_varexp = 1.0
+    # chr_pos_allele_ids = sample(genomes.loci_alleles, Int(floor(0.5*length(genomes.loci_alleles)))); sort!(chr_pos_allele_ids); verbose = true
     if !checkdims(genomes)
         throw(ArgumentError("Genomes struct is corrupted."))
     end
     if (maf < 0.0) || (maf > 1.0)
         throw(ArgumentError("We accept `maf` from 0.0 to 1.0."))
     end
-    # Define thread lock
-    thread_lock::ReentrantLock = ReentrantLock()
     # Filter by entry sparsity, locus sparsity and minimum allele frequency thresholds
+    # No thread locking required as we are assigning values per index
     entry_sparsities::Array{Float64,1} = fill(0.0, length(genomes.entries))
     mean_frequencies::Array{Float64,1} = fill(0.0, length(genomes.loci_alleles))
     locus_sparsities::Array{Float64,1} = fill(0.0, length(genomes.loci_alleles))
     Threads.@threads for i in eachindex(entry_sparsities)
-        @lock thread_lock entry_sparsities[i] = mean(Float64.(ismissing.(genomes.allele_frequencies[i, :])))
+        entry_sparsities[i] = mean(Float64.(ismissing.(genomes.allele_frequencies[i, :])))
     end
     Threads.@threads for j in eachindex(mean_frequencies)
-        @lock thread_lock mean_frequencies[j] = mean(skipmissing(genomes.allele_frequencies[:, j]))
-        @lock thread_lock locus_sparsities[j] = mean(Float64.(ismissing.(genomes.allele_frequencies[:, j])))
+        mean_frequencies[j] = mean(skipmissing(genomes.allele_frequencies[:, j]))
+        locus_sparsities[j] = mean(Float64.(ismissing.(genomes.allele_frequencies[:, j])))
     end
     idx_entries::Array{Int64,1} = findall((entry_sparsities .<= max_entry_sparsity))
     idx_loci_alleles::Array{Int64,1} = findall(
@@ -1023,6 +1026,60 @@ function Base.filter(
     # Slice the genomes struct
     filtered_genomes = slice(genomes, idx_entries = idx_entries, idx_loci_alleles = idx_loci_alleles, verbose = verbose)
     # @show dimensions(filtered_genomes)
+    # Are we filtering out outlying loci-alleles?
+    filtered_genomes = if !isinf(max_prop_pc_varexp)
+        if verbose
+            println(
+                string(
+                    "Filtering-out outlier loci-alleles, i.e. with PC1 and PC2 lying outside ",
+                    max_prop_pc_varexp * 100,
+                    "% of the total variance explained by PC1 and PC2.",
+                ),
+            )
+        end
+        # Extract non-missing loci-alleles across all entries
+        n, p = size(filtered_genomes.allele_frequencies)
+        μ = mean(filtered_genomes.allele_frequencies, dims = 1)
+        σ = std(filtered_genomes.allele_frequencies, dims = 1)
+        idx = findall(.!ismissing.(μ[1, :]) .&& (σ[1, :] .> 0.0))
+        if length(idx) < 10
+            throw(
+                ErrorException(
+                    "There are less than 10 loci-alleles left after removing fixed and missing values across all entries. We cannot proceed with filtering-out outlying loci-alleles. Please consider setting `max_prop_pc_varexp = Inf` to skip this filtering step.",
+                ),
+            )
+        end
+        G = filtered_genomes.allele_frequencies[:, idx]
+        # Standardize the allele frequencies per locus-allele in preparation for PCA and for filtering by variance explained threshold
+        μ = mean(G, dims = 1)
+        σ = std(G, dims = 1)
+        G = (G .- μ) ./ σ
+        # PCA and filtering by a fraction of the sum of the proportion of variance explained by the first 2 PCs
+        M = MultivariateStats.fit(PCA, G')
+        variance_explained_pc1_pc2 = sum((M.prinvars./sum(M.prinvars))[1:2])
+        max_pc = variance_explained_pc1_pc2 * max_prop_pc_varexp
+        pc1 = M.proj[:, 1]
+        pc2 = M.proj[:, 2]
+        bool_outliers = (
+            ((pc1 .> +max_pc) .&& (pc2 .> +max_pc)) .||
+            ((pc1 .> +max_pc) .&& (pc2 .< -max_pc)) .||
+            ((pc1 .< -max_pc) .&& (pc2 .> +max_pc)) .||
+            ((pc1 .< -max_pc) .&& (pc2 .< -max_pc))
+        )
+        if sum(bool_outliers) == 0
+            if verbose
+                println("All loci passed the PCA filtering.")
+            end
+            filtered_genomes
+        else
+            loci_alleles_outliers = filtered_genomes.loci_alleles[idx[bool_outliers]]
+            if verbose
+                println(string("Removing ", length(loci_alleles_outliers), " loci-alleles."))
+            end
+            idx_loci_alleles = findall([!(x ∈ loci_alleles_outliers) for x in filtered_genomes.loci_alleles])
+            slice(filtered_genomes, idx_loci_alleles = idx_loci_alleles, verbose = verbose)
+        end
+    end
     # Are we filtering using a list of loci-allele combination names?
     filtered_genomes = if !isnothing(chr_pos_allele_ids) && (length(chr_pos_allele_ids) > 0)
         # Parse and make sure the input loci-allele combination names are valid
@@ -1033,6 +1090,7 @@ function Base.filter(
             if verbose
                 pb = ProgressMeter.Progress(length(chr_pos_allele_ids), desc = "Parsing loci-allele combination names")
             end
+            # No thread locking required as we are assigning values per index
             Threads.@threads for i in eachindex(chr_pos_allele_ids)
                 ids = split(chr_pos_allele_ids[i], "\t")
                 if length(ids) < 3
@@ -1047,8 +1105,8 @@ function Base.filter(
                         ),
                     )
                 end
-                @lock thread_lock chr[i] = ids[1]
-                @lock thread_lock pos[i] = try
+                chr[i] = ids[1]
+                pos[i] = try
                     Int64(parse(Float64, ids[2]))
                 catch
                     throw(
@@ -1062,7 +1120,7 @@ function Base.filter(
                         ),
                     )
                 end
-                @lock thread_lock ale[i] = ids[end]
+                ale[i] = ids[end]
                 if verbose
                     ProgressMeter.next!(pb)
                 end

@@ -1,23 +1,54 @@
 """
-# Simulate genomes
+    simulategenomes(;
+        n::Int64 = 100,
+        n_populations::Int64 = 1,
+        l::Int64 = 10_000,
+        n_chroms::Int64 = 7,
+        n_alleles::Int64 = 2,
+        max_pos::Int64 = 135_000_000,
+        ld_corr_50perc_kb::Int64 = 1_000,
+        μ_β_params::Tuple{Float64,Float64} = (0.5, 0.5),
+        sparsity::Float64 = 0.0,
+        seed::Int64 = 42,
+        verbose::Bool = true
+    )::Genomes
 
-## Arguments
-- `n`: number of entries (default = 100)
-- `l`: number of loci (default = 10_000)
-- `n_chroms`: number of chromosomes (default = 7)
-- `n_alleles`: number of alleles per locus (default = 2)
-- `max_pos`: total length of the genome in base-pairs (bp) (default = 135_000_000)
-- `ld_corr_50perc_kb`: distance in bp at which linkage expressed as correlation between a pair of loci is at 50% (default = 1_000)
-- `μ_β_params`: the shape parameters of the Beta distribution from which the mean allele frequencies will be sampled 
-  (default = (0.5, 0.5); U-shaped distribution; you may use (2.0, 2.0) for a bell-shaped distribution)
-- `sparsity`: Proportion of missing data (default = 0.0)
-- `seed`: psuedo-random number generator seed for replicability (default = 42)
-- `verbose`: Show progress bar and plot the linkage heatmap into an svg file? (default = true)
+Simulates genomic data with population structure and linkage disequilibrium.
 
-## Output
-- `Genomes`
+# Arguments
+- `n::Int64`: Number of entries/individuals to simulate (1 to 1e9)
+- `n_populations::Int64`: Number of populations to simulate (1 to n)
+- `l::Int64`: Number of loci to simulate (2 to 1e9)
+- `n_chroms::Int64`: Number of chromosomes (1 to 1e6)
+- `n_alleles::Int64`: Number of alleles per locus (2 to 5, representing A, T, C, G, D)
+- `max_pos::Int64`: Maximum position in base pairs (10 to 160e9)
+- `ld_corr_50perc_kb::Int64`: Distance in kb where correlation decay reaches 50%
+- `μ_β_params::Tuple{Float64,Float64}`: Shape parameters for Beta distribution of allele frequencies
+- `sparsity::Float64`: Proportion of missing data to simulate (0.0 to 1.0)
+- `seed::Int64`: Random seed for reproducibility
+- `verbose::Bool`: Whether to show progress bar and final plot
 
-## Examples
+# Returns
+- `Genomes`: A struct containing:
+  - entries: Vector of entry IDs
+  - populations: Vector of population assignments
+  - loci_alleles: Vector of locus-allele combinations
+  - allele_frequencies: Matrix of allele frequencies
+  - mask: Boolean matrix indicating valid data points
+
+# Description
+Simulates genomic data by:
+1. Generating chromosome lengths and loci positions
+2. Assigning alleles to loci
+3. Grouping entries into populations
+4. Simulating allele frequencies with linkage disequilibrium using multivariate normal distribution
+5. Adding optional sparsity (missing data)
+
+# Throws
+- `ArgumentError`: If input parameters are outside acceptable ranges
+- `DimensionMismatch`: If there's an error in the simulation process
+
+# Examples
 ```jldoctest; setup = :(using GBCore, StatsBase, Random)
 julia> genomes = simulategenomes(n=100, l=10_000, n_alleles=3, verbose=false);
 
@@ -67,7 +98,7 @@ function simulategenomes(;
     seed::Int64 = 42,
     verbose::Bool = true,
 )::Genomes
-    # n::Int64=100; n_populations::Int64 = 2; l::Int64=10_000; n_chroms::Int64=7;n_alleles::Int64=3; max_pos::Int64=135_000_000; ld_corr_50perc_kb::Int64=1_000; seed::Int64=42; μ_β_params::Tuple{Float64, Float64} = (0.5, 0.5); sparsity::Float64 = 0.25; verbose::Bool=true;
+    # n::Int64=100; n_populations::Int64 = 5; l::Int64=10_000; n_chroms::Int64=7;n_alleles::Int64=3; max_pos::Int64=135_000_000; ld_corr_50perc_kb::Int64=1_000; seed::Int64=42; μ_β_params::Tuple{Float64, Float64} = (0.5, 0.5); sparsity::Float64 = 0.25; verbose::Bool=true;
     # Parameter checks
     if (n < 1) || (n > 1e9)
         throw(ArgumentError("We accept `n` from 1 to 1 billion."))
@@ -169,12 +200,15 @@ function simulategenomes(;
         pb = ProgressMeter.Progress(n_chroms * n * (n_alleles - 1); desc = "Simulating allele frequencies: ")
     end
     for i = 1:n_chroms
+        # Simulate linkage blocks
+        # i  = 1
         n_loci::Int64 = chrom_loci_counts[i]
         pos::Vector{Int64} = positions[i]
         Σ::Matrix{Float64} = fill(0.0, (n_loci, n_loci))
         r::Float64 = log(2.0) / ((ld_corr_50perc_kb * 1_000) / chrom_lengths[i]) # from f(x) = 0.5 = 1 / exp(r*x); where x = normalised distance between loci
         for idx1 = 1:n_loci
             for idx2 = 1:n_loci
+                # idx1 = 1; idx2 = 10
                 dist::Float64 = abs(pos[idx1] - pos[idx2]) / chrom_lengths[i]
                 Σ[idx1, idx2] = 1 / exp(r * dist)
             end

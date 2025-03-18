@@ -11,7 +11,8 @@ using DataFrames
 using LinearAlgebra
 using StatsBase
 using Distributions
-using MixedModels
+using MixedModels, Metida
+using MultivariateStats
 using UnicodePlots, Plots
 using ProgressMeter
 using Suppressor
