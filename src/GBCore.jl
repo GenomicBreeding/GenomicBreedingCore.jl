@@ -12,7 +12,6 @@ using ProgressMeter
 using Suppressor
 using Lux # for Fit deep learning model
 using PrecompileTools: @compile_workload
-# using BLAS; BLAS.set_num_threads(Threads.threads())
 
 include("all_structs.jl")
 include("genomes.jl")
