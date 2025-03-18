@@ -753,14 +753,24 @@ Create a subset of a `Genomes` struct by selecting specific entries and loci-all
 # Returns
 - `Genomes`: A new `Genomes` struct containing only the selected entries and loci-allele combinations
 
-# Notes
+# Performance Notes
+- The function uses single-threaded implementation for optimal performance when copying data (using multiple threads is inefficient because the time it takes to lock threads is better used for copying per se)
+- Progress bar is available when `verbose=true` to monitor the slicing operation
+- Memory efficient implementation that creates a new pre-allocated structure
+
+# Behaviour
 - Both index vectors are automatically sorted and deduplicated
-- Indices must be within valid ranges (1 to n_entries or n_loci_alleles)
-- The function preserves the structure and relationships of the original data
-- Thread-safe implementation with locks for concurrent operations
+- If both `idx_entries` and `idx_loci_alleles` are `nothing`, returns a clone of the input
+- Maintains all relationships and structure of the original genomic data
+- Preserves population assignments and allele frequencies for selected entries
+
+# Validation
+- Performs dimension checks on both input and output genomic structures
+- Validates that all indices are within proper bounds
+- Ensures data consistency throughout the slicing operation
 
 # Throws
-- `ArgumentError`: If the input `Genomes` struct is corrupted or if indices are out of bounds
+- `ArgumentError`: If input `Genomes` struct is corrupted or indices are out of bounds
 - `DimensionMismatch`: If the resulting sliced genome has inconsistent dimensions
 
 # Examples
