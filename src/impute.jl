@@ -58,89 +58,6 @@ function maskmissing!(genomes::Genomes; verbose::Bool = false)
 end
 
 """
-    sparsities(genomes::Genomes; verbose::Bool = false) -> Tuple{Vector{Float64}, Vector{Float64}}
-
-Calculate sparsity (proportion of missing values) for each entry and locus-allele in the genomes data.
-
-# Arguments
-- `genomes::Genomes`: A Genomes struct containing allele frequencies and mask data
-- `verbose::Bool`: If true, displays progress bars and histograms during calculation (default: false)
-
-# Returns
-A tuple containing:
-- First element: Vector of sparsity values per entry (row)
-- Second element: Vector of sparsity values per locus-allele (column)
-
-# Details
-Sparsity is calculated as 1 - mean(mask), where mask contains 1s for non-missing values
-and 0s for missing values. The function processes entries and locus-alleles in parallel
-using multiple threads with thread-safe operations through ReentrantLock.
-
-When verbose mode is enabled:
-- Displays progress bars during calculation
-- Shows histograms of sparsity distributions for both entries and locus-alleles
-- Prints descriptive messages about the calculation progress
-
-# Throws
-- `ArgumentError`: If the dimensions in the Genomes struct are inconsistent
-
-# Examples
-```jldoctest; setup = :(using GBCore, StatsBase)
-julia> genomes = simulategenomes(n=10, sparsity=0.3, verbose=false);
-
-julia> sparsity_per_entry, sparsity_per_locus_allele = sparsities(genomes);
-
-julia> round(mean(sparsity_per_entry), digits=10)
-0.3
-
-julia> round(mean(sparsity_per_locus_allele), digits=10)
-0.3
-```
-"""
-function sparsities(genomes::Genomes; verbose::Bool = false)::Tuple{Vector{Float64},Vector{Float64}}
-    # Check input arguments
-    if !checkdims(genomes)
-        throw(ArgumentError("The Genomes struct is corrupted."))
-    end
-    # Set mask to non-missing data-points
-    maskmissing!(genomes)
-    n, p = size(genomes.allele_frequencies)
-    sparsity_per_entry = Vector{Float64}(undef, n)
-    sparsity_per_locus_allele = Vector{Float64}(undef, p)
-    thread_lock::ReentrantLock = ReentrantLock()
-    if verbose
-        pb = ProgressMeter.Progress(n, desc = "Calculating sparsity per entry")
-    end
-    Threads.@threads for i = 1:n
-        @lock thread_lock sparsity_per_entry[i] = 1.00 .- mean(genomes.mask[i, :])
-        if verbose
-            ProgressMeter.next!(pb)
-        end
-    end
-    if verbose
-        ProgressMeter.finish!(pb)
-        println("Sparsity per entry")
-        UnicodePlots.histogram(sparsity_per_entry)
-    end
-    if verbose
-        pb = ProgressMeter.Progress(p, desc = "Calculating sparsity per locus-allele")
-    end
-    Threads.@threads for j = 1:p
-        @lock thread_lock sparsity_per_locus_allele[j] = 1.00 .- mean(genomes.mask[:, j])
-        if verbose
-            ProgressMeter.next!(pb)
-        end
-    end
-    if verbose
-        ProgressMeter.finish!(pb)
-        println("Sparsity per locus-allele")
-        UnicodePlots.histogram(sparsity_per_locus_allele)
-    end
-    # Output
-    (sparsity_per_entry, sparsity_per_locus_allele)
-end
-
-"""
     divideintomockscaffolds(genomes::Genomes; max_n_loci_per_chrom::Int64 = 100_000, verbose::Bool = false)::Vector{String}
 
 Divide genomic loci into mock scaffolds based on a maximum number of loci per chromosome.
@@ -278,14 +195,18 @@ function estimateld(
         LDs[i] = corr["loci_alleles|correlation"]
         # Save the correlation matrix in case the run gets interrupted
         fname_LD_matrix = string("LD_matrix-", hash(genomes), "-", chrom, ".tmp.jld2")
-        save(fname_LD_matrix, corr, compress = true)
+        JLD2.save(fname_LD_matrix, corr)
     end
     # Output
     LDs
 end
 
-# TODO: implement AOPTIM with automatic arbitrary classification into mock scaffolds based on data size
-function impute(genomes::Genomes; max_n_loci_per_chrom::Int64 = 100_000, verbose::Bool = false)::Genomes
+function impute(
+    genomes::Genomes;
+    max_n_loci_per_chrom::Int64 = 100_000,
+    resume::Bool = false,
+    verbose::Bool = false,
+)::Genomes
     # genomes = simulategenomes(n=10, sparsity=0.3, verbose=false); max_n_loci_per_chrom = 100; verbose = true
     # Check input arguments
     if !checkdims(genomes)
@@ -312,9 +233,52 @@ function impute(genomes::Genomes; max_n_loci_per_chrom::Int64 = 100_000, verbose
         chromosomes
     end
     # Estimate linkage disequilibrium (LD) between loci using Pearson's correlation per chromosome
-    LDs::Vector{Matrix{Float64}} = estimateld(genomes, chromosomes = chromosomes, verbose = verbose)
+    fnames = readdir()
+    fnames = fnames[
+        (.!isnothing.(match.(Regex("^LD_matrix-"), fnames))) .&&
+        (.!isnothing.(match.(Regex(".tmp.jld2\$"), fnames)))
+    ]
+    LDs::Vector{Matrix{Float64}} = if !resume || (length(fnames) == 0)
+        estimateld(genomes, chromosomes = chromosomes, verbose = verbose)
+    else
+        if verbose
+            println(
+                string(
+                    "Resuming LD calculations (finished ",
+                    length(fnames),
+                    " of ",
+                    length(unique(chromosomes)),
+                    " chromsomes or scaffolds)",
+                ),
+            )
+        end
+        finished_scaffolds = [replace(split(x, "-")[end], ".tmp.jld2" => "") for x in fnames]
+        idx_loci_alleles = findall([!(x ∈ finished_scaffolds) for x in chromosomes])
+        genomes_remaining = slice(genomes, idx_loci_alleles = idx_loci_alleles)
+        LDs = []
+        for fname in fnames
+            # fname = fnames[1]
+            push!(LDs, JLD2.load(fname)["loci_alleles|correlation"])
+        end
+        vcat!(LDs, estimateld(genomes_remaining, chromosomes = chromosomes[idx_loci_alleles], verbose = verbose))
+    end
+    
+    # TODO: place inside optim function
+    # Estimate pairwise distances between entries using mean absolute difference in allele frequencies
+    idx_loci_alleles = collect(1:10)
+    (_loci_alleles, _entries, D) = distances(
+        genomes,
+        distance_metrics = ["mad"],
+        idx_loci_alleles = idx_loci_alleles,
+        include_loci_alleles = false,
+        include_counts = true,
+        include_entries = false,
+        verbose = verbose,
+    )
+    entries_distances = D["entries|mad"]
+
+
     # TODO: 
-    # distance estimation via MAE
     # simulate missing data per locus-allele with at least 1 missing data
     # optimise for minimum loci correlation and maximum pool distance per locus-allele
     # impute missing data per locus-allele

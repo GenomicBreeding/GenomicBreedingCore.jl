@@ -898,7 +898,7 @@ function Base.filter(genomes::Genomes; verbose::Bool = false)::Genomes
 end
 
 """
-    sparsity(genomes::Genomes) -> Tuple{Vector{Float64}, Vector{Float64}}
+    sparsities(genomes::Genomes) -> Tuple{Vector{Float64}, Vector{Float64}}
 
 Calculate the sparsity (proportion of missing data) for each entry and locus in a `Genomes` object.
 
@@ -920,12 +920,13 @@ The function processes the data in parallel using multiple threads for performan
 ```jldoctest; setup = :(using GBCore, StatsBase)
 julia> genomes = simulategenomes(n=100, l=1_000, sparsity=0.25, verbose=false);
 
-julia> entry_sparsities, locus_sparsities = sparsity(genomes);
+julia> entry_sparsities, locus_sparsities = sparsities(genomes);
 
 julia> mean(entry_sparsities) == mean(locus_sparsities) == 0.25
+true
 ```
 """
-function sparsity(genomes::Genomes)::Tuple{Vector{Float64},Vector{Float64}}
+function sparsities(genomes::Genomes)::Tuple{Vector{Float64},Vector{Float64}}
     # No thread locking required as we are assigning values per index
     entry_sparsities::Array{Float64,1} = fill(0.0, length(genomes.entries))
     locus_sparsities::Array{Float64,1} = fill(0.0, length(genomes.loci_alleles))
@@ -1061,7 +1062,7 @@ function Base.filter(
     # Remove sparsest entries and then sparsest loci-alleles until no data remains or max_entry_sparsity and max_locus_sparsity are satisfied
     filtered_genomes = if (max_entry_sparsity < 1.0) || (max_locus_sparsity < 1.0)
         filtered_genomes = clone(genomes)
-        entry_sparsities, locus_sparsities = sparsity(filtered_genomes)
+        entry_sparsities, locus_sparsities = sparsities(filtered_genomes)
         bool::Vector{Bool} = [
             (length(entry_sparsities) > 0) &&
             (length(locus_sparsities) > 0) &&
@@ -1083,7 +1084,7 @@ function Base.filter(
                 m = maximum([max_locus_sparsity, quantile(locus_sparsities, max_locus_sparsity_percentile)])
                 slice(filtered_genomes, idx_loci_alleles = findall(locus_sparsities .<= m))
             end
-            entry_sparsities, locus_sparsities = sparsity(filtered_genomes)
+            entry_sparsities, locus_sparsities = sparsities(filtered_genomes)
             bool[1] =
                 (length(entry_sparsities) > 0) &&
                 (length(locus_sparsities) > 0) &&
@@ -1097,7 +1098,7 @@ function Base.filter(
                 m = maximum([max_entry_sparsity, quantile(entry_sparsities, max_entry_sparsity_percentile)])
                 slice(filtered_genomes, idx_entries = findall(entry_sparsities .<= m))
             end
-            entry_sparsities, locus_sparsities = sparsity(filtered_genomes)
+            entry_sparsities, locus_sparsities = sparsities(filtered_genomes)
             bool[1] =
                 (length(entry_sparsities) > 0) &&
                 (length(locus_sparsities) > 0) &&

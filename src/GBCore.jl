@@ -8,6 +8,7 @@ using Distributions
 using MixedModels, Metida
 using MultivariateStats
 using UnicodePlots, Plots
+using JLD2
 using ProgressMeter
 using Suppressor
 using Lux # for Fit deep learning model
@@ -16,6 +17,7 @@ using PrecompileTools: @compile_workload
 include("all_structs.jl")
 include("genomes.jl")
 include("phenomes.jl")
+include("impute.jl")
 include("trials.jl")
 include("tebv.jl")
 include("fit.jl")
@@ -28,11 +30,12 @@ include("simulation/simulate_mating.jl")
 
 export AbstractGB, Genomes, Phenomes, Trials, SimulatedEffects, TEBV, Fit, CV
 export clone, hash, ==
-export checkdims, dimensions, loci_alleles, loci, distances, plot, slice, sparsity, filter, tabularise, summarise
+export checkdims, dimensions, loci_alleles, loci, distances, plot, slice, sparsities, filter, tabularise, summarise
 export simulategenomes, simulateeffects, simulategenomiceffects, simulatetrials
 export histallelefreqs, simulatemating
 export countlevels, @string2formula, trialsmodelsfomulae!, analyse, extractphenomes
 export @stringevaluation, addcompositetrait
+export maskmissing!, divideintomockscaffolds, estimateld, impute
 
 # Precompile (does this improve start-up time significantly?)
 # @compile_workload begin
