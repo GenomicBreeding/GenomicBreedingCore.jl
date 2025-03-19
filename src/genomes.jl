@@ -253,6 +253,8 @@ Returns a tuple of three vectors containing:
 3. Allele identifiers as strings
 
 Each vector has length equal to the total number of loci-allele combinations in the genome.
+The function processes the data in parallel using multiple threads for performance optimization.
+
 
 # Arguments
 - `genomes::Genomes`: A valid Genomes object containing loci and allele information
@@ -288,7 +290,7 @@ function loci_alleles(genomes::Genomes; verbose::Bool = false)::Tuple{Vector{Str
     if verbose
         pb = ProgressMeter.Progress(p, desc = "Extract locus-allele names")
     end
-    for i = 1:p
+    Threads.@threads for i = 1:p
         locus = genomes.loci_alleles[i]
         locus_ids::Vector{String} = split(locus, '\t')
         chromosomes[i] = locus_ids[1]
@@ -416,7 +418,7 @@ Tuple containing:
 - For entries, calculates distances between entries based on their allele frequencies
 - Requires at least 2 valid (non-missing, finite) pairs to calculate metrics
 - Includes count matrices showing number of valid pairs used per calculation
-- Thread-safe implementation with locks for concurrent operations
+- Multi-threaded implementation which uses indexing on pre-allocated vectors and matrices which should avoid data races
 
 # Examples
 ```jldoctest; setup = :(using GBCore, LinearAlgebra)
@@ -493,10 +495,10 @@ function distances(
         for metric in distance_metrics
             # metric = distance_metrics[2]
             D::Matrix{Float64} = fill(-Inf, t, t)
-            thread_lock::ReentrantLock = ReentrantLock()
             if verbose
                 pb = ProgressMeter.Progress(length(idx_loci_alleles), desc = "Calculate distances for loci-alleles")
             end
+            # Multi-threaded distance calculation (no need for thread locking as we are accessing unique indexes)
             Threads.@threads for i in eachindex(idx_loci_alleles)
                 # i = 1
                 # println(i)
@@ -515,10 +517,10 @@ function distances(
                     end
                     # Count the number of elements used to estimate the distance
                     if include_counts && (metric == distance_metrics[1])
-                        @lock thread_lock counts[i, j] = length(idx)
+                        counts[i, j] = length(idx)
                     end
                     # Estimate the distance/correlation
-                    @lock thread_lock D[i, j] = if metric == "euclidean"
+                    D[i, j] = if metric == "euclidean"
                         sqrt(sum((y1[idx] - y2[idx]) .^ 2))
                     elseif metric == "correlation"
                         (var(y1[idx]) < 1e-7) || (var(y2[idx]) < 1e-7) ? continue : nothing
@@ -753,7 +755,7 @@ Create a subset of a `Genomes` struct by selecting specific entries and loci-all
 - `Genomes`: A new `Genomes` struct containing only the selected entries and loci-allele combinations
 
 # Performance Notes
-- The function uses single-threaded implementation for optimal performance when copying data (using multiple threads is inefficient because the time it takes to lock threads is better used for copying per se)
+- The function uses multi-threaded implementation for optimal performance
 - Progress bar is available when `verbose=true` to monitor the slicing operation
 - Memory efficient implementation that creates a new pre-allocated structure
 
@@ -831,11 +833,11 @@ function slice(
     if verbose
         pb = ProgressMeter.Progress(length(idx_entries), desc = "Slicing genomes")
     end
-    # Iterative slicing as using multiple threads with locks is slower due to the lock lag and we are simply copying data from one place to another with no complex calculations in between
+    # Multi-threaded copying of selected allele frequencies from genomes to sliced_genomes (no need for thread locking as we are accessing unique indexes)
     for (i1, i2) in enumerate(idx_entries)
         sliced_genomes.entries[i1] = genomes.entries[i2]
         sliced_genomes.populations[i1] = genomes.populations[i2]
-        for j1 in eachindex(idx_loci_alleles)
+        Threads.@threads for j1 in eachindex(idx_loci_alleles)
             j2 = idx_loci_alleles[j1]
             if i1 == 1
                 sliced_genomes.loci_alleles[j1] = genomes.loci_alleles[j2]
@@ -895,6 +897,46 @@ function Base.filter(genomes::Genomes; verbose::Bool = false)::Genomes
     filtered_genomes
 end
 
+"""
+    sparsity(genomes::Genomes) -> Tuple{Vector{Float64}, Vector{Float64}}
+
+Calculate the sparsity (proportion of missing data) for each entry and locus in a `Genomes` object.
+
+Returns a tuple of two vectors:
+- First vector contains sparsity values for each entry (row-wise mean of missing values)
+- Second vector contains sparsity values for each locus (column-wise mean of missing values)
+
+The function processes the data in parallel using multiple threads for performance optimization.
+
+# Arguments
+- `genomes::Genomes`: A Genomes object containing allele frequency data with potentially missing values
+
+# Returns
+- `Tuple{Vector{Float64}, Vector{Float64}}`: A tuple containing:
+    - Vector of entry sparsities (values between 0.0 and 1.0)
+    - Vector of locus sparsities (values between 0.0 and 1.0)
+
+# Example
+```jldoctest; setup = :(using GBCore, StatsBase)
+julia> genomes = simulategenomes(n=100, l=1_000, sparsity=0.25, verbose=false);
+
+julia> entry_sparsities, locus_sparsities = sparsity(genomes);
+
+julia> mean(entry_sparsities) == mean(locus_sparsities) == 0.25
+```
+"""
+function sparsity(genomes::Genomes)::Tuple{Vector{Float64},Vector{Float64}}
+    # No thread locking required as we are assigning values per index
+    entry_sparsities::Array{Float64,1} = fill(0.0, length(genomes.entries))
+    locus_sparsities::Array{Float64,1} = fill(0.0, length(genomes.loci_alleles))
+    Threads.@threads for i in eachindex(entry_sparsities)
+        entry_sparsities[i] = mean(Float64.(ismissing.(genomes.allele_frequencies[i, :])))
+    end
+    Threads.@threads for j in eachindex(locus_sparsities)
+        locus_sparsities[j] = mean(Float64.(ismissing.(genomes.allele_frequencies[:, j])))
+    end
+    entry_sparsities, locus_sparsities
+end
 
 """
     filter(
@@ -903,6 +945,8 @@ end
         max_entry_sparsity::Float64 = 0.0,
         max_locus_sparsity::Float64 = 0.0,
         max_prop_pc_varexp::Float64 = 1.00,
+        max_entry_sparsity_percentile::Float64 = 0.90,
+        max_locus_sparsity_percentile::Float64 = 0.50,
         chr_pos_allele_ids::Union{Nothing,Vector{String}} = nothing,
         verbose::Bool = false
     )::Genomes
@@ -915,6 +959,8 @@ Filter a Genomes struct based on multiple criteria.
 - `max_entry_sparsity::Float64`: Maximum allowed proportion of missing values per entry (default: 0.0)
 - `max_locus_sparsity::Float64`: Maximum allowed proportion of missing values per locus (default: 0.0)
 - `max_prop_pc_varexp::Float64`: Maximum proportion of variance explained by PC1 and PC2 for outlier detection. Set to `Inf` for no filtering by PCA. (default: 1.0)
+- `max_entry_sparsity_percentile::Float64`: Percentile threshold for entry sparsity filtering (default: 0.90)
+- `max_locus_sparsity_percentile::Float64`: Percentile threshold for locus sparsity filtering (default: 0.50)
 - `chr_pos_allele_ids::Union{Nothing,Vector{String}}`: Optional vector of specific locus-allele combinations to retain, 
     formatted as tab-separated strings "chromosome\\tposition\\tallele"
 - `verbose::Bool`: Whether to display progress bars during filtering (default: false)
@@ -922,21 +968,47 @@ Filter a Genomes struct based on multiple criteria.
 # Returns
 - `Genomes`: Filtered genomic data structure
 
-# Description
-Filters genomic data based on five criteria:
+# Details
+Filters genomic data based on six criteria:
 1. Minimum allele frequency (MAF)
 2. Maximum entry sparsity (proportion of missing values per entry)
 3. Maximum locus sparsity (proportion of missing values per locus)
-4. PCA-based outlier detection using variance explained threshold
-5. Specific locus-allele combinations (optional)
+4. Entry sparsity percentile threshold
+5. Locus sparsity percentile threshold
+6. PCA-based outlier detection using variance explained threshold
+7. Specific locus-allele combinations (optional)
+
+The percentile thresholds control how aggressively the sparsity filtering is applied:
+
+- `max_entry_sparsity_percentile` (default 0.90):
+  - Controls what proportion of entries to keep in each iteration
+  - Higher values (e.g. 0.95) retain more entries but may require more iterations
+  - Lower values (e.g. 0.75) remove more entries per iteration but may be too aggressive
+  - Adjust lower if dataset has many very sparse entries
+  - Adjust higher if trying to preserve more entries
+
+- `max_locus_sparsity_percentile` (default 0.50): 
+  - Controls what proportion of loci to keep in each iteration
+  - Higher values (e.g. 0.75) retain more loci but may require more iterations
+  - Lower values (e.g. 0.25) remove more loci per iteration
+  - Typically set lower than entry percentile since loci are often more expendable
+  - Adjust based on tolerance for missing data vs. desire to retain markers
+
+The iterative filtering will stop when either:
+- All sparsity thresholds are satisfied
+- No further filtering is possible without violating minimum thresholds
+- Dataset becomes too small for analysis
+
+Note that each filtering iteration includes multithreaded sparsity calculation and multithreaded genomes struct slicing.
 
 # Throws
-- `ArgumentError`: If Genomes struct is corrupted, if MAF is outside [0,1], or if chr_pos_allele_ids format is invalid
+- `ArgumentError`: If Genomes struct is corrupted, if MAF is outside [0,1], if sparsity thresholds are outside [0,1], 
+    if percentile thresholds are outside [0,1], if max_prop_pc_varexp < 0, or if chr_pos_allele_ids format is invalid
 - `ErrorException`: If filtering results in empty dataset or if PCA cannot be performed due to insufficient data
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
-julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
+julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, sparsity=0.01, verbose=false);
 
 julia> filtered_genomes_1 = filter(genomes, 0.1);
 
@@ -946,10 +1018,10 @@ julia> size(genomes.allele_frequencies)
 (100, 3000)
 
 julia> size(filtered_genomes_1.allele_frequencies)
-(100, 1236)
+(92, 500)
 
 julia> size(filtered_genomes_2.allele_frequencies)
-(100, 388)
+(92, 145)
 ```
 """
 function Base.filter(
@@ -958,10 +1030,12 @@ function Base.filter(
     max_entry_sparsity::Float64 = 0.0,
     max_locus_sparsity::Float64 = 0.0,
     max_prop_pc_varexp::Float64 = 1.00,
+    max_entry_sparsity_percentile::Float64 = 0.90,
+    max_locus_sparsity_percentile::Float64 = 0.50,
     chr_pos_allele_ids::Union{Nothing,Vector{String}} = nothing,
     verbose::Bool = false,
 )::Genomes
-    # genomes::Genomes = simulategenomes(n_populations=3, sparsity=0.01, seed=123456); maf=0.01; max_entry_sparsity=0.1; max_locus_sparsity = 0.25; max_prop_pc_varexp = 1.0
+    # genomes::Genomes = simulategenomes(n_populations=3, sparsity=0.01, seed=123456); maf=0.01; max_entry_sparsity=0.1; max_locus_sparsity = 0.25; max_prop_pc_varexp = 1.0; max_entry_sparsity_percentile = 0.9; max_locus_sparsity_percentile = 0.5
     # chr_pos_allele_ids = sample(genomes.loci_alleles, Int(floor(0.5*length(genomes.loci_alleles)))); sort!(chr_pos_allele_ids); verbose = true
     if !checkdims(genomes)
         throw(ArgumentError("Genomes struct is corrupted."))
@@ -969,56 +1043,113 @@ function Base.filter(
     if (maf < 0.0) || (maf > 1.0)
         throw(ArgumentError("We accept `maf` from 0.0 to 1.0."))
     end
-    # Filter by entry sparsity, locus sparsity and minimum allele frequency thresholds
-    # No thread locking required as we are assigning values per index
-    entry_sparsities::Array{Float64,1} = fill(0.0, length(genomes.entries))
-    mean_frequencies::Array{Float64,1} = fill(0.0, length(genomes.loci_alleles))
-    locus_sparsities::Array{Float64,1} = fill(0.0, length(genomes.loci_alleles))
-    for i in eachindex(entry_sparsities)
-        entry_sparsities[i] = mean(Float64.(ismissing.(genomes.allele_frequencies[i, :])))
+    if (max_entry_sparsity < 0.0) || (max_entry_sparsity > 1.0)
+        throw(ArgumentError("We accept `max_entry_sparsity` from 0.0 to 1.0."))
     end
-    for j in eachindex(mean_frequencies)
-        mean_frequencies[j] = mean(skipmissing(genomes.allele_frequencies[:, j]))
-        locus_sparsities[j] = mean(Float64.(ismissing.(genomes.allele_frequencies[:, j])))
+    if (max_locus_sparsity < 0.0) || (max_locus_sparsity > 1.0)
+        throw(ArgumentError("We accept `max_locus_sparsity` from 0.0 to 1.0."))
     end
-    idx_entries::Array{Int64,1} = findall((entry_sparsities .<= max_entry_sparsity))
-    idx_loci_alleles::Array{Int64,1} = findall(
-        (mean_frequencies .>= maf) .&& (mean_frequencies .<= (1.0 - maf)) .&& (locus_sparsities .<= max_locus_sparsity),
-    )
-    # Check if we are retaining any entries and loci
-    if (length(idx_entries) == 0) && (length(idx_loci_alleles) == 0)
-        throw(
-            ErrorException(
-                string(
-                    "All entries and loci filtered out at maximum entry sparsity = ",
-                    max_entry_sparsity,
-                    ", minimum allele frequencies (maf) = ",
-                    maf,
-                    ", and maximum locus sparsity = ",
-                    max_locus_sparsity,
-                    ".",
+    if (max_entry_sparsity_percentile < 0.0) || (max_entry_sparsity_percentile > 1.0)
+        throw(ArgumentError("We accept `max_entry_sparsity_percentile` from 0.0 to 1.0."))
+    end
+    if (max_locus_sparsity_percentile < 0.0) || (max_locus_sparsity_percentile > 1.0)
+        throw(ArgumentError("We accept `max_locus_sparsity_percentile` from 0.0 to 1.0."))
+    end
+    if max_prop_pc_varexp < 0.0
+        throw(ArgumentError("We accept `max_prop_pc_varexp` from 0.0 to Inf."))
+    end
+    # Remove sparsest entries and then sparsest loci-alleles until no data remains or max_entry_sparsity and max_locus_sparsity are satisfied
+    filtered_genomes = if (max_entry_sparsity < 1.0) || (max_locus_sparsity < 1.0)
+        filtered_genomes = clone(genomes)
+        entry_sparsities, locus_sparsities = sparsity(filtered_genomes)
+        bool::Vector{Bool} = [
+            (length(entry_sparsities) > 0) &&
+            (length(locus_sparsities) > 0) &&
+            (maximum(entry_sparsities) > max_entry_sparsity) &&
+            (maximum(locus_sparsities) > max_locus_sparsity),
+        ]
+        if verbose
+            println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+            println("Iteration 0: ")
+            @show dimensions(filtered_genomes)
+            println("Maximum entry sparsity = $(maximum(entry_sparsities))")
+            println("Maximum locus sparsity = $(maximum(locus_sparsities))")
+        end
+        iter = 0
+        while bool[1]
+            iter += 1
+            # Start every iteration by removing the sparsest loci, i.e. above the 75th percentile
+            filtered_genomes = begin
+                m = maximum([max_locus_sparsity, quantile(locus_sparsities, max_locus_sparsity_percentile)])
+                slice(filtered_genomes, idx_loci_alleles = findall(locus_sparsities .<= m))
+            end
+            entry_sparsities, locus_sparsities = sparsity(filtered_genomes)
+            bool[1] =
+                (length(entry_sparsities) > 0) &&
+                (length(locus_sparsities) > 0) &&
+                (maximum(entry_sparsities) > max_entry_sparsity) &&
+                (maximum(locus_sparsities) > max_locus_sparsity)
+            if !bool[1]
+                break
+            end
+            # Finish each iteration by removing the sparsest entries, i.e. above the 75th percentile
+            filtered_genomes = begin
+                m = maximum([max_entry_sparsity, quantile(entry_sparsities, max_entry_sparsity_percentile)])
+                slice(filtered_genomes, idx_entries = findall(entry_sparsities .<= m))
+            end
+            entry_sparsities, locus_sparsities = sparsity(filtered_genomes)
+            bool[1] =
+                (length(entry_sparsities) > 0) &&
+                (length(locus_sparsities) > 0) &&
+                (maximum(entry_sparsities) > max_entry_sparsity) &&
+                (maximum(locus_sparsities) > max_locus_sparsity)
+            if !bool[1]
+                break
+            end
+            if verbose
+                println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+                println("Iteration $iter: ")
+                @show dimensions(filtered_genomes)
+                println("Maximum entry sparsity = $(maximum(entry_sparsities))")
+                println("Maximum locus sparsity = $(maximum(locus_sparsities))")
+            end
+        end
+        if verbose
+            println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+            println("Finished: ")
+            @show dimensions(filtered_genomes)
+            println("Maximum entry sparsity = $(maximum(entry_sparsities))")
+            println("Maximum locus sparsity = $(maximum(locus_sparsities))")
+        end
+        # Check if we are retaining any entries and loci
+        if (length(filtered_genomes.entries) == 0) || (length(filtered_genomes.loci_alleles) == 0)
+            throw(
+                ErrorException(
+                    string(
+                        "All entries and/or loci filtered out at maximum entry sparsity = ",
+                        max_entry_sparsity,
+                        ", and maximum locus sparsity = ",
+                        max_locus_sparsity,
+                        ".",
+                    ),
                 ),
-            ),
-        )
+            )
+        end
+        filtered_genomes
     end
-    if length(idx_entries) == 0
-        throw(ErrorException(string("All entries filtered out at maximum entry sparsity = ", max_entry_sparsity, ".")))
+    # Filter by minimum allele frequency (maf)
+    filtered_genomes = if maf > 0.0
+        bool_loci_alleles::Vector{Bool} = fill(false, length(filtered_genomes.loci_alleles))
+        Threads.@threads for j in eachindex(bool_loci_alleles)
+            q = mean(skipmissing(filtered_genomes.allele_frequencies[:, j]))
+            bool_loci_alleles[j] = (q >= maf) && (q <= (1.0 - maf))
+        end
+        # Check if we are retaining any entries and loci
+        if sum(bool_loci_alleles) == 0
+            throw(ErrorException(string("All loci filtered out at minimum allele frequencies (maf) = ", maf, ".")))
+        end
+        slice(filtered_genomes, idx_loci_alleles = findall(bool_loci_alleles))
     end
-    if length(idx_loci_alleles) == 0
-        throw(
-            ErrorException(
-                string(
-                    "All loci filtered out at minimum allele frequencies (maf) = ",
-                    maf,
-                    ", and maximum locus sparsity = ",
-                    max_locus_sparsity,
-                    ".",
-                ),
-            ),
-        )
-    end
-    # Slice the genomes struct
-    filtered_genomes = slice(genomes, idx_entries = idx_entries, idx_loci_alleles = idx_loci_alleles, verbose = verbose)
     # @show dimensions(filtered_genomes)
     # Are we filtering out outlying loci-alleles?
     filtered_genomes = if !isinf(max_prop_pc_varexp)
@@ -1084,7 +1215,8 @@ function Base.filter(
             if verbose
                 pb = ProgressMeter.Progress(length(chr_pos_allele_ids), desc = "Parsing loci-allele combination names")
             end
-            for i in eachindex(chr_pos_allele_ids)
+            # Multi-threaded loci-allele names (no need for thread locking as we are accessing unique indexes)
+            Threads.@threads for i in eachindex(chr_pos_allele_ids)
                 ids = split(chr_pos_allele_ids[i], "\t")
                 if length(ids) < 3
                     throw(
@@ -1127,17 +1259,17 @@ function Base.filter(
         chromosomes, positions, alleles = loci_alleles(filtered_genomes)
         available_chr_pos_allele_ids = string.(chromosomes, "\t", positions, "\t", alleles)
         # Find the loci-allele combination indices to retain
-        bool_loci_alleles::Vector{Bool} = fill(false, length(available_chr_pos_allele_ids))
+        bool_loci_alleles = fill(false, length(available_chr_pos_allele_ids))
         if verbose
             pb = ProgressMeter.Progress(
                 length(available_chr_pos_allele_ids),
                 desc = "Filtering loci-allele combination names",
             )
         end
-        thread_lock::ReentrantLock = ReentrantLock()
+        # Multi-threaded indexing (no need for thread locking as we are accessing unique indexes)
         Threads.@threads for i in eachindex(available_chr_pos_allele_ids)
             # i = 1
-            @lock thread_lock bool_loci_alleles[i] = available_chr_pos_allele_ids[i] ∈ requested_chr_pos_allele_ids
+            bool_loci_alleles[i] = available_chr_pos_allele_ids[i] ∈ requested_chr_pos_allele_ids
             if verbose
                 ProgressMeter.next!(pb)
             end
@@ -1169,7 +1301,6 @@ function Base.filter(
     # Output
     filtered_genomes
 end
-
 
 """
     merge(
