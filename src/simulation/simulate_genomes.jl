@@ -36,13 +36,20 @@ Simulates genomic data with population structure and linkage disequilibrium.
   - allele_frequencies: Matrix of allele frequencies
   - mask: Boolean matrix indicating valid data points
 
-# Description
-Simulates genomic data by:
-1. Generating chromosome lengths and loci positions
-2. Assigning alleles to loci
-3. Grouping entries into populations
-4. Simulating allele frequencies with linkage disequilibrium using multivariate normal distribution
-5. Adding optional sparsity (missing data)
+# Details
+- Simulates genomic data by:
+    + Generating chromosome lengths and loci positions
+    + Assigning alleles to loci
+    + Grouping entries into populations
+    + Simulating allele frequencies with linkage disequilibrium using multivariate normal distribution
+    + Adding optional sparsity (missing data)
+- Chromosome lengths are distributed evenly, with any remainder added to last chromosome
+- Loci positions are randomly sampled without replacement within each chromosome
+- LD decay follows an exponential function: corr = 1/exp(r*d), where d is normalized distance
+- Mean alele frequencies are sampled from Beta(α,β) distribution
+- Population structure is implemented by sampling the mean allele frequencies per population
+- For each entry and locus, allele frequencies with linkage disequilibrium are simulated by sampling a multivariate normal distribution per chromosome
+- Missing data is randomly assigned if sparsity > 0
 
 # Throws
 - `ArgumentError`: If input parameters are outside acceptable ranges

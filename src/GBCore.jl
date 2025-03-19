@@ -30,6 +30,7 @@ export AbstractGB, Genomes, Phenomes, Trials, SimulatedEffects, TEBV, Fit, CV
 export clone, hash, ==
 export checkdims, dimensions, loci_alleles, loci, distances, plot, slice, filter, tabularise, summarise
 export simulategenomes, simulateeffects, simulategenomiceffects, simulatetrials
+export histallelefreqs, simulatemating
 export countlevels, @string2formula, trialsmodelsfomulae!, analyse, extractphenomes
 export @stringevaluation, addcompositetrait
 

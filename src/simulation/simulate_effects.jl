@@ -1,9 +1,19 @@
 """
-    Base.hash(x::SimulatedEffects, h::UInt)::UInt
+    hash(x::SimulatedEffects, h::UInt)::UInt
 
-Hash a SimulatedEffects struct.
+Compute a hash value for a `SimulatedEffects` object.
 
-## Examples
+This method implements custom hashing for `SimulatedEffects` by iterating through all fields
+of the object and combining their hash values with the provided seed hash `h`.
+
+# Arguments
+- `x::SimulatedEffects`: The object to be hashed
+- `h::UInt`: The hash seed value
+
+# Returns
+- `UInt`: The computed hash value
+
+# Examples
 ```jldoctest; setup = :(using GBCore)
 julia> effects = SimulatedEffects();
 
@@ -12,73 +22,31 @@ UInt64
 ```
 """
 function Base.hash(x::SimulatedEffects, h::UInt)::UInt
-    hash(
-        SimulatedEffects,
-        hash(
-            x.id,
-            hash(
-                x.year,
-                hash(
-                    x.season,
-                    hash(
-                        x.site,
-                        hash(
-                            x.seasons_x_year,
-                            hash(
-                                x.harvests_x_season_x_year,
-                                hash(
-                                    x.sites_x_harvest_x_season_x_year,
-                                    hash(
-                                        x.field_layout,
-                                        hash(
-                                            x.replications_x_site_x_harvest_x_season_x_year,
-                                            hash(
-                                                x.blocks_x_site_x_harvest_x_season_x_year,
-                                                hash(
-                                                    x.rows_x_site_x_harvest_x_season_x_year,
-                                                    hash(
-                                                        x.cols_x_site_x_harvest_x_season_x_year,
-                                                        hash(
-                                                            x.additive_genetic,
-                                                            hash(
-                                                                x.dominance_genetic,
-                                                                hash(
-                                                                    x.epistasis_genetic,
-                                                                    hash(
-                                                                        x.additive_allele_x_site_x_harvest_x_season_x_year,
-                                                                        hash(
-                                                                            x.dominance_allele_x_site_x_harvest_x_season_x_year,
-                                                                            hash(
-                                                                                x.epistasis_allele_x_site_x_harvest_x_season_x_year,
-                                                                                h,
-                                                                            ),
-                                                                        ),
-                                                                    ),
-                                                                ),
-                                                            ),
-                                                        ),
-                                                    ),
-                                                ),
-                                            ),
-                                        ),
-                                    ),
-                                ),
-                            ),
-                        ),
-                    ),
-                ),
-            ),
-        ),
-    )
+    for field in fieldnames(typeof(x))
+        # field = fieldnames(typeof(x))[1]
+        h = hash(getfield(x, field), h)
+    end
+    h
 end
 
 
 """
     Base.:(==)(x::SimulatedEffects, y::SimulatedEffects)::Bool
 
-Equality of SimulatedEffects structs using the hash function defined for SimulatedEffects structs.
+Defines equality comparison for SimulatedEffects structs by comparing their hash values.
 
-## Examples
+This method overloads the == operator for SimulatedEffects type and determines if two
+SimulatedEffects instances are equal by comparing their hash values rather than doing
+a field-by-field comparison.
+
+# Arguments
+- `x::SimulatedEffects`: First SimulatedEffects instance to compare
+- `y::SimulatedEffects`: Second SimulatedEffects instance to compare
+
+# Returns
+- `Bool`: true if the hash values of both instances are equal, false otherwise
+
+# Examples
 ```jldoctest; setup = :(using GBCore)
 julia> effects_1 = SimulatedEffects();
 
@@ -101,9 +69,35 @@ end
 """
     checkdims(effects::SimulatedEffects)::Bool
 
-Check dimension compatibility of the fields of the SimulatedEffects struct
+Check dimension compatibility of the fields of the SimulatedEffects struct.
+
+# Arguments
+- `effects::SimulatedEffects`: A SimulatedEffects struct containing various genetic and experimental effects
+
+# Returns
+- `Bool`: `true` if all dimensions are compatible, `false` otherwise
+
+Verifies that:
+- `id` has length 6
+- `field_layout` has 4 columns 
+- All following vectors have the same length (n):
+  - `replications_x_site_x_harvest_x_season_x_year`
+  - `blocks_x_site_x_harvest_x_season_x_year`
+  - `rows_x_site_x_harvest_x_season_x_year`
+  - `cols_x_site_x_harvest_x_season_x_year`
+  - `additive_genetic`
+  - `dominance_genetic`
+  - `epistasis_genetic`
+  - `additive_allele_x_site_x_harvest_x_season_x_year`
+  - `dominance_allele_x_site_x_harvest_x_season_x_year`
+  - `epistasis_allele_x_site_x_harvest_x_season_x_year`
 
 # Examples
+```jldoctest; setup = :(using GBCore)
+julia> effects = SimulatedEffects();
+
+julia> typeof(hash(effects))
+UInt64
 ```jldoctest; setup = :(using GBCore)
 julia> effects = SimulatedEffects();
 
@@ -135,9 +129,17 @@ function checkdims(effects::SimulatedEffects)::Bool
 end
 
 """
-    sum(effects::SimulatedEffects)::Tuple{Int64, Int64, Int64}
+    sum(effects::SimulatedEffects)::Vector{Float64}
 
-Sum up the simulated effects to generate the simulated phenotype values
+Sum up all simulated effects to generate the simulated phenotype values. The function iterates through
+all fields of the SimulatedEffects struct (except :id and :field_layout) and adds their values
+element-wise to produce a vector of phenotypic values.
+
+# Arguments
+- `effects::SimulatedEffects`: A struct containing various genetic and environmental effects
+
+# Returns
+- `Vector{Float64}`: A vector containing the summed effects (phenotypic values)
 
 # Examples
 ```jldoctest; setup = :(using GBCore)
@@ -166,21 +168,26 @@ function Base.sum(effects::SimulatedEffects)::Vector{Float64}
 end
 
 """
-# Simulate effects
+    simulateeffects(; p::Int64 = 2, q::Int64 = 1, λ::Float64 = 1.00, seed::Int64 = 42)::Matrix{Float64}
 
-Sample `p` x `q` effects from a multivariate normal distribution with
-`μ~Exp(λ)` and `Σ=μμ'`
+Simulate correlated effects by sampling from a multivariate normal distribution.
 
-## Arguments
-- `p`: number of correlated effects to simulate (default = 2)
-- `q`: number times to simulate the correlated effects from the same distribution (default = 1)
-- `λ`: parameter of the exponential distritbution from which the means will be sampled from (default = 1.00)
-- `seed`: randomisation seed (default = 42)
+This function generates a matrix of correlated effects by:
+1. Sampling means (μ) from an exponential distribution with parameter λ
+2. Creating a covariance matrix Σ = μμ'
+3. Drawing samples from MvNormal(μ, Σ)
+4. Ensuring numerical stability by adjusting the covariance matrix if necessary
 
-## Output
-- `p` x `q` matrix of correlated effects
+# Arguments
+- `p::Int64`: Number of correlated effects to simulate (default = 2)
+- `q::Int64`: Number of times to simulate the correlated effects from the same distribution (default = 1)
+- `λ::Float64`: Rate parameter of the exponential distribution for sampling means (default = 1.00)
+- `seed::Int64`: Random number generator seed for reproducibility (default = 42)
 
-## Examples
+# Returns
+- `Matrix{Float64}`: A p × q matrix where each column represents a set of correlated effects
+
+# Examples
 ```jldoctest; setup = :(using GBCore)
 julia> θ::Matrix{Float64} = simulateeffects();
 
@@ -211,21 +218,36 @@ function simulateeffects(; p::Int64 = 2, q::Int64 = 1, λ::Float64 = 1.00, seed:
 end
 
 """
-# Simulate genomic effects
+    simulategenomiceffects(;
+        genomes::Genomes,
+        f_additive::Float64 = 0.01,
+        f_dominance::Float64 = 0.10,
+        f_epistasis::Float64 = 0.05,
+        seed::Int64 = 42,
+    )::Tuple{Matrix{Float64},Matrix{Float64}}
 
-Simulate additive, dominance, and epistatic effects
+Simulate additive, dominance, and epistatic effects for multiple loci.
 
-## Arguments
-- `genomes`: Genome struct includes the `n` entries x `p` loci-alleles combinations (`p` = `l` loci x `a-1` alleles)
-- `f_additive`: proportion of the `l` loci with non-zero additive effects on the phenotype
-- `f_dominance`: proportion of the `l*f_additive` additive effects loci with additional dominance effects
-- `f_epistasis`: proportion of the `l*f_additive` additive effects loci with additional epistasis effects
+# Arguments
+- `genomes::Genomes`: Genome struct containing `n` entries x `p` loci-alleles combinations
+- `f_additive::Float64`: Proportion of loci with non-zero additive effects (default = 0.01)
+- `f_dominance::Float64`: Proportion of additive loci with dominance effects (default = 0.10)
+- `f_epistasis::Float64`: Proportion of additive loci with epistasis effects (default = 0.05)
+- `seed::Int64`: Random seed for reproducibility (default = 42)
 
-## Outputs
-- `n` x `3` matrix of additive, dominance and epistasis effects per entry
-- `p` x `3` matrix of additive, dominance and epistasis effects per locus-allele combination
+# Returns
+- `Tuple{Matrix{Float64},Matrix{Float64}}`:
+  + First matrix (n x 3): Additive, dominance and epistasis effects per entry
+  + Second matrix (p x 3): Effects per locus-allele combination
 
-## Examples
+# Details
+The additive, dominance, and epistasis allele effects share a common exponential distribution (`λ=1`) from which 
+the mean of the effects (`μ`) are sampled, and the covariance matrix is derived (`Σ = μ * μ'`; 
+where if `det(Σ)≈0` then we iteratively add 1.00 to the diagonals until it becomes invertible or 10 iterations 
+finishes and throws an error). The non-additive or epistasis allele effects were simulated by multiplying the allele 
+frequencies of all possible unique pairs of epistasis alleles and their effects.
+
+# Examples
 ```jldoctest; setup = :(using GBCore)
 julia> genomes::Genomes = simulategenomes(n=100, l=2_000, n_alleles=3, verbose=false);
 
@@ -240,13 +262,6 @@ julia> sum(B .!= 0.0, dims=1)
 1×3 Matrix{Int64}:
  200  75  50
 ```
-
-## Details
-The additive, dominance, and epistasis allele effects share a common exponential distribution (`λ=1`) from which 
-the mean of the effects (`μ`) are sampled, and the covariance matrix is derived (`Σ = μ * μ'`; 
-where if `det(Σ)≈0` then we iteratively add 1.00 to the diagonals until it becomes invertible or 10 iterations 
-finishes and throws an error). The non-additive or epistasis allele effects were simulated by multiplying the allele 
-frequencies of all possible unique pairs of epistasis alleles and their effects.
 """
 function simulategenomiceffects(;
     genomes::Genomes,

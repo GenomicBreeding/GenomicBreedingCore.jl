@@ -1,7 +1,26 @@
 """
-# Simulate trials
+    simulatetrials(;
+        genomes::Genomes,
+        f_add_dom_epi::Matrix{Float64} = [
+            0.01 0.25 0.10
+            0.05 0.50 0.25
+            0.10 0.25 0.00
+        ],
+        n_years::Int64 = 2,
+        n_seasons::Int64 = 4,
+        n_harvests::Int64 = 2,
+        n_sites::Int64 = 4,
+        n_replications::Int64 = 2,
+        n_blocks::Union{Missing,Int64} = missing,
+        n_rows::Union{Missing,Int64} = missing,
+        n_cols::Union{Missing,Int64} = missing,
+        proportion_of_variance::Union{Missing,Matrix{Float64}} = missing,
+        sparsity::Float64 = 0.0,
+        seed::Int64 = 42,
+        verbose::Bool = true,
+    )::Tuple{Trials,Vector{SimulatedEffects}}
 
-## Arguments
+# Arguments
 - `genomes`: Genome struct includes the `n` entries x `p` loci-alleles combinations (`p` = `l` loci x `a-1` alleles)
 - `f_add_dom_epi`: `n_traits` x 3 numeric matrix of loci proportion with additive, dominance and epistasis effects, i.e.
   each column refers to:
@@ -30,14 +49,29 @@
     7. environmental interactions
     8. spatial interactions
     9. GxE interactiions
-  
 - `seed`: Randomisation seed (default = 42)
 - `sparsity`: Proportion of missing data (default = 0.0)
 - `verbose`: Show trials simulation progress bar? (default = true)
 
-## Outputs
+# Outputs
 - `Trials` struct of simulated phenotype data
 - Vector of `SimulatedEffects` each corresponding to each trait-year-season-harvest-site-replication combination
+
+# Details
+The function simulates trial data by:
+1. Generating genetic effects (additive, dominance, epistasis)
+2. Simulating environmental effects for:
+   - Years, seasons, sites
+   - Environmental interactions
+   - Spatial field effects (blocks, rows, columns)
+   - Genotype-by-environment interactions
+3. Combining effects according to specified variance proportions
+4. Applying optional sparsity to create missing data
+
+The field layout is optimized to have:
+- Number of rows ≤ number of columns
+- Blocks divided along columns
+- Even distribution of entries and replications
 
 ## Examples
 ```jldoctest; setup = :(using GBCore; using StatsBase)

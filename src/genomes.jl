@@ -285,16 +285,15 @@ function loci_alleles(genomes::Genomes; verbose::Bool = false)::Tuple{Vector{Str
     chromosomes = Vector{String}(undef, p)
     positions = Vector{Int64}(undef, p)
     alleles = Vector{String}(undef, p)
-    thread_lock::ReentrantLock = ReentrantLock()
     if verbose
         pb = ProgressMeter.Progress(p, desc = "Extract locus-allele names")
     end
-    Threads.@threads for i = 1:p
+    for i = 1:p
         locus = genomes.loci_alleles[i]
         locus_ids::Vector{String} = split(locus, '\t')
-        @lock thread_lock chromosomes[i] = locus_ids[1]
-        @lock thread_lock positions[i] = parse(Int64, locus_ids[2])
-        @lock thread_lock alleles[i] = locus_ids[4]
+        chromosomes[i] = locus_ids[1]
+        positions[i] = parse(Int64, locus_ids[2])
+        alleles[i] = locus_ids[4]
         if verbose
             ProgressMeter.next!(pb)
         end
@@ -833,19 +832,14 @@ function slice(
         pb = ProgressMeter.Progress(length(idx_entries), desc = "Slicing genomes")
     end
     # Iterative slicing as using multiple threads with locks is slower due to the lock lag and we are simply copying data from one place to another with no complex calculations in between
-    # thread_lock::ReentrantLock = ReentrantLock()
     for (i1, i2) in enumerate(idx_entries)
         sliced_genomes.entries[i1] = genomes.entries[i2]
         sliced_genomes.populations[i1] = genomes.populations[i2]
-        # Threads.@threads for j1 in eachindex(idx_loci_alleles)
         for j1 in eachindex(idx_loci_alleles)
             j2 = idx_loci_alleles[j1]
             if i1 == 1
-                # @lock thread_lock sliced_genomes.loci_alleles[j1] = genomes.loci_alleles[j2]
                 sliced_genomes.loci_alleles[j1] = genomes.loci_alleles[j2]
             end
-            # @lock thread_lock sliced_genomes.allele_frequencies[i1, j1] = genomes.allele_frequencies[i2, j2]
-            # @lock thread_lock sliced_genomes.mask[i1, j1] = genomes.mask[i2, j2]
             sliced_genomes.allele_frequencies[i1, j1] = genomes.allele_frequencies[i2, j2]
             sliced_genomes.mask[i1, j1] = genomes.mask[i2, j2]
         end
@@ -908,7 +902,7 @@ end
         maf::Float64;
         max_entry_sparsity::Float64 = 0.0,
         max_locus_sparsity::Float64 = 0.0,
-        max_prop_pc_varexp::Float64 = 1.0,
+        max_prop_pc_varexp::Float64 = 1.00,
         chr_pos_allele_ids::Union{Nothing,Vector{String}} = nothing,
         verbose::Bool = false
     )::Genomes
@@ -917,7 +911,7 @@ Filter a Genomes struct based on multiple criteria.
 
 # Arguments
 - `genomes::Genomes`: Input genomic data structure
-- `maf::Float64`: Minimum allele frequency threshold (0.0 to 1.0)
+- `maf::Float64`: Minimum allele frequency threshold (required)
 - `max_entry_sparsity::Float64`: Maximum allowed proportion of missing values per entry (default: 0.0)
 - `max_locus_sparsity::Float64`: Maximum allowed proportion of missing values per locus (default: 0.0)
 - `max_prop_pc_varexp::Float64`: Maximum proportion of variance explained by PC1 and PC2 for outlier detection. Set to `Inf` for no filtering by PCA. (default: 1.0)
@@ -980,10 +974,10 @@ function Base.filter(
     entry_sparsities::Array{Float64,1} = fill(0.0, length(genomes.entries))
     mean_frequencies::Array{Float64,1} = fill(0.0, length(genomes.loci_alleles))
     locus_sparsities::Array{Float64,1} = fill(0.0, length(genomes.loci_alleles))
-    Threads.@threads for i in eachindex(entry_sparsities)
+    for i in eachindex(entry_sparsities)
         entry_sparsities[i] = mean(Float64.(ismissing.(genomes.allele_frequencies[i, :])))
     end
-    Threads.@threads for j in eachindex(mean_frequencies)
+    for j in eachindex(mean_frequencies)
         mean_frequencies[j] = mean(skipmissing(genomes.allele_frequencies[:, j]))
         locus_sparsities[j] = mean(Float64.(ismissing.(genomes.allele_frequencies[:, j])))
     end
@@ -1090,8 +1084,7 @@ function Base.filter(
             if verbose
                 pb = ProgressMeter.Progress(length(chr_pos_allele_ids), desc = "Parsing loci-allele combination names")
             end
-            # No thread locking required as we are assigning values per index
-            Threads.@threads for i in eachindex(chr_pos_allele_ids)
+            for i in eachindex(chr_pos_allele_ids)
                 ids = split(chr_pos_allele_ids[i], "\t")
                 if length(ids) < 3
                     throw(
@@ -1130,13 +1123,9 @@ function Base.filter(
             end
             sort(string.(chr, "\t", pos, "\t", ale))
         end
-        # @show length(requested_chr_pos_allele_ids)
-        # @show hash(requested_chr_pos_allele_ids)
         # Extract the loci-allele combination names from the filtered_genomes struct
         chromosomes, positions, alleles = loci_alleles(filtered_genomes)
         available_chr_pos_allele_ids = string.(chromosomes, "\t", positions, "\t", alleles)
-        # @show length(available_chr_pos_allele_ids)
-        # @show hash(available_chr_pos_allele_ids)
         # Find the loci-allele combination indices to retain
         bool_loci_alleles::Vector{Bool} = fill(false, length(available_chr_pos_allele_ids))
         if verbose
@@ -1145,9 +1134,10 @@ function Base.filter(
                 desc = "Filtering loci-allele combination names",
             )
         end
-        for i in eachindex(available_chr_pos_allele_ids)
+        thread_lock::ReentrantLock = ReentrantLock()
+        Threads.@threads for i in eachindex(available_chr_pos_allele_ids)
             # i = 1
-            bool_loci_alleles[i] = available_chr_pos_allele_ids[i] ∈ requested_chr_pos_allele_ids
+            @lock thread_lock bool_loci_alleles[i] = available_chr_pos_allele_ids[i] ∈ requested_chr_pos_allele_ids
             if verbose
                 ProgressMeter.next!(pb)
             end
