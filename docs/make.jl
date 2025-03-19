@@ -10,7 +10,8 @@ makedocs(;
     format = Documenter.HTML(;
         canonical = "https://GenomicBreeding.github.io/GBCore.jl",
         edit_link = "main",
-        assets = String[],
+        assets = String[], 
+        size_threshold = 1000000, 
     ),
     pages = ["Home" => "index.md"],
 )
