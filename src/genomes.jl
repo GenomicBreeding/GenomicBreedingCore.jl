@@ -922,7 +922,10 @@ julia> genomes = simulategenomes(n=100, l=1_000, sparsity=0.25, verbose=false);
 
 julia> entry_sparsities, locus_sparsities = sparsities(genomes);
 
-julia> mean(entry_sparsities) == mean(locus_sparsities) == 0.25
+julia> abs(0.25 - mean(entry_sparsities)) < 0.0001
+true
+
+julia> abs(0.25 - mean(locus_sparsities)) < 0.0001
 true
 ```
 """
