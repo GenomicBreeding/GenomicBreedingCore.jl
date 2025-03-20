@@ -150,10 +150,10 @@ julia> mock_scaffolds = divideintomockscaffolds(genomes, max_n_loci_per_chrom=10
 
 julia> mock_scaffolds_uniq, LDs_mock_scaffolds = estimateld(genomes, chromosomes=mock_scaffolds);
 
-julia> length(LDs_all_chroms), length(chroms_uniq), length(unique(chrom))
+julia> length(LDs_all_chroms) == length(chroms_uniq) == length(unique(chrom))
 true
 
-julia> length(LDs_mock_scaffolds) == length(mock_scaffolds_uniq) == Int(length(chrom) / 100)
+julia> length(LDs_mock_scaffolds), length(mock_scaffolds_uniq), Int(length(chrom) / 100)
 true
 ```
 """
