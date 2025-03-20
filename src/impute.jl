@@ -175,12 +175,12 @@ function estimateld(
     end
     chroms_uniq = sort(unique(chromosomes))
     # Check if the expected LD output JLD2 file already exists from previous runs
-    fname_LD_matrix = string("LD_matrices_per_chrom-", hash(genomes), ".jld2")
-    if isfile(fname_LD_matrix)
+    fname_LD_matrix_final = string("LD_matrices_per_chrom-", hash(genomes), ".jld2")
+    if isfile(fname_LD_matrix_final)
         if verbose
-            println(string("Outpult LDs JLD2 file found. Loading ", fname_LD_matrix, "."))
+            println(string("Outpult LDs JLD2 file found. Loading ", fname_LD_matrix_final, "."))
         end
-        return (chroms_uniq, JLD2.load(fname_LD_matrix)["LDs"])
+        return (chroms_uniq, JLD2.load(fname_LD_matrix_final)["LDs"])
     end
     # Instantiate the output vector of LD matrices
     LDs = Vector{Matrix{Float64}}(undef, length(chroms_uniq))
@@ -253,7 +253,7 @@ function estimateld(
         JLD2.save(fname_LD_matrix, corr)
     end
     # Save output as backup
-    JLD2.save(fname_LD_matrix, Dict("LDs" => LDs))
+    JLD2.save(fname_LD_matrix_final, Dict("LDs" => LDs))
     # Clean-up
     fnames = readdir()
     fnames = fnames[(.!isnothing.(
@@ -332,6 +332,7 @@ end
 
 function knnioptim(
     genomes::Genomes;
+    j::Int64,
     idx_focal_locus::Int64,
     idx_loci_alleles_per_chrom::Vector{Int64},
     idx_entries_not_missing::Vector{Int64},
@@ -342,6 +343,9 @@ function knnioptim(
     min_k_entries::Int64 = 2,
     verbose::Bool = false,
 )::Dict{String,Float64}
+    if length(idx_entries_not_missing) < 2
+        throw(ArgumentError("We expect at least 2 entries with non-missing data at the focal locus."))
+    end
     optim_min_loci_corr = range(0.0, 1.0, length = optim_n)
     optim_max_entries_dist = range(0.0, 1.0, length = optim_n)
     optim_params = Matrix{Float64}(undef, optim_n^2, 3) # each collumn corresponds to (1) min_loci_corr, (2) max_entries_dist, (3) mae
@@ -362,7 +366,7 @@ function knnioptim(
             # idx_dist = 5
             max_entries_dist = optim_max_entries_dist[idx_dist]
             mae::Float64 = 0.0
-            idx_entries_not_missing_and_sim_missing = sample(idx_entries_not_missing, n_reps, replace = false)
+            idx_entries_not_missing_and_sim_missing = sample(idx_entries_not_missing, minimum([length(idx_entries_not_missing)-1, n_reps]), replace = false)
             idx_entries_not_missing_and_not_sim_missing = idx_entries_not_missing[.!(
                 x ∈ idx_entries_not_missing_and_sim_missing for x in idx_entries_not_missing
             )]
@@ -374,7 +378,7 @@ function knnioptim(
                 q = genomes.allele_frequencies[i, j]
                 mae += abs(q - q̄)
             end
-            mae /= n_reps
+            mae /= length(idx_entries_not_missing_and_sim_missing)
             optim_params[(idx_ld-1)*optim_n+idx_dist, :] = [min_loci_corr, max_entries_dist, mae]
         end
     end
@@ -402,13 +406,12 @@ function impute(
     genomes::Genomes;
     max_n_loci_per_chrom::Int64 = 100_000,
     n_reps::Int64 = 2,
-    min_loci_corr::Float64 = 0.9,
-    max_entries_dist::Float64 = 0.1,
+    optim_n::Int64 = 10,
     min_l_loci::Int64 = 10,
     min_k_entries::Int64 = 2,
     verbose::Bool = false,
-)::Genomes
-    # genomes = simulategenomes(n=10, sparsity=0.3, verbose=false); max_n_loci_per_chrom = 100; n_reps = 2; min_l_loci = 10; min_k_entries = 2; verbose = true
+)::Tuple{Genomes, Float64}
+    # genomes = simulategenomes(n=10, sparsity=0.3, verbose=false); max_n_loci_per_chrom = 100; n_reps = 2; optim_n = 10; min_l_loci = 10; min_k_entries = 2; verbose = true
     # Check input arguments
     if !checkdims(genomes)
         throw(ArgumentError("The Genomes struct is corrupted."))
@@ -433,12 +436,6 @@ function impute(
     if (n_reps < 1) || (n_reps > n)
         throw(ArgumentError("The `n_reps` is expected to be between 1 and $n."))
     end
-    if (min_loci_corr < 0.0) || (min_loci_corr > 1.0)
-        throw(ArgumentError("The `min_loci_corr` is expected to be between 0.0 and 1.0."))
-    end
-    if (max_entries_dist < 0.0) || (max_entries_dist > 1.0)
-        throw(ArgumentError("The `max_entries_dist` is expected to be between 0.0 and 1.0."))
-    end
     if (min_l_loci < 10) || (min_l_loci > Int64(p / max_n_loci_per_chrom))
         throw(
             ArgumentError(
@@ -450,7 +447,7 @@ function impute(
         throw(ArgumentError("The `min_k_entries` is expected to be between 2 and $n."))
     end
     # Instantiate the output Genomes struct
-    out::Genomes = Genomes(n = n, p = p)
+    out::Genomes = clone(genomes)
     # Divide the allele frequencies into mock scaffolds if we have more than 100,000 loci per scaffold for at least 1 scaffold
     chromosomes, _positions, _alleles = loci_alleles(genomes)
     max_m = 1
@@ -469,6 +466,10 @@ function impute(
     # Estimate linkage disequilibrium (LD) between loci using Pearson's correlation per chromosome
     chroms_uniq, LDs = estimateld(genomes, chromosomes = chromosomes, verbose = verbose)
     # Impute per locus-allele per chromosome
+    if verbose
+        pb = ProgressMeter.Progress(length(p), desc="Imputing using the imputef algorithm")
+    end
+    mae_expected::Vector{Union{Missing, Float64}} = fill(missing, p)
     for k in eachindex(LDs)
         # k = 1
         LD = LDs[k]
@@ -485,9 +486,14 @@ function impute(
             end
             idx_entries_missing = findall(bool_entries_missing)
             idx_entries_not_missing = findall(.!bool_entries_missing)
+            # Skip imputation if the number of non-missing entries at the focal locus is less than `min_k_entries`
+            if length(idx_entries_not_missing) < min_k_entries
+                continue
+            end
             # Optimise for `min_loci_corr` and `max_entries_dist`
             params = knnioptim(
                 genomes,
+                j = j,
                 idx_focal_locus = idx_focal_locus,
                 idx_loci_alleles_per_chrom = idx_loci_alleles_per_chrom,
                 idx_entries_not_missing = idx_entries_not_missing,
@@ -514,17 +520,25 @@ function impute(
                 qs::Vector{Float64} = genomes.allele_frequencies[idx_entries_not_missing, j]
                 d = D[i, idx_entries_not_missing]
                 q̄ = knni(qs = qs, d = d, max_entries_dist = params["max_entries_dist"], min_k_entries = min_k_entries)
-                genomes.allele_frequencies[i, j] = q̄
+                out.allele_frequencies[i, j] = q̄
+            end
+            # Update the expected MAE
+            mae_expected[j] = params["mae"]
+            if verbose
+                ProgressMeter.next!(pb)
             end
         end
     end
-
-
-
-    # TODO: 
-    # simulate missing data per locus-allele with at least 1 missing data
-    # optimise for minimum loci correlation and maximum pool distance per locus-allele
-    # impute missing data per locus-allele
+    if verbose
+        ProgressMeter.finish!(pb)
+    end
     # Output
-    out
+    if !checkdims(out)
+        throw(ErrorException("Error imputing"))
+    end
+    idx_non_missing_mae = findall(.!ismissing.(mae_expected))
+    (
+        out,
+        mean(mae_expected[idx_non_missing_mae])
+    )
 end

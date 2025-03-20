@@ -34,6 +34,6 @@ export simulategenomes, simulateeffects, simulategenomiceffects, simulatetrials
 export histallelefreqs, simulatemating
 export countlevels, @string2formula, trialsmodelsfomulae!, analyse, extractphenomes
 export @stringevaluation, addcompositetrait
-export maskmissing!, divideintomockscaffolds, estimateld, impute
+export maskmissing!, divideintomockscaffolds, estimateld, estimatedistances, knni, knnioptim, impute
 
 end
