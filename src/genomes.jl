@@ -962,7 +962,7 @@ Filter a Genomes struct based on multiple criteria.
 - `maf::Float64`: Minimum allele frequency threshold (required)
 - `max_entry_sparsity::Float64`: Maximum allowed proportion of missing values per entry (default: 0.0)
 - `max_locus_sparsity::Float64`: Maximum allowed proportion of missing values per locus (default: 0.0)
-- `max_prop_pc_varexp::Float64`: Maximum proportion of variance explained by PC1 and PC2 for outlier detection. Set to `Inf` for no filtering by PCA. (default: 1.0)
+- `max_prop_pc_varexp::Float64`: Maximum proportion of variance explained by PC1 and PC2 for outlier detection. Set to `Inf` for no filtering by PCA. (default: 0.9)
 - `max_entry_sparsity_percentile::Float64`: Percentile threshold for entry sparsity filtering (default: 0.90)
 - `max_locus_sparsity_percentile::Float64`: Percentile threshold for locus sparsity filtering (default: 0.50)
 - `chr_pos_allele_ids::Union{Nothing,Vector{String}}`: Optional vector of specific locus-allele combinations to retain, 
@@ -1033,7 +1033,7 @@ function Base.filter(
     maf::Float64;
     max_entry_sparsity::Float64 = 0.0,
     max_locus_sparsity::Float64 = 0.0,
-    max_prop_pc_varexp::Float64 = 1.00,
+    max_prop_pc_varexp::Float64 = 0.90,
     max_entry_sparsity_percentile::Float64 = 0.90,
     max_locus_sparsity_percentile::Float64 = 0.50,
     chr_pos_allele_ids::Union{Nothing,Vector{String}} = nothing,
