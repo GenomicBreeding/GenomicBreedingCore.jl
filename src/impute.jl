@@ -146,7 +146,7 @@ julia> chroms_uniq, LDs_all_chroms = estimateld(genomes);
 
 julia> chrom, pos, allele = loci_alleles(genomes);
 
-julia> rm(readdir()[.!isnothing.(match.(Regex("jld2"), readdir()))];
+julia> rm.(readdir()[.!isnothing.(match.(Regex("jld2"), readdir()))]);
 
 julia> mock_scaffolds = divideintomockscaffolds(genomes, max_n_loci_per_chrom=100);
 
