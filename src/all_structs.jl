@@ -325,6 +325,7 @@ Contains genomic prediction model fit details.
 - `y_true`: corresponding observed phenotype values
 - `y_pred`: corresponding predicted phenotype values
 - `metrics`: dictionary of genomic prediction accuracy metrics, inluding Pearson's correlation, mean absolute error and root mean-squared error
+- `lux_model`: Nothing or a trained Lux neural network model
 
 ## Constructor
 ```julia

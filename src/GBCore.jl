@@ -13,15 +13,28 @@ using ProgressMeter
 using Suppressor
 using Lux # for Fit deep learning model
 
+# Structs
 include("all_structs.jl")
-include("genomes.jl")
-include("phenomes.jl")
-include("impute.jl")
-include("trials.jl")
-include("tebv.jl")
-include("fit.jl")
-include("cv.jl")
-
+# Genomes
+include("genomes/genomes.jl")
+include("genomes/filter.jl")
+include("genomes/merge.jl")
+include("genomes/impute.jl")
+# Phenomes
+include("phenomes/phenomes.jl")
+include("phenomes/filter.jl")
+include("phenomes/merge.jl")
+# Trials
+include("trials/trials.jl")
+include("trials/filter.jl")
+# Trial-estimated breeding values
+include("tebv/tebv.jl")
+include("tebv/linear_mixed_modelling.jl")
+# Model fit struct
+include("fit/fit.jl")
+# Model cross-validation struct
+include("cv/cv.jl")
+# Simulations
 include("simulation/simulate_effects.jl")
 include("simulation/simulate_genomes.jl")
 include("simulation/simulate_trials.jl")
