@@ -42,7 +42,8 @@ include("simulation/simulate_mating.jl")
 
 export AbstractGB, Genomes, Phenomes, Trials, SimulatedEffects, TEBV, Fit, CV
 export clone, hash, ==
-export checkdims, dimensions, loci_alleles, loci, distances, plot, slice, sparsities, filter, tabularise, summarise
+export checkdims, dimensions, loci_alleles, loci, distances, plot, tabularise, summarise
+export slice, sparsities, filter, filterbysparsity, filterbymaf, filterbypca, filterbysnplist
 export simulategenomes, simulateeffects, simulategenomiceffects, simulatetrials
 export histallelefreqs, simulatemating
 export countlevels, @string2formula, trialsmodelsfomulae!, analyse, extractphenomes

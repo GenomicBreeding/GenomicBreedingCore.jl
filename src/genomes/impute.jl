@@ -362,9 +362,6 @@ function estimatedistances(
     if !checkdims(genomes)
         throw(ArgumentError("Genomes struct is corrupted"))
     end
-    if length(idx_loci_alleles_per_chrom) < 10
-        throw(ArgumentError("There are less than 10 indices for loci-alleles in the current chromosome."))
-    end
     if size(LD, 1) != size(LD, 2)
         throw(ArgumentError("The LD matrix is not square."))
     end
@@ -844,6 +841,10 @@ function impute(
             idx_entries_not_missing = findall(.!bool_entries_missing)
             # Skip imputation if the number of non-missing entries at the focal locus is less than `min_k_entries`
             if length(idx_entries_not_missing) < min_k_entries
+                continue
+            end
+            # Skip imputation if the number of loci in the current chromosome or scaffold is less than `min_l_loci`
+            if length(idx_loci_alleles_per_chrom) < min_l_loci
                 continue
             end
             # Optimise for `min_loci_corr` and `max_entries_dist`
