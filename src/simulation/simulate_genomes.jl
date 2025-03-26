@@ -89,7 +89,7 @@ Simulates genomic positions and alleles for multiple chromosomes.
 
 # Example
 ```jldoctest; setup = :(using GBCore)
-julia> chrom_lengths, chrom_loci_counts = simulatechromstruct(10_000, 7, 135_000_000);
+julia> chrom_lengths, chrom_loci_counts = simulatechromstruct(l=10_000, n_chroms=7, max_pos=135_000_000);
 
 julia> positions, loci_alleles = simulateposandalleles(chrom_lengths=chrom_lengths, chrom_loci_counts=chrom_loci_counts, n_alleles=2);
 
@@ -251,7 +251,7 @@ of correlation values across loci positions.
 
 # Example
 ```jldoctest; setup = :(using GBCore)
-julia> chrom_lengths, chrom_loci_counts = simulatechromstruct(10_000, 7, 135_000_000);
+julia> chrom_lengths, chrom_loci_counts = simulatechromstruct(l=10_000, n_chroms=7, max_pos=135_000_000);
 
 julia> positions, loci_alleles = simulateposandalleles(chrom_lengths=chrom_lengths, chrom_loci_counts=chrom_loci_counts, n_alleles=2);
 
@@ -338,7 +338,7 @@ have lower variance, following population genetics expectations.
 
 # Example
 ```jldoctest; setup = :(using GBCore)
-julia> chrom_lengths, chrom_loci_counts = simulatechromstruct(10_000, 7, 135_000_000);
+julia> chrom_lengths, chrom_loci_counts = simulatechromstruct(l=10_000, n_chroms=7, max_pos=135_000_000);
 
 julia> positions, loci_alleles = simulateposandalleles(chrom_lengths=chrom_lengths, chrom_loci_counts=chrom_loci_counts, n_alleles=2);
 
@@ -429,7 +429,7 @@ frequencies to ensure frequencies sum to 1.0.
 
 # Example
 ```jldoctest; setup = :(using GBCore)
-julia> chrom_lengths, chrom_loci_counts = simulatechromstruct(10_000, 7, 135_000_000);
+julia> chrom_lengths, chrom_loci_counts = simulatechromstruct(l=10_000, n_chroms=7, max_pos=135_000_000);
 
 julia> positions, loci_alleles = simulateposandalleles(chrom_lengths=chrom_lengths, chrom_loci_counts=chrom_loci_counts, n_alleles=2);
 
@@ -486,7 +486,7 @@ frequencies to ensure frequencies sum to 1.0.
 
 # Example
 ```jldoctest; setup = :(using GBCore)
-julia> chrom_lengths, chrom_loci_counts = simulatechromstruct(10_000, 7, 135_000_000);
+julia> chrom_lengths, chrom_loci_counts = simulatechromstruct(l=10_000, n_chroms=7, max_pos=135_000_000);
 
 julia> positions, loci_alleles = simulateposandalleles(chrom_lengths=chrom_lengths, chrom_loci_counts=chrom_loci_counts, n_alleles=2);
 
@@ -623,7 +623,7 @@ Simulates genomic data with population structure and linkage disequilibrium.
 
 # Examples
 ```jldoctest; setup = :(using GBCore, StatsBase, Random)
-julia> genomes = simulategenomes(n=100, l=10_000, n_alleles=3, verbose=false);
+julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=3, verbose=false);
 
 julia> length(genomes.entries)
 100
@@ -632,17 +632,17 @@ julia> length(genomes.populations)
 100
 
 julia> length(genomes.loci_alleles)
-20000
+2000
 
 julia> size(genomes.allele_frequencies)
-(100, 20000)
+(100, 2000)
 
 julia> mean(ismissing.(genomes.allele_frequencies))
 0.0
 
 julia> rng::TaskLocalRNG = Random.seed!(123);
 
-julia> idx = StatsBase.sample(rng, range(1, 20_000, step=2), 250, replace = false, ordered = true);
+julia> idx = StatsBase.sample(rng, range(1, 2_000, step=2), 250, replace = false, ordered = true);
 
 julia> correlations = StatsBase.cor(genomes.allele_frequencies[:, idx]);
 
