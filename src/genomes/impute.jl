@@ -747,9 +747,12 @@ This function imputes missing allele frequencies in a genomic dataset using an o
 
 # Example
 ```jldoctest; setup = :(using GBCore)
-julia> genomes = simulategenomes(n=100, l=1_000, sparsity=0.3, verbose=false);
+julia> genomes = simulategenomes(n=100, l=10_000, sparsity=0.3, verbose=false);
 
 julia> genomes_imputed, mae = impute(genomes);
+
+julia> dimensions(genomes)["n_missing"] == 300_000
+true
 
 julia> dimensions(genomes_imputed)["n_missing"] == 0
 true

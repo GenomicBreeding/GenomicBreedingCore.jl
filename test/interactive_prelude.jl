@@ -10,7 +10,7 @@ using Random
 using DataFrames
 using LinearAlgebra
 using StatsBase
-using Distributions
+using Distributions, SparseArrays, PDMats
 using MixedModels, Metida
 using MultivariateStats
 using UnicodePlots, Plots

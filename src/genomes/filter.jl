@@ -302,7 +302,7 @@ function filterbysparsity(
     if !bool[1]
         if verbose
             println(
-                "No filtering necessary. All entries and loci passed the filtering thresholds (max_entry_sparsity=$max_entry_sparsity, max_locus_sparsity=$max_locus_sparsity, max_entry_sparsity_percentile=$max_entry_sparsity_percentile, and max_locus_sparsity_percentile=$max_locus_sparsity_percentile.",
+                "No filtering by sparsity necessary. All entries and loci passed the filtering thresholds (max_entry_sparsity=$max_entry_sparsity, max_locus_sparsity=$max_locus_sparsity, max_entry_sparsity_percentile=$max_entry_sparsity_percentile, and max_locus_sparsity_percentile=$max_locus_sparsity_percentile.",
             )
             @show dimensions(genomes)
         end
@@ -471,7 +471,7 @@ function filterbymaf(genomes::Genomes; maf::Float64 = 0.01, verbose::Bool = fals
     # Return early if we are not filtering any loci
     if sum(bool_loci_alleles) == p
         if verbose
-            println("No filtering necessary. All loci passed the maf threshold ($maf).")
+            println("No filtering by minimum allele frequency necessary. All loci passed the maf threshold ($maf).")
         end
         return genomes
     end
@@ -545,7 +545,7 @@ function filterbypca(genomes::Genomes; max_prop_pc_varexp::Float64 = 0.9, verbos
     if isinf(max_prop_pc_varexp)
         if verbose
             println(
-                "No filtering necessary. Maximum proportion of variance explained by PC1 and PC2 = $max_prop_pc_varexp.",
+                "No filtering by PCA necessary. Maximum proportion of variance explained by PC1 and PC2 = $max_prop_pc_varexp.",
             )
         end
         return genomes
@@ -678,7 +678,7 @@ function filterbysnplist(
     # Return early if no loci-allele combination names are provided
     if isnothing(chr_pos_allele_ids) || (length(chr_pos_allele_ids) == 0)
         if verbose
-            println("No filtering necessary. No loci-allele combination names provided.")
+            println("No filtering by SNP list necessary. No loci-allele combination names provided.")
         end
         return genomes
     end
@@ -770,7 +770,7 @@ function filterbysnplist(
     # Return early if all loci-allele combination names belong to the SNP list
     if sum(bool_loci_alleles) == length(genomes.loci_alleles)
         if verbose
-            println("No filtering necessary. All loci-allele combination names belong to the SNP list.")
+            println("No filtering by SNP list necessary. All loci-allele combination names belong to the SNP list.")
         end
         return genomes
     end

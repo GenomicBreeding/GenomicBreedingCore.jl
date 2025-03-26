@@ -4,7 +4,7 @@ using Random
 using DataFrames
 using LinearAlgebra
 using StatsBase
-using Distributions
+using Distributions, SparseArrays, PDMats
 using MixedModels, Metida
 using MultivariateStats
 using UnicodePlots, Plots
@@ -44,7 +44,8 @@ export AbstractGB, Genomes, Phenomes, Trials, SimulatedEffects, TEBV, Fit, CV
 export clone, hash, ==
 export checkdims, dimensions, loci_alleles, loci, distances, plot, tabularise, summarise
 export slice, sparsities, filter, filterbysparsity, filterbymaf, filterbypca, filterbysnplist
-export simulategenomes, simulateeffects, simulategenomiceffects, simulatetrials
+export simulatechromstruct, simulateposandalleles, simulatepopgroups, simulateldblocks, simulateperpopμΣ, simulateallelefreqs!, simulategenomes
+export simulateeffects, simulategenomiceffects, simulatetrials
 export histallelefreqs, simulatemating
 export countlevels, @string2formula, trialsmodelsfomulae!, analyse, extractphenomes
 export @stringevaluation, addcompositetrait
