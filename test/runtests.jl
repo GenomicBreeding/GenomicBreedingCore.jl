@@ -5,7 +5,7 @@ using Documenter
 Documenter.doctest(GBCore)
 
 @testset "GBCore.jl" begin
-    genomes = simulategenomes(verbose = false)
+    genomes = simulategenomes(n = 123, l = 5_000, verbose = false)
     trials, effects = GBCore.simulatetrials(
         genomes = genomes,
         n_years = 1,

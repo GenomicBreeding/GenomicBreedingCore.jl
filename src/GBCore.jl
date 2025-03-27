@@ -35,17 +35,18 @@ include("fit/fit.jl")
 # Genotype-to-phenotype model cross-validation struct
 include("cv/cv.jl")
 # Simulations: genomes, trials, and mating
-include("simulation/simulate_effects.jl")
-include("simulation/simulate_genomes.jl")
-include("simulation/simulate_trials.jl")
-include("simulation/simulate_mating.jl")
+include("simulations/simulate_effects.jl")
+include("simulations/simulate_genomes.jl")
+include("simulations/simulate_trials.jl")
+include("simulations/simulate_mating.jl")
 
 export AbstractGB, Genomes, Phenomes, Trials, SimulatedEffects, TEBV, Fit, CV
 export clone, hash, ==
 export checkdims, dimensions, loci_alleles, loci, distances, plot, tabularise, summarise
 export slice, sparsities, filter, filterbysparsity, filterbymaf, filterbypca, filterbysnplist
-export simulatechromstruct, simulateposandalleles, simulatepopgroups, simulateldblocks, simulateperpopμΣ, simulateallelefreqs!, simulategenomes
-export simulateeffects, simulategenomiceffects, simulatetrials
+export simulatechromstruct,
+    simulateposandalleles, simulatepopgroups, simulateldblocks, simulateperpopμΣ, simulateallelefreqs!
+export simulategenomes, simulateeffects, simulategenomiceffects, simulatetrials
 export histallelefreqs, simulatemating
 export countlevels, @string2formula, trialsmodelsfomulae!, analyse, extractphenomes
 export @stringevaluation, addcompositetrait

@@ -19,7 +19,7 @@ julia> chrom_lengths, chrom_loci_counts = simulatechromstruct(l=10_000, n_chroms
 ([19285714, 19285714, 19285714, 19285714, 19285714, 19285714, 19285716], [1428, 1428, 1428, 1428, 1428, 1428, 1432])
 ```
 """
-function simulatechromstruct(;l::Int64, n_chroms::Int64, max_pos::Int64)::Tuple{Vector{Int64}, Vector{Int64}}
+function simulatechromstruct(; l::Int64, n_chroms::Int64, max_pos::Int64)::Tuple{Vector{Int64},Vector{Int64}}
     # Check Arguments
     if (l < 2) || (l > 1e9)
         throw(ArgumentError("We accept `l` from 2 to 1 billion."))
@@ -52,10 +52,7 @@ function simulatechromstruct(;l::Int64, n_chroms::Int64, max_pos::Int64)::Tuple{
         end for i = 1:n_chroms
     ]
     # Output
-    (
-        chrom_lengths,
-        chrom_loci_counts,
-    )
+    (chrom_lengths, chrom_loci_counts)
 end
 
 """
@@ -65,7 +62,8 @@ end
         n_alleles::Int64, 
         allele_choices::Vector{String} = ["A", "T", "C", "G", "D"],
         allele_weights::Weights{Float64,Float64,Vector{Float64}} = StatsBase.Weights([1.0, 1.0, 1.0, 1.0, 0.1] / sum([1.0, 1.0, 1.0, 1.0, 0.1])),
-        rng::TaskLocalRNG = Random.GLOBAL_RNG
+        rng::TaskLocalRNG = Random.GLOBAL_RNG,
+        verbose::Bool = false
     ) -> Tuple{Vector{Vector{Int64}}, Vector{String}}
 
 Simulates genomic positions and alleles for multiple chromosomes.
@@ -77,6 +75,7 @@ Simulates genomic positions and alleles for multiple chromosomes.
 - `allele_choices::Vector{String}`: Vector of possible alleles to choose from (default: ["A", "T", "C", "G", "D"])
 - `allele_weights::Weights`: Weights for sampling alleles (default: normalized weights favoring A,T,C,G over D)
 - `rng::TaskLocalRNG`: Random number generator for reproducibility (default: global RNG)
+- `verbose::Bool`: Whether to show progress bar (default: false)
 
 # Returns
 - `Tuple{Vector{Vector{Int64}}, Vector{String}}`: A tuple containing:
@@ -89,7 +88,7 @@ Simulates genomic positions and alleles for multiple chromosomes.
 
 # Example
 ```jldoctest; setup = :(using GBCore)
-julia> chrom_lengths, chrom_loci_counts = simulatechromstruct(l=10_000, n_chroms=7, max_pos=135_000_000);
+julia> chrom_lengths, chrom_loci_counts = simulatechromstruct(l=100, n_chroms=7, max_pos=135_000_000);
 
 julia> positions, loci_alleles = simulateposandalleles(chrom_lengths=chrom_lengths, chrom_loci_counts=chrom_loci_counts, n_alleles=2);
 
@@ -101,13 +100,16 @@ true
 ```
 """
 function simulateposandalleles(;
-    chrom_lengths::Vector{Int64}, 
+    chrom_lengths::Vector{Int64},
     chrom_loci_counts::Vector{Int64},
-    n_alleles::Int64, 
+    n_alleles::Int64,
     allele_choices::Vector{String} = ["A", "T", "C", "G", "D"],
-    allele_weights::Weights{Float64,Float64,Vector{Float64}} = StatsBase.Weights([1.0, 1.0, 1.0, 1.0, 0.1] / sum([1.0, 1.0, 1.0, 1.0, 0.1])),
+    allele_weights::Weights{Float64,Float64,Vector{Float64}} = StatsBase.Weights(
+        [1.0, 1.0, 1.0, 1.0, 0.1] / sum([1.0, 1.0, 1.0, 1.0, 0.1]),
+    ),
     rng::TaskLocalRNG = Random.GLOBAL_RNG,
-)::Tuple{Vector{Vector{Int64}}, Vector{String}}
+    verbose::Bool = false,
+)::Tuple{Vector{Vector{Int64}},Vector{String}}
     # Check Arguments
     if length(chrom_lengths) != length(chrom_loci_counts)
         throw(ArgumentError("The length of `chrom_lengths` should be equal to the length of `chrom_loci_counts`."))
@@ -119,7 +121,11 @@ function simulateposandalleles(;
         throw(ArgumentError("We expect at least 2 alleles in `allele_choices` and `allele_weights`."))
     end
     if (n_alleles < 2) || (n_alleles > length(allele_choices))
-        throw(ArgumentError("We accept `n` from 2 to $(length(allele_choices)), which can be $(join(allele_choices, ", "))."))
+        throw(
+            ArgumentError(
+                "We accept `n` from 2 to $(length(allele_choices)), which can be $(join(allele_choices, ", ")).",
+            ),
+        )
     end
     # Define the positions per chromosome and the loci-alleles combinations across chromosomes
     n_chroms = length(chrom_lengths)
@@ -127,6 +133,9 @@ function simulateposandalleles(;
     positions::Vector{Vector{Int64}} = fill(Int64[], n_chroms)
     loci_alleles::Vector{String} = Vector{String}(undef, p)
     locus_counter::Int64 = 1
+    if verbose
+        pb = ProgressMeter.Progress(p, desc = "Simulating positions and alleles")
+    end
     for i = 1:n_chroms
         positions[i] = StatsBase.sample(rng, 1:chrom_lengths[i], chrom_loci_counts[i]; replace = false, ordered = true)
         for pos in positions[i]
@@ -138,13 +147,16 @@ function simulateposandalleles(;
                 loci_alleles[locus_counter] = join([string("chrom_", i), pos, join(all_alleles, "|"), alleles[j]], "\t")
                 locus_counter += 1
             end
+            if verbose
+                ProgressMeter.next!(pb)
+            end
         end
     end
+    if verbose
+        ProgressMeter.finish!(pb)
+    end
     # Output
-    (
-        positions,
-        loci_alleles,
-    )
+    (positions, loci_alleles)
 end
 
 """
@@ -177,10 +189,7 @@ julia> pops == populations
 true
 ```
 """
-function simulatepopgroups(;
-    n::Int64,
-    n_populations::Int64,
-)::Tuple{Vector{String}, Vector{Vector{Int64}}}
+function simulatepopgroups(; n::Int64, n_populations::Int64)::Tuple{Vector{String},Vector{Vector{Int64}}}
     # Check Arguments
     if (n < 1) || (n > 1e9)
         throw(ArgumentError("We accept `n` from 1 to 1 billion."))
@@ -206,10 +215,7 @@ function simulatepopgroups(;
         end
     end
     # Output
-    (
-        populations,
-        idx_population_groupings,
-    )
+    (populations, idx_population_groupings)
 end
 
 """
@@ -217,7 +223,7 @@ end
         chrom_positions::Vector{Int64}, 
         chrom_length::Int64, 
         ld_corr_50perc_kb::Int64,
-        rel_dist_multiplier::Float64 = 2.0
+        rel_dist_multiplier::Float64 = 10.0
     )::SparseMatrixCSC{Float64}
 
 Simulate linkage disequilibrium (LD) blocks by generating a sparse variance-covariance matrix.
@@ -226,7 +232,7 @@ Simulate linkage disequilibrium (LD) blocks by generating a sparse variance-cova
 - `chrom_positions::Vector{Int64}`: Vector of positions on the chromosome for each locus
 - `chrom_length::Int64`: Total length of the chromosome
 - `ld_corr_50perc_kb::Int64`: Distance in kilobases at which the LD correlation decays to 50%
-- `rel_dist_multiplier::Float64`: Multiplier for maximum relative distance to consider (default: 2.0)
+- `rel_dist_multiplier::Float64`: Multiplier for maximum relative distance to consider (default: 10.0)
 
 # Returns
 - `SparseMatrixCSC{Float64}`: A sparse variance-covariance matrix representing LD blocks
@@ -251,21 +257,21 @@ of correlation values across loci positions.
 
 # Example
 ```jldoctest; setup = :(using GBCore)
-julia> chrom_lengths, chrom_loci_counts = simulatechromstruct(l=10_000, n_chroms=7, max_pos=135_000_000);
+julia> chrom_lengths, chrom_loci_counts = simulatechromstruct(l=100, n_chroms=7, max_pos=135_000_000);
 
 julia> positions, loci_alleles = simulateposandalleles(chrom_lengths=chrom_lengths, chrom_loci_counts=chrom_loci_counts, n_alleles=2);
 
 julia> Σ = simulateldblocks(chrom_positions=positions[1], chrom_length=chrom_lengths[1], ld_corr_50perc_kb=1_000);
 
 julia> size(Σ)
-(1428, 1428)
+(14, 14)
 ```
 """
 function simulateldblocks(;
-    chrom_positions::Vector{Int64}, 
-    chrom_length::Int64, 
+    chrom_positions::Vector{Int64},
+    chrom_length::Int64,
     ld_corr_50perc_kb::Int64,
-    rel_dist_multiplier::Float64 = 2.0,
+    rel_dist_multiplier::Float64 = 10.0,
 )::SparseMatrixCSC{Float64}
     # Check Arguments
     n_loci = length(chrom_positions)
@@ -291,12 +297,12 @@ function simulateldblocks(;
     S::Matrix{Float64} = spzeros(n_loci, n_loci)
     q = (ld_corr_50perc_kb * 1_000) / chrom_length
     r::Float64 = log(2.0) / q # from f(x) = 0.5 = 1 / exp(r*x); where x = normalised distance between loci
-    Threads.@threads for idx1 in 1:n_loci
-        for idx2 in 1:n_loci
+    Threads.@threads for idx1 = 1:n_loci
+        for idx2 = 1:n_loci
             # idx1 = 1; idx2 = n_loci
             dist = abs(chrom_positions[idx1] - chrom_positions[idx2]) / chrom_length
             # Keep covariances between far loci at zero
-            if dist <= minimum([rel_dist_multiplier*q, 0.9])
+            if dist <= minimum([rel_dist_multiplier * q, 0.9])
                 c = 1 / exp(r * dist)
                 S[idx1, idx2] = c
                 S[idx2, idx1] = c
@@ -338,7 +344,7 @@ have lower variance, following population genetics expectations.
 
 # Example
 ```jldoctest; setup = :(using GBCore)
-julia> chrom_lengths, chrom_loci_counts = simulatechromstruct(l=10_000, n_chroms=7, max_pos=135_000_000);
+julia> chrom_lengths, chrom_loci_counts = simulatechromstruct(l=100, n_chroms=7, max_pos=135_000_000);
 
 julia> positions, loci_alleles = simulateposandalleles(chrom_lengths=chrom_lengths, chrom_loci_counts=chrom_loci_counts, n_alleles=2);
 
@@ -360,7 +366,7 @@ function simulateperpopμΣ(;
     Σ_base::SparseMatrixCSC{Float64},
     μ_β_params::Tuple{Float64,Float64} = (0.5, 0.5),
     rng::TaskLocalRNG = Random.GLOBAL_RNG,
-)::Tuple{Vector{Float64}, SparseMatrixCSC{Float64}}
+)::Tuple{Vector{Float64},SparseMatrixCSC{Float64}}
     # Sample mean allele frequencies per population
     n_loci = size(Σ_base, 1)
     Beta_distibution = Distributions.Beta(μ_β_params[1], μ_β_params[2])
@@ -428,8 +434,8 @@ The last allele frequency for each locus is implicitly determined as 1 minus the
 frequencies to ensure frequencies sum to 1.0.
 
 # Example
-```jldoctest; setup = :(using GBCore)
-julia> chrom_lengths, chrom_loci_counts = simulatechromstruct(l=10_000, n_chroms=7, max_pos=135_000_000);
+```jldoctest; setup = :(using GBCore, ProgressMeter)
+julia> chrom_lengths, chrom_loci_counts = simulatechromstruct(l=100, n_chroms=7, max_pos=135_000_000);
 
 julia> positions, loci_alleles = simulateposandalleles(chrom_lengths=chrom_lengths, chrom_loci_counts=chrom_loci_counts, n_alleles=2);
 
@@ -437,78 +443,21 @@ julia> Σ_base = simulateldblocks(chrom_positions=positions[1], chrom_length=chr
 
 julia> μ, Σ = simulateperpopμΣ(Σ_base=Σ_base, μ_β_params=(0.5, 0.5));
 
-julia> populations, idx_population_groupings = simulatepopgroups(n=100, n_populations=3);
+julia> populations, idx_population_groupings = simulatepopgroups(n=123, n_populations=3);
 
-julia> allele_frequencies::Matrix{Union{Missing, Float64}} = fill(missing, 100, 10_000); locus_counter::Vector{UInt} = [1]; pb = ProgressMeter.Progress(10_000);
+julia> allele_frequencies::Matrix{Union{Missing, Float64}} = fill(missing, 123, 100); locus_counter::Vector{UInt} = [1]; pb = nothing;
 
-julia> simulateallelefreqs!(allele_frequencies, locus_counter, pb, μ=μ, Σ=Σ, n_alleles=n_alleles, idx_entries_per_population=idx_population_groupings[1])
-
-julia> sum(.!ismissing.(allele_frequencies[idx_population_groupings[1], 1:length(μ)])) == (length(idx_population_groupings[1]) * length(μ))
-true
-```
-"""
-
-"""
-    simulateallelefreqs!(allele_frequencies, locus_counter, pb; μ, Σ, n_alleles, idx_entries_per_population, rng)
-
-Simulate allele frequencies for multiple loci and populations using a multivariate normal distribution.
-
-# Arguments
-- `allele_frequencies::Matrix{Union{Missing, Float64}}`: Matrix to store simulated allele frequencies
-- `locus_counter::Vector{UInt}`: Counter keeping track of current locus position
-- `pb::Union{Nothing, ProgressMeter.Progress}`: Optional progress bar
-- `μ::Vector{Float64}`: Mean vector for the multivariate normal distribution
-- `Σ::SparseMatrixCSC{Float64}`: Variance-covariance matrix for the multivariate normal distribution
-- `n_alleles::Int64`: Number of alleles per locus
-- `idx_entries_per_population::Vector{Int64}`: Vector containing indices for each population
-- `rng::TaskLocalRNG`: Random number generator (default: `Random.GLOBAL_RNG`)
-
-# Returns
-- `Nothing`
-
-# Description
-Simulates allele frequencies for multiple populations and loci using a multivariate normal distribution.
-For each population and allele, it samples frequencies ensuring they sum to 1.0 across alleles at each locus.
-The function bounds frequencies between 0.0 and 1.0 and updates the provided:
-    - `allele_frequencies` matrix in-place,
-    - `locus_counter` one-element vector to keep track of the current locus position, and
-    - `pb` progress bar to track simulation progress, if it is not Nothing.
-
-# Throws
-- `ArgumentError`: If input dimensions are inconsistent:
-  - If length of `allele_frequencies` is less than length of `μ`
-  - If length of `μ` doesn't match size of `Σ`
-  - If maximum index in `idx_entries_per_population` exceeds size of `allele_frequencies`
-
-# Note
-The last allele frequency for each locus is implicitly determined as 1 minus the sum of other allele 
-frequencies to ensure frequencies sum to 1.0.
-
-# Example
-```jldoctest; setup = :(using GBCore)
-julia> chrom_lengths, chrom_loci_counts = simulatechromstruct(l=10_000, n_chroms=7, max_pos=135_000_000);
-
-julia> positions, loci_alleles = simulateposandalleles(chrom_lengths=chrom_lengths, chrom_loci_counts=chrom_loci_counts, n_alleles=2);
-
-julia> Σ_base = simulateldblocks(chrom_positions=positions[1], chrom_length=chrom_lengths[1], ld_corr_50perc_kb=1_000);
-
-julia> μ, Σ = simulateperpopμΣ(Σ_base=Σ_base, μ_β_params=(0.5, 0.5));
-
-julia> populations, idx_population_groupings = simulatepopgroups(n=100, n_populations=3);
-
-julia> allele_frequencies::Matrix{Union{Missing, Float64}} = fill(missing, 100, 10_000); locus_counter::Vector{UInt} = [1]; pb = ProgressMeter.Progress(10_000);
-
-julia> simulateallelefreqs!(allele_frequencies, locus_counter, pb, μ=μ, Σ=Σ, n_alleles=n_alleles, idx_entries_per_population=idx_population_groupings[1])
+julia> simulateallelefreqs!(allele_frequencies, locus_counter, pb, μ=μ, Σ=Σ, n_alleles=2, idx_entries_per_population=idx_population_groupings[1])
 
 julia> sum(.!ismissing.(allele_frequencies[idx_population_groupings[1], 1:length(μ)])) == (length(idx_population_groupings[1]) * length(μ))
 true
 ```
 """
 function simulateallelefreqs!(
-    allele_frequencies::Matrix{Union{Missing, Float64}}, 
+    allele_frequencies::Matrix{Union{Missing,Float64}},
     locus_counter::Vector{UInt},
-    pb::Union{Nothing, ProgressMeter.Progress};
-    μ::Vector{Float64}, 
+    pb::Union{Nothing,ProgressMeter.Progress};
+    μ::Vector{Float64},
     Σ::SparseMatrixCSC{Float64},
     n_alleles::Int64,
     idx_entries_per_population::Vector{Int64},
@@ -516,13 +465,25 @@ function simulateallelefreqs!(
 )::Nothing
     # Check Arguments
     if length(allele_frequencies) <= length(μ)
-        throw(ArgumentError("The length of `allele_frequencies` (for the entire genome) should be greater than or equal to the length of `μ` (for the current chromosome)."))
+        throw(
+            ArgumentError(
+                "The length of `allele_frequencies` (for the entire genome) should be greater than or equal to the length of `μ` (for the current chromosome).",
+            ),
+        )
     end
     if length(μ) != size(Σ, 1)
-        throw(ArgumentError("The length of `μ` should be equal to the number of loci in the variance-covariance matrix `Σ`."))
+        throw(
+            ArgumentError(
+                "The length of `μ` should be equal to the number of loci in the variance-covariance matrix `Σ`.",
+            ),
+        )
     end
     if maximum(idx_entries_per_population) > size(allele_frequencies, 1)
-        throw(ArgumentError("The maximum index in `idx_entries_per_population` should be less than or equal to the number of entries in `allele_frequencies`."))
+        throw(
+            ArgumentError(
+                "The maximum index in `idx_entries_per_population` should be less than or equal to the number of entries in `allele_frequencies`.",
+            ),
+        )
     end
     # Define the multivariate normal distribution
     mvnormal_distribution = Distributions.MvNormal(μ, PDMats.PDSparseMat(Σ))
@@ -571,7 +532,7 @@ end
         n_alleles::Int64 = 2,
         max_pos::Int64 = 135_000_000,
         ld_corr_50perc_kb::Int64 = 1_000,
-        rel_dist_multiplier::Float64 = 2.0,
+        rel_dist_multiplier::Float64 = 10.0,
         μ_β_params::Tuple{Float64,Float64} = (0.5, 0.5),
         sparsity::Float64 = 0.0,
         seed::Int64 = 42,
@@ -666,7 +627,7 @@ function simulategenomes(;
     n_alleles::Int64 = 2,
     max_pos::Int64 = 135_000_000,
     ld_corr_50perc_kb::Int64 = 1_000,
-    rel_dist_multiplier::Float64 = 2.0,
+    rel_dist_multiplier::Float64 = 10.0,
     μ_β_params::Tuple{Float64,Float64} = (0.5, 0.5),
     sparsity::Float64 = 0.0,
     seed::Int64 = 42,
@@ -711,16 +672,17 @@ function simulategenomes(;
     # Instantiate the randomisation
     rng::TaskLocalRNG = Random.seed!(seed)
     # Simulate chromosome lengths and number of loci per chromosome
-    chrom_lengths, chrom_loci_counts = simulatechromstruct(l=l, n_chroms=n_chroms, max_pos=max_pos)
+    chrom_lengths, chrom_loci_counts = simulatechromstruct(l = l, n_chroms = n_chroms, max_pos = max_pos)
     # Simulate loci-alleles combinations coordinates
     positions, loci_alleles = simulateposandalleles(
         chrom_lengths = chrom_lengths,
         chrom_loci_counts = chrom_loci_counts,
         n_alleles = n_alleles,
         rng = rng,
+        verbose = verbose,
     )
     # Group entries into populations
-    populations, idx_population_groupings = simulatepopgroups(n=n, n_populations=n_populations)
+    populations, idx_population_groupings = simulatepopgroups(n = n, n_populations = n_populations)
     # Simulate allele frequencies with linkage disequillibrium by sampling from a multivariate normal distribution with non-spherical variance-covariance matrix
     allele_frequencies::Matrix{Union{Float64,Missing}} = fill(missing, n, p)
     locus_counter::Vector{UInt} = [1]
@@ -733,21 +695,21 @@ function simulategenomes(;
         # Simulate linkage blocks
         # i  = 1
         Σ_base = simulateldblocks(
-            chrom_positions = positions[i], 
-            chrom_length = chrom_lengths[i], 
+            chrom_positions = positions[i],
+            chrom_length = chrom_lengths[i],
             ld_corr_50perc_kb = ld_corr_50perc_kb,
             rel_dist_multiplier = rel_dist_multiplier,
         )
         for k = 1:n_populations
             # k = 4
             # Sample mean allele frequencies per population, and scale the variance-covariance matrix by the allele frequency means
-            μ, Σ = simulateperpopμΣ(Σ_base=Σ_base, μ_β_params=μ_β_params, rng=rng)
+            μ, Σ = simulateperpopμΣ(Σ_base = Σ_base, μ_β_params = μ_β_params, rng = rng)
             # Update the allele frequency vector, locus_counter, and progress bar
             simulateallelefreqs!(
-                allele_frequencies, 
+                allele_frequencies,
                 locus_counter,
                 pb,
-                μ = μ, 
+                μ = μ,
                 Σ = Σ,
                 n_alleles = n_alleles,
                 idx_entries_per_population = idx_population_groupings[k],
