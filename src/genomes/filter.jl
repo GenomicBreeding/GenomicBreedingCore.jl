@@ -38,7 +38,7 @@ Create a subset of a `Genomes` struct by selecting specific entries and loci-all
 - `DimensionMismatch`: If the resulting sliced genome has inconsistent dimensions
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
 
 julia> sliced_genomes = slice(genomes, idx_entries=collect(1:10), idx_loci_alleles=collect(1:300));
@@ -142,7 +142,7 @@ This function filters a Genomes struct by:
 - `Genomes`: A new filtered Genomes struct with complete data (no missing values)
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> genomes = simulategenomes(verbose=false); genomes.mask[1:10, 42:100] .= false;
     
 julia> filtered_genomes = filter(genomes);
@@ -180,7 +180,7 @@ The function processes the data in parallel using multiple threads for performan
     - Vector of locus sparsities (values between 0.0 and 1.0)
 
 # Example
-```jldoctest; setup = :(using GBCore, StatsBase)
+```jldoctest; setup = :(using GenomicBreedingCore, StatsBase)
 julia> genomes = simulategenomes(n=100, l=1_000, sparsity=0.25, verbose=false);
 
 julia> entry_sparsities, locus_sparsities = sparsities(genomes);
@@ -252,7 +252,7 @@ This function filters genomic data by iteratively removing entries and loci with
 - `ErrorException`: If all entries and/or loci are filtered out based on the sparsity thresholds.
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, sparsity=0.01, verbose=false);
 
 julia> filtered_genomes = filterbysparsity(genomes);
@@ -433,7 +433,7 @@ This function filters genomic data by removing loci with minor allele frequencie
 - `ErrorException`: If all loci are filtered out based on the MAF threshold.
 
 # Example
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
 
 julia> filtered_genomes = filterbymaf(genomes, maf=0.05);
@@ -523,7 +523,7 @@ This function filters genomic data by removing outlier loci-alleles based on pri
 - `ErrorException`: If there are less than 10 loci-alleles left after removing fixed and missing values across all entries.
 
 # Example
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
 
 julia> filtered_genomes = filterbypca(genomes, max_prop_pc_varexp=0.9);
@@ -654,7 +654,7 @@ This function filters genomic data by retaining only the specified loci-allele c
 - `ErrorException`: If no loci-alleles are retained after filtering.
 
 # Example
-```jldoctest; setup = :(using GBCore, StatsBase)
+```jldoctest; setup = :(using GenomicBreedingCore, StatsBase)
 julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
 
 julia> chr_pos_allele_ids = sample(genomes.loci_alleles, 100, replace=false); sort!(chr_pos_allele_ids);
@@ -830,7 +830,7 @@ This function filters genomic data based on multiple criteria including sparsity
 - `ErrorException`: If no loci-alleles are retained after filtering.
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, sparsity=0.01, verbose=false);
 
 julia> filtered_genomes_1, omitted_loci_alleles_1 = filter(genomes, 0.1);

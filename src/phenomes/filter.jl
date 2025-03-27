@@ -22,7 +22,7 @@ Create a new `Phenomes` object containing a subset of the original data by selec
 - `DimensionMismatch`: If the slicing operation results in invalid dimensions
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = fill(0.0, 10,3);
 
 julia> sliced_phenomes = slice(phenomes, idx_entries=collect(1:5); idx_traits=collect(2:3));
@@ -109,7 +109,7 @@ should be kept. Only entries and traits with a mean of 1.0 (all true values) are
 filtered result.
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = fill(0.0, 10,3);
 
 julia> phenomes.mask .= true; phenomes.mask[6:10, 1] .= false;

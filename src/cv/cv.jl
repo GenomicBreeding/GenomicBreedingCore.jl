@@ -18,7 +18,7 @@ the original object.
 Clone a CV object
 
 ## Example
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> fit = Fit(n=1, l=2);
 
 julia> cv = CV("replication_1", "fold_1", fit, ["population_1"], ["entry_1"], [0.0], [0.0], fit.metrics);
@@ -67,7 +67,7 @@ The hash is computed by combining the following fields:
 - metrics
 
 # Example
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> fit = Fit(n=1, l=2);
 
 julia> cv = CV("replication_1", "fold_1", fit, ["population_1"], ["entry_1"], [0.0], [0.0], fit.metrics);
@@ -101,7 +101,7 @@ Two CV structs are considered equal if they have identical values for all fields
 - `Bool`: `true` if the CV structs are equal, `false` otherwise
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> fit = Fit(n=1, l=2);
 
 julia> cv_1 = CV("replication_1", "fold_1", fit, ["population_1"], ["entry_1"], [0.0], [0.0], fit.metrics);
@@ -138,7 +138,7 @@ Returns:
 - `false` if any dimension mismatch is found
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> fit = Fit(n=1, l=2);
 
 julia> cv = CV("replication_1", "fold_1", fit, ["population_1"], ["entry_1"], [0.0], [0.0], fit.metrics);
@@ -206,7 +206,7 @@ Convert a vector of CV (Cross-Validation) structs into two DataFrames containing
 - Population identifiers are sorted and joined with semicolons when multiple populations exist
 
 # Examples
-```jldoctest; setup = :(using GBCore, DataFrames)
+```jldoctest; setup = :(using GenomicBreedingCore, DataFrames)
 julia> fit_1 = Fit(n=1, l=2); fit_1.metrics = Dict("cor" => 0.0, "rmse" => 1.0); fit_1.trait = "trait_1";
 
 julia> cv_1 = CV("replication_1", "fold_1", fit_1, ["population_1"], ["entry_1"], [0.0], [0.0], fit_1.metrics);
@@ -262,8 +262,8 @@ julia> df_per_entry[!, [:entry, :y_true, :y_pred]]
 ```
 """
 function tabularise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
-    # genomes = GBCore.simulategenomes(n=300, verbose=false); genomes.populations = StatsBase.sample(string.("pop_", 1:3), length(genomes.entries), replace=true);
-    # trials, _ = GBCore.simulatetrials(genomes=genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=1, verbose=false);
+    # genomes = GenomicBreedingCore.simulategenomes(n=300, verbose=false); genomes.populations = StatsBase.sample(string.("pop_", 1:3), length(genomes.entries), replace=true);
+    # trials, _ = GenomicBreedingCore.simulatetrials(genomes=genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=1, verbose=false);
     # phenomes = extractphenomes(trials);
     # cvs, notes = cvbulk(genomes=genomes, phenomes=phenomes, models = [ols, ridge, lasso], n_replications=2, n_folds=2);
     # Check arguments
@@ -378,7 +378,7 @@ Summarize cross-validation results from a vector of CV structs into two DataFram
 - `ArgumentError`: If any CV struct in the input vector has inconsistent dimensions
 
 # Examples
-```jldoctest; setup = :(using GBCore, DataFrames)
+```jldoctest; setup = :(using GenomicBreedingCore, DataFrames)
 julia> fit_1 = Fit(n=1, l=2); fit_1.metrics = Dict("cor" => 0.0, "rmse" => 1.0); fit_1.trait = "trait_1";
 
 julia> cv_1 = CV("replication_1", "fold_1", fit_1, ["population_1"], ["entry_1"], [0.0], [0.0], fit_1.metrics);

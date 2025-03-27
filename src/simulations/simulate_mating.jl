@@ -63,7 +63,7 @@ multiallelic loci by ensuring their frequencies sum to 1.
 - `ArgumentError`: If parent genomes contain missing values or invalid dimensions
 
 # Example
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> parent_genomes = simulategenomes(n=5, l=10_000, n_alleles=3, verbose=false);
 
 julia> great_great_offspring_genomes = simulatemating(parent_genomes=parent_genomes, n_generations=3, pop_size_per_gen=[10, 20, 30]);

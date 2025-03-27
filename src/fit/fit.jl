@@ -25,7 +25,7 @@ original and the cloned object.
 - `y_pred`: Predicted values
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> fit = Fit(n=1, l=2);
 
 julia> copy_fit = clone(fit)
@@ -66,7 +66,7 @@ in a specific order. The hash is computed using the following fields:
 - `UInt`: The computed hash value
 
 # Example
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> fit = Fit(n=1, l=2);
 
 julia> typeof(hash(fit))
@@ -99,7 +99,7 @@ they have the same values for all their fields.
 - `Bool`: `true` if the Fit structs are equal, `false` otherwise
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> fit_1 = Fit(n=1, l=4);
 
 julia> fit_2 = Fit(n=1, l=4);
@@ -136,7 +136,7 @@ Returns `true` if all dimensions are compatible, `false` otherwise.
 - `Bool`: `true` if dimensions are compatible, `false` otherwise
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> fit = Fit(n=1, l=4);
 
 julia> checkdims(fit)
@@ -182,7 +182,7 @@ julia> distribution = [TDist(1), Normal()][2];
 
 julia> fit = Fit(n=100, l=10_000); fit.b_hat = rand(distribution, 10_000);  α = 0.05;
 
-julia> GBCore.plot(fit);
+julia> GenomicBreedingCore.plot(fit);
 ```
 """
 function plot(fit::Fit, distribution::Any = [TDist(1), Normal()][2], α::Float64 = 0.05)
@@ -224,7 +224,7 @@ Convert a Fit struct into a DataFrame for easier data manipulation and analysis.
   - `b_hat`: Estimated effect sizes
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> fit = Fit(n=100, l=10_000); fit.b_hat = rand(10_000); fit.model="some_model"; fit.trait="some_trait"; 
 
 julia> fit.metrics = Dict("cor" => rand(), "rmse" => rand()); fit.populations .= "pop_1";

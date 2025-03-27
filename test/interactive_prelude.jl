@@ -5,13 +5,13 @@ try
 catch
     nothing
 end
-using GBCore
+using GenomicBreedingCore
 using Random
 using DataFrames
 using LinearAlgebra
 using StatsBase
 using Distributions, SparseArrays, PDMats
-using MixedModels, Metida
+using MixedModels, Turing
 using MultivariateStats
 using UnicodePlots, Plots
 using ProgressMeter

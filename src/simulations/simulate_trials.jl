@@ -74,7 +74,7 @@ The field layout is optimized to have:
 - Even distribution of entries and replications
 
 ## Examples
-```jldoctest; setup = :(using GBCore; using StatsBase)
+```jldoctest; setup = :(using GenomicBreedingCore; using StatsBase)
 julia> genomes::Genomes = simulategenomes(n=100, l=2_000, n_alleles=3, verbose=false);
 
 julia> trials::Trials, vector_of_effects::Array{SimulatedEffects,1} = simulatetrials(genomes=genomes, sparsity=0.25, verbose=false);

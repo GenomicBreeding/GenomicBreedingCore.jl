@@ -14,7 +14,7 @@ of the object and combining their hash values with the provided seed hash `h`.
 - `UInt`: The computed hash value
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> effects = SimulatedEffects();
 
 julia> typeof(hash(effects))
@@ -47,7 +47,7 @@ a field-by-field comparison.
 - `Bool`: true if the hash values of both instances are equal, false otherwise
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> effects_1 = SimulatedEffects();
 
 julia> effects_2 = SimulatedEffects();
@@ -93,12 +93,12 @@ Verifies that:
   - `epistasis_allele_x_site_x_harvest_x_season_x_year`
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> effects = SimulatedEffects();
 
 julia> typeof(hash(effects))
 UInt64
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> effects = SimulatedEffects();
 
 julia> checkdims(effects)
@@ -142,7 +142,7 @@ element-wise to produce a vector of phenotypic values.
 - `Vector{Float64}`: A vector containing the summed effects (phenotypic values)
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> effects = SimulatedEffects();
 
 julia> sum(effects)
@@ -188,7 +188,7 @@ This function generates a matrix of correlated effects by:
 - `Matrix{Float64}`: A p × q matrix where each column represents a set of correlated effects
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> θ::Matrix{Float64} = simulateeffects();
 
 julia> sum(abs.(θ - [-0.0886501800782904; -0.596478483888422])) < 0.00001
@@ -248,7 +248,7 @@ finishes and throws an error). The non-additive or epistasis allele effects were
 frequencies of all possible unique pairs of epistasis alleles and their effects.
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> genomes::Genomes = simulategenomes(n=100, l=2_000, n_alleles=3, verbose=false);
 
 julia> G, B = simulategenomiceffects(genomes=genomes, f_additive=0.05, f_dominance=0.75, f_epistasis=0.25);

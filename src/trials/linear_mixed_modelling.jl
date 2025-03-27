@@ -78,7 +78,7 @@ The function:
 - Removes redundant nesting structures
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> trials, _simulated_effects = simulatetrials(genomes = simulategenomes(verbose=false), verbose=false);
 
 julia> df = tabularise(trials);
@@ -337,7 +337,7 @@ The function implements a mixed model fitting strategy with the following princi
 - Returns empty results if no models can be successfully fitted
 
 # Examples
-```jldoctest; setup = :(using GBCore, StatsBase, DataFrames, MixedModels)
+```jldoctest; setup = :(using GenomicBreedingCore, StatsBase, DataFrames, MixedModels)
 julia> trials, _ = simulatetrials(genomes = simulategenomes(verbose=false), verbose=false);
 
 julia> df = tabularise(trials);
@@ -641,7 +641,7 @@ The function implements a mixed model fitting strategy with the following princi
 - Returns empty results if no models can be successfully fitted
 
 # Examples
-```jldoctest; setup = :(using GBCore, StatsBase, Suppressor)
+```jldoctest; setup = :(using GenomicBreedingCore, StatsBase, Suppressor)
 julia> trials, _simulated_effects = simulatetrials(genomes = simulategenomes(n=10, verbose=false), n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=10, verbose=false);
 
 julia> tebv_1 = analyse(trials, "trait_1 ~ 1 + (1|entries)", max_levels=50, verbose=false);
@@ -682,7 +682,7 @@ function analyse(
     # trials, simulated_effects = simulatetrials(genomes = simulategenomes()); formula_string="y ~ 1 + (1|entries)"; max_levels::Int64=100; max_time_per_model::Int64=60; verbose::Bool = true;
     # trials, simulated_effects = simulatetrials(genomes = simulategenomes(n=5), n_years=2, n_seasons=2, n_harvests=1, n_sites=2, n_replications=10); formula_string=""; max_levels::Int64=100; max_time_per_model::Int64=60; verbose::Bool = true;
     # trials, simulated_effects = simulatetrials(genomes = simulategenomes(n=5), n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=10); formula_string=""; max_levels::Int64=100; max_time_per_model::Int64=60; verbose::Bool = true;
-    # fname = "/mnt/c/Users/jp3h/Downloads/Lucerne-2024-10-leaf_to_stem_ratio.txt"; using GBIO; trials = GBIO.readdelimited(Trials, fname=fname, sep="\t"); formula_string=""; max_levels::Int64=10; max_time_per_model::Int64=2; verbose::Bool = true;
+    # fname = "/mnt/c/Users/jp3h/Downloads/Lucerne-2024-10-leaf_to_stem_ratio.txt"; using GenomicBreedingIO; trials = GenomicBreedingIO.readdelimited(Trials, fname=fname, sep="\t"); formula_string=""; max_levels::Int64=10; max_time_per_model::Int64=2; verbose::Bool = true;
     # Check Arguments
     if !checkdims(trials)
         throw(ArgumentError("Trials struct is corrupted."))

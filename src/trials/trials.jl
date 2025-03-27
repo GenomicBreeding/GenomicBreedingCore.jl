@@ -13,7 +13,7 @@ ensuring that all nested data structures are also copied rather than referenced.
 - `Trials`: A new `Trials` object containing copies of all data from the input
 
 # Example
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> trials = Trials(n=2, t=2);
 
 julia> copy_trials = clone(trials)
@@ -46,7 +46,7 @@ objects to be used as dictionary keys or in hash-based collections.
 - `UInt`: A hash value for the entire Trials struct
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> trials = Trials(n=2, t=2);
 
 julia> typeof(hash(trials))
@@ -78,7 +78,7 @@ they have the same configuration parameters (number of trials `n` and time steps
 - `Bool`: `true` if the Trials structs are equal, `false` otherwise
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> trials_1 = trials = Trials(n=2, t=4);
 
 julia> trials_2 = trials = Trials(n=2, t=4);
@@ -127,7 +127,7 @@ Returns `true` if all dimensions are compatible, `false` otherwise.
 - `Bool`: `true` if dimensions are compatible, `false` otherwise
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> trials = Trials(n=1, t=2);
 
 julia> trials.entries = ["entry_1"]; trials.traits = ["trait_1", "trait_2"];
@@ -191,7 +191,7 @@ A `Dict{String, Int64}` with the following keys:
 - `ArgumentError`: If the Trials struct dimensions are inconsistent
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> trials = Trials(n=1, t=2);
 
 julia> trials.entries = ["entry_1"]; trials.traits = ["trait_1", "trait_2"];
@@ -268,7 +268,7 @@ Convert a Trials struct into a DataFrame representation for easier data manipula
 - `ArgumentError`: If the Trials struct dimensions are inconsistent
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> trials, _ = simulatetrials(genomes = simulategenomes(verbose=false), verbose=false);
 
 julia> df = tabularise(trials);
@@ -328,7 +328,7 @@ Convert a `Trials` struct into a `Phenomes` struct by extracting phenotypic valu
 - `ErrorException`: If dimensional validation fails during Phenomes construction
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> trials, _ = simulatetrials(genomes = simulategenomes(verbose=false), verbose=false);
 
 julia> phenomes = extractphenomes(trials);
@@ -414,7 +414,7 @@ The formula can include:
 - `Trials`: A new Trials struct with the added composite trait
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> trials, _ = simulatetrials(genomes = simulategenomes(verbose=false), verbose=false);
 
 julia> trials_new = addcompositetrait(trials, composite_trait_name = "some_wild_composite_trait", formula_string = "trait_1");
@@ -509,7 +509,7 @@ Missing, NaN, or infinite values are automatically filtered out before plotting.
 ```
 julia> trials, _ = simulatetrials(genomes = simulategenomes(verbose=false), verbose=false);
 
-julia> GBCore.plot(trials);
+julia> GenomicBreedingCore.plot(trials);
 
 ```
 """

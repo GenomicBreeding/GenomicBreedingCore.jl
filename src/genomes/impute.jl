@@ -22,7 +22,7 @@ and `false` for missing values.
 - Uses a thread lock for safe concurrent access to shared memory
 
 # Example
-```jldoctest; setup = :(using GBCore, StatsBase)
+```jldoctest; setup = :(using GenomicBreedingCore, StatsBase)
 julia> genomes = simulategenomes(n=10, sparsity=0.3, verbose=false);
 
 julia> round(1.00 - mean(genomes.mask), digits=10)
@@ -83,7 +83,7 @@ specified maximum number of loci per chromosome. It creates scaffold names in th
 - `ArgumentError`: If the Genomes struct dimensions are invalid or corrupted
 
 # Example
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> genomes = simulategenomes(n=20, sparsity=0.3, verbose=false);
 
 julia> mock_scaffolds = divideintomockscaffolds(genomes, max_n_loci_per_chrom=100);
@@ -150,7 +150,7 @@ Calculate linkage disequilibrium (LD) matrices for each chromosome in the given 
 
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> genomes = simulategenomes(n=30, l=1_000, sparsity=0.3, verbose=false);
 
 julia> chroms_uniq, LDs_all_chroms = estimateld(genomes);
@@ -328,7 +328,7 @@ This function calculates pairwise distances between entries in a genomic dataset
 - ArgumentError: If the minimum number of loci is out of range. 
 
 # Example
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> genomes = simulategenomes(n=40, l=1_000, sparsity=0.3, verbose=false);
 
 julia> chromosomes = divideintomockscaffolds(genomes, max_n_loci_per_chrom=100);
@@ -457,7 +457,7 @@ This function imputes missing allele frequencies at a focal locus using the k-ne
 - ArgumentError: If the lengths of qs and d are not equal.
 
 # Example
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> genomes = simulategenomes(n=50, l=1_000, sparsity=0.3, verbose=false);
 
 julia> chromosomes = divideintomockscaffolds(genomes, max_n_loci_per_chrom=100);
@@ -583,7 +583,7 @@ This function optimises the minimum loci correlation (`min_loci_corr`) and maxim
 - ArgumentError: If there are less than 2 entries with non-missing data at the focal locus. 
 
 # Example
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> genomes = simulategenomes(n=123, l=1_000, sparsity=0.3, rel_dist_multiplier=10.0, verbose=false);
 
 julia> chromosomes = divideintomockscaffolds(genomes, max_n_loci_per_chrom=100);
@@ -746,7 +746,7 @@ This function imputes missing allele frequencies in a genomic dataset using an o
 - ErrorException: If an error occurs during the imputation process.
 
 # Example
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> genomes = simulategenomes(n=100, l=1_000, sparsity=0.3, verbose=false);
 
 julia> genomes_imputed, mae = impute(genomes);

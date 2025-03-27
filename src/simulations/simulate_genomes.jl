@@ -14,7 +14,7 @@ A tuple containing:
 - `chrom_loci_counts::Vector{Int64}`: Vector of loci counts per chromosome
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> chrom_lengths, chrom_loci_counts = simulatechromstruct(l=10_000, n_chroms=7, max_pos=135_000_000)
 ([19285714, 19285714, 19285714, 19285714, 19285714, 19285714, 19285716], [1428, 1428, 1428, 1428, 1428, 1428, 1432])
 ```
@@ -87,7 +87,7 @@ Simulates genomic positions and alleles for multiple chromosomes.
 - `ArgumentError`: If input argument lengths don't match or if invalid number of alleles is requested
 
 # Example
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> chrom_lengths, chrom_loci_counts = simulatechromstruct(l=100, n_chroms=7, max_pos=135_000_000);
 
 julia> positions, loci_alleles = simulateposandalleles(chrom_lengths=chrom_lengths, chrom_loci_counts=chrom_loci_counts, n_alleles=2);
@@ -174,7 +174,7 @@ A tuple containing:
 - `Vector{Vector{Int64}}`: Vector of vectors containing indices for each population group
 
 # Example
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> populations, idx_population_groupings = simulatepopgroups(n=100, n_populations=3);
 
 julia> length(populations) == 100
@@ -256,7 +256,7 @@ of correlation values across loci positions.
 - `ArgumentError`: If rel_dist_multiplier is less than 1.0
 
 # Example
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> chrom_lengths, chrom_loci_counts = simulatechromstruct(l=100, n_chroms=7, max_pos=135_000_000);
 
 julia> positions, loci_alleles = simulateposandalleles(chrom_lengths=chrom_lengths, chrom_loci_counts=chrom_loci_counts, n_alleles=2);
@@ -343,7 +343,7 @@ The variance scaling is performed such that loci closer to fixation (0.0 or 1.0)
 have lower variance, following population genetics expectations.
 
 # Example
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> chrom_lengths, chrom_loci_counts = simulatechromstruct(l=100, n_chroms=7, max_pos=135_000_000);
 
 julia> positions, loci_alleles = simulateposandalleles(chrom_lengths=chrom_lengths, chrom_loci_counts=chrom_loci_counts, n_alleles=2);
@@ -434,7 +434,7 @@ The last allele frequency for each locus is implicitly determined as 1 minus the
 frequencies to ensure frequencies sum to 1.0.
 
 # Example
-```jldoctest; setup = :(using GBCore, ProgressMeter)
+```jldoctest; setup = :(using GenomicBreedingCore, ProgressMeter)
 julia> chrom_lengths, chrom_loci_counts = simulatechromstruct(l=100, n_chroms=7, max_pos=135_000_000);
 
 julia> positions, loci_alleles = simulateposandalleles(chrom_lengths=chrom_lengths, chrom_loci_counts=chrom_loci_counts, n_alleles=2);
@@ -583,7 +583,7 @@ Simulates genomic data with population structure and linkage disequilibrium.
 - `DimensionMismatch`: If there's an error in the simulation process
 
 # Examples
-```jldoctest; setup = :(using GBCore, StatsBase, Random)
+```jldoctest; setup = :(using GenomicBreedingCore, StatsBase, Random)
 julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=3, verbose=false);
 
 julia> length(genomes.entries)

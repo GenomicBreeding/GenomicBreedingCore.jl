@@ -42,7 +42,7 @@ all values for that category are included in the slice.
 - `ArgumentError`: If the input trials structure is corrupted
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> trials, _ = simulatetrials(genomes = simulategenomes(verbose=false), verbose=false);
 
 julia> sliced_trials = slice(trials, traits=trials.traits[2:3], years=[unique(trials.years)[1]], seasons=unique(trials.seasons)[2:3]);

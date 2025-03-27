@@ -1,14 +1,14 @@
-using GBCore
+using GenomicBreedingCore
 using Documenter
 
-DocMeta.setdocmeta!(GBCore, :DocTestSetup, :(using GBCore); recursive = true)
+DocMeta.setdocmeta!(GenomicBreedingCore, :DocTestSetup, :(using GenomicBreedingCore); recursive = true)
 
 makedocs(;
-    modules = [GBCore],
+    modules = [GenomicBreedingCore],
     authors = "jeffersonparil@gmail.com",
-    sitename = "GBCore.jl",
+    sitename = "GenomicBreedingCore.jl",
     format = Documenter.HTML(;
-        canonical = "https://GenomicBreeding.github.io/GBCore.jl",
+        canonical = "https://GenomicBreeding.github.io/GenomicBreedingCore.jl",
         edit_link = "main",
         assets = String[],
         size_threshold = 1000000,
@@ -16,4 +16,4 @@ makedocs(;
     pages = ["Home" => "index.md"],
 )
 
-deploydocs(; repo = "github.com/GenomicBreeding/GBCore.jl", devbranch = "main")
+deploydocs(; repo = "github.com/GenomicBreeding/GenomicBreedingCore.jl", devbranch = "main")

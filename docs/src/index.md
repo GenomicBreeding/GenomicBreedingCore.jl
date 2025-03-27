@@ -1,14 +1,14 @@
 ```@meta
-CurrentModule = GBCore
+CurrentModule = GenomicBreedingCore
 ```
 
-# GBCore
+# GenomicBreedingCore
 
-Documentation for [GBCore](https://github.com/GenomicBreeding/GBCore.jl).
+Documentation for [GenomicBreedingCore](https://github.com/GenomicBreeding/GenomicBreedingCore.jl).
 
 ```@index
 ```
 
 ```@autodocs
-Modules = [GBCore]
+Modules = [GenomicBreedingCore]
 ```

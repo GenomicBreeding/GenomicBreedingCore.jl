@@ -36,7 +36,7 @@ For overlapping entries and traits:
 - `ErrorException`: If the merging operation produces an invalid result
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> all = Phenomes(n=10, t=3); all.entries = string.("entry_", 1:10); all.traits = ["A", "B", "C"]; all.phenotypes = rand(10,3);
 
 julia> phenomes = slice(all, idx_entries=collect(1:7), idx_traits=[1,2]);
@@ -191,7 +191,7 @@ The resulting DataFrame contains the following columns:
 - `ArgumentError`: If the Phenomes struct dimensions are inconsistent
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = fill(0.0, 10,3);
 
 julia> tabularise(phenomes)
@@ -258,7 +258,7 @@ Create a new composite trait by combining existing traits using mathematical ope
 - `Phenomes`: A new Phenomes struct with the composite trait added as the last column
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = rand(10,3);
 
 julia> phenomes_new = addcompositetrait(phenomes, composite_trait_name = "some_wild_composite_trait", formula_string = "A");

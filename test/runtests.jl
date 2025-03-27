@@ -1,12 +1,12 @@
-using GBCore
+using GenomicBreedingCore
 using Test
 using Documenter
 
-Documenter.doctest(GBCore)
+Documenter.doctest(GenomicBreedingCore)
 
-@testset "GBCore.jl" begin
+@testset "GenomicBreedingCore.jl" begin
     genomes = simulategenomes(n = 123, l = 5_000, verbose = false)
-    trials, effects = GBCore.simulatetrials(
+    trials, effects = GenomicBreedingCore.simulatetrials(
         genomes = genomes,
         n_years = 1,
         n_seasons = 1,
@@ -24,8 +24,8 @@ Documenter.doctest(GBCore)
     @test isa(tebv, TEBV)
     @test isa(phenomes, Phenomes)
     # Test Plotting which are not tested in the docs because copying the plots into the docstring is too impractical
-    @test isnothing(GBCore.plot(genomes))
-    @test isnothing(GBCore.plot(trials))
-    @test isnothing(GBCore.plot(tebv))
-    @test isnothing(GBCore.plot(phenomes))
+    @test isnothing(GenomicBreedingCore.plot(genomes))
+    @test isnothing(GenomicBreedingCore.plot(trials))
+    @test isnothing(GenomicBreedingCore.plot(tebv))
+    @test isnothing(GenomicBreedingCore.plot(phenomes))
 end

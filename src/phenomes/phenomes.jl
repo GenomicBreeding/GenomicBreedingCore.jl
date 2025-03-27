@@ -19,7 +19,7 @@ Returns a new `Phenomes` object with identical structure but independent memory 
 - `Phenomes`: A new Phenomes object containing deep copies of all fields
 
 # Example
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> phenomes = Phenomes(n=2, t=2);
 
 julia> copy_phenomes = clone(phenomes)
@@ -53,7 +53,7 @@ The hash is computed by combining hashes of all internal fields: entries, popula
 traits, phenotypes, and mask.
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> phenomes = Phenomes(n=2, t=2);
 
 julia> typeof(hash(phenomes))
@@ -85,7 +85,7 @@ ensuring that two phenomes with identical structure and content are considered e
 - `Bool`: `true` if the phenomes are equal, `false` otherwise
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> phenomes_1 = phenomes = Phenomes(n=2, t=4);
 
 julia> phenomes_2 = phenomes = Phenomes(n=2, t=4);
@@ -124,7 +124,7 @@ Checks if:
 - `Bool`: `true` if all dimensions are compatible, `false` otherwise
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> y = Phenomes(n=2, t=2);
 
 julia> checkdims(y)
@@ -176,7 +176,7 @@ Returns a dictionary containing counts of:
 - `ArgumentError`: If the Phenomes struct dimensions are inconsistent
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = fill(0.0, 10,3);
 
 julia> dimensions(phenomes)
@@ -242,7 +242,7 @@ A tuple containing:
 - χ² distance adds machine epsilon to denominator to avoid division by zero
 
 # Examples
-```jldoctest; setup = :(using GBCore, LinearAlgebra)
+```jldoctest; setup = :(using GenomicBreedingCore, LinearAlgebra)
 julia> phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = rand(10,3); phenomes.phenotypes[2,2] = missing;
 
 julia> (traits, entries, dist) = distances(phenomes, distance_metrics=["correlation", "χ²"]);
@@ -457,7 +457,7 @@ For each population in the dataset:
 ```
 julia> phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = rand(10,3);
 
-julia> GBCore.plot(phenomes);
+julia> GenomicBreedingCore.plot(phenomes);
 
 ```
 """

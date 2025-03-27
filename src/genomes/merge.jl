@@ -28,7 +28,7 @@ The function performs the following operations:
    - Resolves mask conflicts using weighted average
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> n = 100; l = 5_000; n_alleles = 2;
 
 julia> all = simulategenomes(n=n, l=l, n_alleles=n_alleles, verbose=false);
@@ -193,7 +193,7 @@ Merge `Genomes` and `Phenomes` structs based on their entries, combining genomic
 - When `keep_all=false`, includes only entries present in both structs
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> genomes = simulategenomes(n=10, verbose=false);
 
 julia> trials, effects = simulatetrials(genomes=slice(genomes, idx_entries=collect(1:5), idx_loci_alleles=collect(1:length(genomes.loci_alleles))), f_add_dom_epi=[0.90 0.05 0.05;], n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=2, verbose=false);

@@ -13,7 +13,7 @@ ensuring complete independence between the original and cloned objects.
 - `TEBV`: A new TEBV object containing deep copies of all fields from the input
 
 # Examples
-```jldoctest; setup = :(using GBCore, MixedModels, DataFrames)
+```jldoctest; setup = :(using GenomicBreedingCore, MixedModels, DataFrames)
 julia> tebv = TEBV(traits=[""], formulae=[""], models=[MixedModel(@formula(y~1+(1|x)), DataFrame(y=1, x=1))], df_BLUEs=[DataFrame(x=1)], df_BLUPs=[DataFrame(x=1)], phenomes=[Phenomes(n=1,t=1)]);
 
 julia> copy_tebv = clone(tebv);
@@ -61,7 +61,7 @@ Note: For performance reasons, the following fields are deliberately excluded fr
 - `UInt`: A unique hash value for the TEBV object
 
 # Examples
-```jldoctest; setup = :(using GBCore, MixedModels, DataFrames)
+```jldoctest; setup = :(using GenomicBreedingCore, MixedModels, DataFrames)
 julia> tebv = TEBV(traits=[""], formulae=[""], models=[MixedModel(@formula(y~1+(1|x)), DataFrame(y=1, x=1))], df_BLUEs=[DataFrame(x=1)], df_BLUPs=[DataFrame(x=1)], phenomes=[Phenomes(n=1,t=1)]);
 
 julia> typeof(hash(tebv))
@@ -97,7 +97,7 @@ traits, formulae, models, df_BLUEs, df_BLUPs, and phenomes.
 - `Bool`: `true` if the TEBV objects are equal, `false` otherwise
 
 # Examples
-```jldoctest; setup = :(using GBCore, MixedModels, DataFrames)
+```jldoctest; setup = :(using GenomicBreedingCore, MixedModels, DataFrames)
 julia> tebv_1 = TEBV(traits=[""], formulae=[""], models=[MixedModel(@formula(y~1+(1|x)), DataFrame(y=1, x=1))], df_BLUEs=[DataFrame(x=1)], df_BLUPs=[DataFrame(x=1)], phenomes=[Phenomes(n=1,t=1)]);
 
 julia> tebv_2 = clone(tebv_1);
@@ -180,7 +180,7 @@ A dictionary containing the following counts:
 - `ArgumentError`: If the TEBV struct dimensions are inconsistent or corrupted
 
 # Examples
-```jldoctest; setup = :(using GBCore, MixedModels, DataFrames)
+```jldoctest; setup = :(using GenomicBreedingCore, MixedModels, DataFrames)
 julia> tebv = TEBV(traits=["trait_1"], formulae=["trait_1 ~ 1 + 1|entries"], models=[MixedModel(@formula(y~1+(1|x)), DataFrame(y=1, x=1))], df_BLUEs=[DataFrame(x=1)], df_BLUPs=[DataFrame(x=1)], phenomes=[Phenomes(n=1,t=1)]);
 
 julia> dimensions(tebv)
@@ -258,7 +258,7 @@ and merging multiple phenomes if present. It performs the following operations:
 - `ArgumentError`: If input TEBV or output Phenomes dimensions are invalid
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> trials, _simulated_effects = simulatetrials(genomes = simulategenomes(n=10, verbose=false), n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=10, verbose=false);
 
 julia> tebv = analyse(trials, max_levels=50, verbose=false);

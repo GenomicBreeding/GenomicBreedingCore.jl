@@ -19,7 +19,7 @@ Returns a new `Genomes` instance with identical but independent data.
 - `Genomes`: A new Genomes object containing deep copies of all fields
 
 ## Example
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> genomes = Genomes(n=2, p=2);
 
 julia> copy_genomes = clone(genomes)
@@ -57,7 +57,7 @@ from the hash computation.
 - `UInt`: A hash value for the Genomes struct
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> genomes = Genomes(n=2, p=2);
 
 julia> typeof(hash(genomes))
@@ -93,7 +93,7 @@ properties and content.
 - `Bool`: `true` if the genomes are equal, `false` otherwise
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> genomes_1 = genomes = Genomes(n=2,p=4);
 
 julia> genomes_2 = genomes = Genomes(n=2,p=4);
@@ -132,7 +132,7 @@ Verifies that:
 - Dimensions of frequency matrix (n×p) match mask matrix dimensions
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> genomes = Genomes(n=2,p=4);
 
 julia> checkdims(genomes)
@@ -183,7 +183,7 @@ Returns a dictionary containing the following metrics:
 - `ArgumentError`: If the Genomes struct is corrupted (fails dimension check)
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
 
 julia> dimensions(genomes)
@@ -270,7 +270,7 @@ The function processes the data in parallel using multiple threads for performan
 - `ArgumentError`: If the Genomes struct dimensions are invalid or corrupted
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
 
 julia> chromosomes, positions, alleles = loci_alleles(genomes);
@@ -324,7 +324,7 @@ A tuple containing four vectors:
 - `loci_fin_idx::Vector{Int64}`: Ending indices for each locus
 
 # Examples
-```jldoctest; setup = :(using GBCore)
+```jldoctest; setup = :(using GenomicBreedingCore)
 julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
 
 julia> chromosomes, positions, loci_ini_idx, loci_fin_idx = loci(genomes);
@@ -421,7 +421,7 @@ Tuple containing:
 - Multi-threaded implementation which uses indexing on pre-allocated vectors and matrices which should avoid data races
 
 # Examples
-```jldoctest; setup = :(using GBCore, LinearAlgebra)
+```jldoctest; setup = :(using GenomicBreedingCore, LinearAlgebra)
 julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
 
 julia> (loci_alleles_names, entries, dist) = distances(genomes, distance_metrics=["correlation", "χ²"]);
@@ -664,7 +664,7 @@ For each population in the dataset, creates three plots:
 ```
 julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, verbose=false);
 
-julia> GBCore.plot(genomes)
+julia> GenomicBreedingCore.plot(genomes)
 
 ```
 """

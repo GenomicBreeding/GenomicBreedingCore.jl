@@ -1,17 +1,17 @@
-module GBCore
+module GenomicBreedingCore
 
 using Random
 using DataFrames
 using LinearAlgebra
 using StatsBase
 using Distributions, SparseArrays, PDMats
-using MixedModels, Metida
+using MixedModels, Turing
 using MultivariateStats
 using UnicodePlots, Plots
 using JLD2
 using ProgressMeter
 using Suppressor
-using Lux # for Fit deep learning model
+using Lux
 
 # Structs
 include("all_structs.jl")
@@ -27,9 +27,9 @@ include("phenomes/merge.jl")
 # Trials data: single- or multi- environments, years, seasons and harvests
 include("trials/trials.jl")
 include("trials/filter.jl")
-# Trial-estimated breeding values: extraction of BLUPs of entries
+include("trials/linear_mixed_modelling.jl")
+# Trial-estimated breeding values
 include("tebv/tebv.jl")
-include("tebv/linear_mixed_modelling.jl")
 # Linear and non-linear genotype-to-phenotype models struct
 include("fit/fit.jl")
 # Genotype-to-phenotype model cross-validation struct
