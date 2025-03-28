@@ -1,14 +1,13 @@
 function analyse(
     trials::Trials,
     traits::Vector{String};
-    GRM::Union{Matrix{Float64}, UniformScaling} = I, 
-    other_covariates::Union{String, Nothing} = nothing,
-    verbose::Bool = false)::TEBV
+    GRM::Union{Matrix{Float64},UniformScaling} = I,
+    other_covariates::Union{String,Nothing} = nothing,
+    verbose::Bool = false,
+)::TEBV
     # genomes = simulategenomes(n=500, l=10_000)
     # trials, simulated_effects = simulatetrials(genomes = genomes, n_years=10, n_seasons=2, n_harvests=1, n_sites=2, n_replications=3)
-    # GRM::Union{Matrix{Float64}, UniformScaling} = I
-    # other_covariates::Union{String, Nothing} = nothing
-    # verbose::Bool = true
+    # GRM::Union{Matrix{Float64}, UniformScaling} = I; traits = ["trait_1"]; other_covariates::Union{String, Nothing} = nothing; verbose::Bool = true'
     # Check arguments
     if !checkdims(trials)
         error("The Trials struct is corrupted.")
@@ -22,7 +21,11 @@ function analyse(
     end
     if !isnothing(other_covariates)
         if !(other_covariates ∈ trials.traits)
-            throw(ArgumentError("The `other_covariates` ($other_covariates) argument is not a trait in the Trials struct."))
+            throw(
+                ArgumentError(
+                    "The `other_covariates` ($other_covariates) argument is not a trait in the Trials struct.",
+                ),
+            )
         end
     end
     # Tabularise the trials data

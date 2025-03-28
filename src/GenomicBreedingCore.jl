@@ -55,6 +55,6 @@ export histallelefreqs, simulatemating
 export countlevels, @string2formula, trialsmodelsfomulae!, analyse, extractphenomes
 export @stringevaluation, addcompositetrait
 export maskmissing!, divideintomockscaffolds, estimateld, estimatedistances, knni, knnioptim, impute
-export grmsimple, grmploidyaware
+export inflatediagonals!, grmsimple, grmploidyaware
 
 end

@@ -1,4 +1,53 @@
 """
+    inflatediagonals!(X::Matrix{Float64}; ϵ::Float64=eps(Float64), max_iter::Int64=1_000, verbose::Bool=false)::Nothing
+
+Ensure matrix invertibility by iteratively inflating diagonal elements until the determinant is nonzero.
+
+# Arguments
+- `X::Matrix{Float64}`: Input square matrix to be modified in-place
+- `ϵ::Float64=eps(Float64)`: Initial inflation value for diagonal elements
+- `max_iter::Int64=1_000`: Maximum number of iterations
+- `verbose::Bool=false`: If true, prints information about the inflation process
+
+# Details
+The function adds progressively larger values to the diagonal elements until the matrix
+becomes invertible (det(X) > eps(Float64)) or the maximum number of iterations is reached.
+The inflation value ϵ increases slightly in each iteration.
+
+# Returns
+`Nothing`. The input matrix `X` is modified in-place.
+
+# Example
+```jldoctest; setup = :(using GenomicBreedingCore, LinearAlgebra)
+julia> X::Matrix{Float64} = rand(10,10);
+
+julia> inflatediagonals!(X);
+
+julia> det(X) > eps(Float64)
+true
+```
+"""
+function inflatediagonals!(
+    X::Matrix{Float64};
+    ϵ::Float64 = eps(Float64),
+    max_iter::Int64 = 1_000,
+    verbose::Bool = false,
+)::Nothing
+    iter = 0
+    ϵ = maximum(abs.(X))
+    ϵ_total = 0.0
+    while (det(X) < eps(Float64)) && (iter < max_iter)
+        iter += 1
+        X[diagind(X)] .+= ϵ
+        ϵ_total += ϵ
+        ϵ *= (1.0 + eps(Float64))
+    end
+    if verbose
+        println("Performed $iter iterations of diagonal inflation to ensure matrix invertibility (ϵ_total = $ϵ_total).")
+    end
+end
+
+"""
     grmsimple(
         genomes::Genomes;
         idx_entries::Union{Nothing,Vector{Int64}} = nothing,
@@ -29,51 +78,45 @@ The function computes a genetic relationship matrix by:
 - The matrix dimensions will be n×n where n is the number of entries/individuals
 
 # Example
-```jldoctest; setup = :(using GenomicBreedingCore, GenomicBreedingModels, LinearAlgebra)
-julia> genomes = GenomicBreedingCore.simulategenomes(verbose=false);
+```jldoctest; setup = :(using GenomicBreedingCore, LinearAlgebra)
+julia> genomes = simulategenomes(l=1_000, verbose=false);
 
-julia> GRM = grmsimple(genomes);
+julia> grm = grmsimple(genomes);
 
-julia> size(GRM), issymmetric(GRM)
+julia> size(grm.genomic_relationship_matrix), issymmetric(grm.genomic_relationship_matrix)
 ((100, 100), true)
 
-julia> det(GRM) > eps(Float64)
+julia> det(grm.genomic_relationship_matrix) > eps(Float64)
 true
 ```
 """
-function grmsimple(
-    genomes::Genomes;
-    idx_entries::Union{Nothing,Vector{Int64}} = nothing,
-    idx_loci_alleles::Union{Nothing,Vector{Int64}} = nothing,
-    verbose::Bool = false,
-)::Matrix{Float64}
-    # genomes = GenomicBreedingCore.simulategenomes(); idx_entries = nothing; idx_loci_alleles = nothing; verbose = true;
+function grmsimple(genomes::Genomes; max_iter::Int64 = 1_000, verbose::Bool = false)::GRM
+    # genomzes = simulategenomes(); max_iter = 1_000; verbose = true;
     # Check arguments while extracting the allele frequencies but first create a dummy phenomes struct
-    phenomes_dummy = Phenomes(n = length(genomes.entries), t = 1)
-    phenomes_dummy.entries = genomes.entries
-    phenomes_dummy.populations = genomes.populations
-    phenomes_dummy.traits = ["dummy_trait"]
-    phenomes_dummy.phenotypes[:, 1] = rand(length(phenomes_dummy.entries))
-    G, _y, _entries, _populations, _loci_alleles = extractxyetc(
-        genomes,
-        phenomes_dummy,
-        idx_entries = idx_entries,
-        idx_loci_alleles = idx_loci_alleles,
-        add_intercept = false,
-    )
+    if !checkdims(genomes)
+        throw(ArgumentError("The Genomes struct is corrupted."))
+    end
     # Calculate a simple GRM
-    GRM = G * G' ./ size(G, 2)
-    # Inflate the diagonals is not invertible
-    ϵ = 1e-4
-    while det(GRM) < eps(Float64)
-        GRM[diagind(GRM)] .+= ϵ
-        ϵ *= 10
+    n, p = size(genomes.allele_frequencies)
+    grm = GRM(genomes.entries, genomes.loci_alleles, Matrix{Float64}(undef, n, n))
+    Threads.@threads for i = 1:n
+        for j = i:n
+            # i = 1; j = 1;
+            a = dot(genomes.allele_frequencies[i, :], genomes.allele_frequencies[j, :]) / p
+            grm.genomic_relationship_matrix[i, j] = a
+            grm.genomic_relationship_matrix[j, i] = a
+        end
     end
+    # Inflate the diagonals until invertible
+    inflatediagonals!(grm.genomic_relationship_matrix, verbose = verbose)
     # Output
-    if verbose
-        UnicodePlots.heatmap(GRM)
+    if !checkdims(grm)
+        throw(ErrorException("Error computing a simple GRM."))
     end
-    GRM
+    if verbose
+        UnicodePlots.heatmap(grm.genomic_relationship_matrix)
+    end
+    grm
 end
 
 """
@@ -109,54 +152,44 @@ The function implements the following steps:
 The diagonal elements may be slightly inflated to ensure matrix invertibility for downstream analyses.
 
 # Example
-```jldoctest; setup = :(using GenomicBreedingCore, GenomicBreedingModels, LinearAlgebra)
-julia> genomes = GenomicBreedingCore.simulategenomes(verbose=false);
+```jldoctest; setup = :(using GenomicBreedingCore, LinearAlgebra)
+julia> genomes = simulategenomes(l=1_000, verbose=false);
 
-julia> GRM_VanRaden = grmploidyaware(genomes);
+julia> grm = grmploidyaware(genomes);
 
-julia> size(GRM_VanRaden), issymmetric(GRM_VanRaden)
+julia> size(grm.genomic_relationship_matrix), issymmetric(grm.genomic_relationship_matrix)
 ((100, 100), true)
 
-julia> det(GRM_VanRaden) > eps(Float64)
+julia> det(grm.genomic_relationship_matrix) > eps(Float64)
 true
 ```
 """
-function grmploidyaware(
-    genomes::Genomes;
-    ploidy::Int64 = 2,
-    idx_entries::Union{Nothing,Vector{Int64}} = nothing,
-    idx_loci_alleles::Union{Nothing,Vector{Int64}} = nothing,
-    verbose::Bool = false,
-)::Matrix{Float64}
-    # genomes = GenomicBreedingCore.simulategenomes(); ploidy = 2; idx_entries = nothing; idx_loci_alleles = nothing; verbose = true;
-    # Check arguments while extracting the allele frequencies but first create a dummy phenomes struct
-    phenomes_dummy = Phenomes(n = length(genomes.entries), t = 1)
-    phenomes_dummy.entries = genomes.entries
-    phenomes_dummy.populations = genomes.populations
-    phenomes_dummy.traits = ["dummy_trait"]
-    phenomes_dummy.phenotypes[:, 1] = rand(length(phenomes_dummy.entries))
-    G, _, entries, populations, loci_alleles = extractxyetc(
-        genomes,
-        phenomes_dummy,
-        idx_entries = idx_entries,
-        idx_loci_alleles = idx_loci_alleles,
-        add_intercept = false,
-    )
-    # Calculate GRM via Bell et al (2017) and VanRaden et al (2008)
-    q = mean(G, dims = 1)
-    G_star = ploidy .* (G .- 0.5)
-    q_star = ploidy .* (q .- 0.5)
-    Z = G_star .- q
-    GRM_VanRaden = (Z * Z') ./ (ploidy * sum(q .* (1 .- q)))
-    # Inflate the diagonals is not invertible
-    ϵ = 1e-4
-    while det(GRM_VanRaden) < eps(Float64)
-        GRM_VanRaden[diagind(GRM_VanRaden)] .+= ϵ
-        ϵ *= 10
+function grmploidyaware(genomes::Genomes; ploidy::Int64 = 2, max_iter::Int64 = 1_000, verbose::Bool = false)::GRM
+    # genomes = simulategenomes(); ploidy = 2; max_iter = 1_000; verbose = true;
+    if !checkdims(genomes)
+        throw(ArgumentError("The Genomes struct is corrupted."))
     end
+    # Calculate GRM via Bell et al (2017) and VanRaden et al (2008)
+    n, _p = size(genomes.allele_frequencies)
+    grm = GRM(genomes.entries, genomes.loci_alleles, Matrix{Float64}(undef, n, n))
+    q = mean(genomes.allele_frequencies, dims = 1)[1, :]
+    G_star = ploidy .* (genomes.allele_frequencies .- 0.5)
+    # q_star = ploidy .* (q .- 0.5)
+    # Z = G_star .- q'
+    d = (ploidy * sum(q .* (1 .- q)))
+    Threads.@threads for i = 1:n
+        for j = i:n
+            # i = 1; j = 1;
+            a = dot((G_star[i, :] - q), (G_star[j, :] - q)) / d
+            grm.genomic_relationship_matrix[i, j] = a
+            grm.genomic_relationship_matrix[j, i] = a
+        end
+    end
+    # Inflate the diagonals until invertible
+    inflatediagonals!(grm.genomic_relationship_matrix, verbose = verbose)
     # Output
     if verbose
-        UnicodePlots.heatmap(GRM_VanRaden)
+        UnicodePlots.heatmap(grm.genomic_relationship_matrix)
     end
-    GRM_VanRaden
+    grm
 end

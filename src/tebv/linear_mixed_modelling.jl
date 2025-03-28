@@ -672,7 +672,7 @@ true
 """
 function analyse(
     trials::Trials,
-    formula_string::Union{String, Nothing} = nothing;
+    formula_string::Union{String,Nothing} = nothing;
     traits::Union{Nothing,Vector{String}} = nothing,
     max_levels::Int64 = 100,
     max_time_per_model::Int64 = 60,
