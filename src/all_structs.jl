@@ -379,7 +379,7 @@ Contains genomic prediction cross-validation details.
 - `metrics`: dictionary of genomic prediction accuracy metrics on the validation population/s
 
 ## Constructor
-Uses the default contructor.
+Uses the default constructor.
 """
 mutable struct CV <: AbstractGB
     replication::String
@@ -390,4 +390,23 @@ mutable struct CV <: AbstractGB
     validation_y_true::Vector{Float64}
     validation_y_pred::Vector{Float64}
     metrics::Dict{String,Float64}
+end
+
+"""
+# Genomic relationship matrix struct
+
+Contains genomic relationship matrix as well as the corresponding entries and loci-alleles used to compute it.
+
+## Fields
+- `entries`: names of the `n` entries corresponding to the rows and columns of the genomic relationship matrix
+- `loci_alleles`: names of the loci-alleles used to compute the genomic relationship matrix
+- `genomic_relationship_matrix`: `n x n` matrix of genomic relationship values between entries
+
+## Constructor
+Uses the default constructor.
+"""
+mutable struct GRM <: AbstractGB
+    entries::Vector{String}
+    loci_alleles::Vector{String}
+    genomic_relationship_matrix::Matrix{Float64}
 end

@@ -73,7 +73,7 @@ The field layout is optimized to have:
 - Blocks divided along columns
 - Even distribution of entries and replications
 
-## Examples
+# Examples
 ```jldoctest; setup = :(using GenomicBreedingCore; using StatsBase)
 julia> genomes::Genomes = simulategenomes(n=100, l=2_000, n_alleles=3, verbose=false);
 

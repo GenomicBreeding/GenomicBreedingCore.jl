@@ -672,7 +672,7 @@ true
 """
 function analyse(
     trials::Trials,
-    formula_string::String = "";
+    formula_string::Union{String, Nothing} = nothing;
     traits::Union{Nothing,Vector{String}} = nothing,
     max_levels::Int64 = 100,
     max_time_per_model::Int64 = 60,
@@ -745,12 +745,12 @@ function analyse(
         formulae::Vector{String} = []
         idx_parallel_models::Vector{Int64} = []
         idx_iterative_models::Vector{Int64} = []
-        if formula_string == ""
+        if isnothing(formula_string)
             formulae, n_levels = trialsmodelsfomulae!(df; trait = trait, max_levels = max_levels)
             idx_parallel_models = findall(n_levels .<= (1.5 * max_levels))
             idx_iterative_models = findall((n_levels .<= (1.5 * max_levels)) .!= true)
             # Reset formula_string string for the next trait
-            formula_string = ""
+            formula_string = nothing
         else
             formulae = [replace(formula_string, split(formula_string, "~")[1] => trait)]
             idx_parallel_models = []

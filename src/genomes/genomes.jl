@@ -12,13 +12,13 @@ This function performs a deep clone of all fields in the `Genomes` object, inclu
 
 Returns a new `Genomes` instance with identical but independent data.
 
-## Arguments
+# Arguments
 - `x::Genomes`: The source Genomes object to clone
 
-## Returns
+# Returns
 - `Genomes`: A new Genomes object containing deep copies of all fields
 
-## Example
+# Example
 ```jldoctest; setup = :(using GenomicBreedingCore)
 julia> genomes = Genomes(n=2, p=2);
 
@@ -431,6 +431,9 @@ true
 
 julia> C = dist["entries|correlation"]; C[diagind(C)] == repeat([1], length(genomes.entries))
 true
+
+julia> χ² = dist["loci_alleles|χ²"]; χ²[diagind(χ²)] == repeat([0.0], 100)
+true
 ```
 """
 function distances(
@@ -472,7 +475,9 @@ function distances(
     end
     n_loci_alleles = length(genomes.loci_alleles)
     idx_loci_alleles = if isnothing(idx_loci_alleles)
-        # @warn "Randomly sampling 100 loci-alleles"
+        if verbose
+            @warn "Randomly sampling 100 loci-alleles"
+        end
         sort(sample(1:n_loci_alleles, 100, replace = false))
     else
         if (minimum(idx_loci_alleles) < 1) || (maximum(idx_loci_alleles) > n_loci_alleles)
@@ -563,8 +568,6 @@ function distances(
     end
     # Finally per entry
     if include_entries && (n > 1)
-        ϕ1::Vector{Union{Missing,Float64}} = fill(missing, t)
-        ϕ2::Vector{Union{Missing,Float64}} = fill(missing, t)
         if include_counts
             counts = fill(0.0, n, n)
         end
@@ -576,13 +579,14 @@ function distances(
             else
                 fill(Inf, n, n)
             end
-            for i = 1:n
-                ϕ1 .= genomes.allele_frequencies[i, idx_loci_alleles]
+            # Multi-threaded distance calculation (no need for thread locking as we are accessing unique indexes)
+            Threads.@threads for i = 1:n
+                ϕ1 = genomes.allele_frequencies[i, idx_loci_alleles]
                 bool1 = .!ismissing.(ϕ1) .&& .!isnan.(ϕ1) .&& .!isinf.(ϕ1)
                 for j = 1:n
                     # i = 1; j = 3
                     # Make sure we have no missing, NaN or infinite values
-                    ϕ2 .= genomes.allele_frequencies[j, idx_loci_alleles]
+                    ϕ2 = genomes.allele_frequencies[j, idx_loci_alleles]
                     bool2 = .!ismissing.(ϕ2) .&& .!isnan.(ϕ2) .&& .!isinf.(ϕ2)
                     idx = findall(bool1 .&& bool2)
                     if length(idx) < 2
@@ -596,8 +600,11 @@ function distances(
                     if metric == "euclidean"
                         D[i, j] = sqrt(sum((ϕ1[idx] - ϕ2[idx]) .^ 2))
                     elseif metric == "correlation"
-                        (var(ϕ1[idx]) < 1e-7) || (var(ϕ2[idx]) < 1e-7) ? continue : nothing
-                        D[i, j] = cor(ϕ1[idx], ϕ2[idx])
+                        D[i, j] = if (var(ϕ1[idx]) < 1e-7) || (var(ϕ2[idx]) < 1e-7)
+                            -Inf
+                        else
+                            cor(ϕ1[idx], ϕ2[idx])
+                        end
                     elseif metric == "mad"
                         D[i, j] = mean(abs.(ϕ1[idx] - ϕ2[idx]))
                     elseif metric == "rmsd"

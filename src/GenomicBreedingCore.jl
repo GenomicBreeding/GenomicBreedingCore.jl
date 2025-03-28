@@ -27,20 +27,24 @@ include("phenomes/merge.jl")
 # Trials data: single- or multi- environments, years, seasons and harvests
 include("trials/trials.jl")
 include("trials/filter.jl")
-include("trials/linear_mixed_modelling.jl")
 # Trial-estimated breeding values
 include("tebv/tebv.jl")
+include("tebv/linear_mixed_modelling.jl")
+include("tebv/bayesian_modelling.jl")
 # Linear and non-linear genotype-to-phenotype models struct
 include("fit/fit.jl")
 # Genotype-to-phenotype model cross-validation struct
 include("cv/cv.jl")
+# Genomic relationship matrix struct
+include("grm/grm.jl")
+include("grm/calc.jl")
 # Simulations: genomes, trials, and mating
 include("simulations/simulate_effects.jl")
 include("simulations/simulate_genomes.jl")
 include("simulations/simulate_trials.jl")
 include("simulations/simulate_mating.jl")
 
-export AbstractGB, Genomes, Phenomes, Trials, SimulatedEffects, TEBV, Fit, CV
+export AbstractGB, Genomes, Phenomes, Trials, SimulatedEffects, TEBV, Fit, CV, GRM
 export clone, hash, ==
 export checkdims, dimensions, loci_alleles, loci, distances, plot, tabularise, summarise
 export slice, sparsities, filter, filterbysparsity, filterbymaf, filterbypca, filterbysnplist
@@ -51,5 +55,6 @@ export histallelefreqs, simulatemating
 export countlevels, @string2formula, trialsmodelsfomulae!, analyse, extractphenomes
 export @stringevaluation, addcompositetrait
 export maskmissing!, divideintomockscaffolds, estimateld, estimatedistances, knni, knnioptim, impute
+export grmsimple, grmploidyaware
 
 end

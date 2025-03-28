@@ -17,7 +17,7 @@ the original object.
 
 Clone a CV object
 
-## Example
+# Example
 ```jldoctest; setup = :(using GenomicBreedingCore)
 julia> fit = Fit(n=1, l=2);
 
