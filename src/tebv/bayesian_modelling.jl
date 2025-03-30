@@ -84,28 +84,75 @@ function analyse(
     if ("blocks" ∈ factors) || ("rows" ∈ factors) || ("cols" ∈ factors)
         # Define spatial factors
         spatial_factors = factors[.!isnothing.(match.(Regex("blocks|rows|cols"), factors))]
+        # Define the contrast for one-hot encoding, i.e. including the intercept, i.e. p instead of the p-1
+        contrasts::Dict{Symbol, StatsModels.FullDummyCoding} = Dict()
+        for f in spatial_factors
+            # f = spatial_factors[1]
+            contrasts[Symbol(f)] = StatsModels.FullDummyCoding()
+        end
         # Make sure that each harvest is year- and site-specific
         df.harvests = string.(df.years, "|", df.sites, "|", df.harvests)
         for harvest in unique(df.harvests)
             # harvest = unique(df.harvests)[1]
             df_sub = filter(x -> x.harvests == harvest, df)
-            sort(unique(df.rows))
             for trait in traits
                 # trait = traits[1]
-                formula_string = string(trait, " ~ 1 + ", join(spatial_factors, "*"))
-                formula_struct = @eval(@string2formula($formula_string))
+                formula_struct = term(trait) ~ term(1) + foldl(*, term.(spatial_factors))
+                # Extract the names of the coefficients and the design matrix (n x F(p-1); excludes the base level/s) to used for the regression
+                _, col_labels = coefnames(apply_schema(formula_struct, schema(formula_struct, df_sub)))
                 X = modelmatrix(formula_struct, df_sub)
-                formula_string_ALL = string(trait, " ~ 0 + ", join(spatial_factors, "*"))
-                formula_struct_ALL = @eval(@string2formula($formula_string_ALL))
-                X_ALL = modelmatrix(formula_struct_ALL, df_sub)
+                # Extract the names of all the coefficients including the base level/s and the full design matrix (n x F(p)).
+                # This is not used for regression, rather it is used for the extraction of coefficiencts of all factor levels including the base level/s.
+                mf = ModelFrame(formula_struct, df_sub, contrasts = Q)
+                _, col_labels_ALL = coefnames(apply_schema(formula_struct, mf.schema))
+                X_ALL = modelmatrix(mf)
 
-                mf = ModelFrame(formula_struct_ALL, df_sub, contrasts = Dict(:x => EffectsCoding()))
-
-                size(X)
-                size(X_ALL)
-
-                f0 = @eval(@string2formula($(replace(formula_string_ALL, trait => "0"))))
-                _, col_labels = coefnames(apply_schema(f0, schema(f0, df), EffectsCoding()))
+                coefficient_names = string.(foldl(*, term.(spatial_factors)))
+                vector_of_Xs = []
+                vector_of_Xs_ALL = []
+                for f in coefficient_names
+                    # f = coefficient_names[1]
+                    f_split = split(f, " ")
+                    # Main design matrices
+                    bool = fill(true, length(col_labels))
+                    for x in f_split
+                        bool = bool .&& .!isnothing.(match.(Regex(x), col_labels))
+                    end
+                    if length(f_split) == 1
+                        bool = bool .&& isnothing.(match.(Regex("&"), col_labels))
+                    end
+                    push!(vector_of_Xs, X[:, bool])
+                    # Full design matrices
+                    bool = fill(true, length(col_labels_ALL))
+                    for x in f_split
+                        bool = bool .&& .!isnothing.(match.(Regex(x), col_labels_ALL))
+                    end
+                    if length(f_split) == 1
+                        bool = bool .&& isnothing.(match.(Regex("&"), col_labels_ALL))
+                    end
+                    push!(vector_of_Xs_ALL, X_ALL[:, bool])
+                end
+                # Add the intercepts to the first matrices
+                vector_of_Xs[1] = hcat(ones(nrow(df_sub)), vector_of_Xs[1])
+                vector_of_Xs_ALL[1] = hcat(ones(nrow(df_sub)), vector_of_Xs_ALL[1])
+                # Define the linear model
+                y = df_sub[!, trait]
+                Turing.@model function blr_spatial(vector_of_Xs, y)
+                    # Set intercept prior.
+                    intercept ~ Normal(0.0, 10.0)
+                    # Set variance predictors
+                    P = length(vector_of_Xs)
+                    for i in 1:P
+                        s = MvNormal(zeros(size(vector_of_Xs[i], 2)), I)
+                        vector_of_Xs[i] ~ Normal(0.0, 10.0)
+                    end
+                    # Set the priors on our coefficients.
+                    coefficients ~ Distributions.MvNormal(zeros(size(G, 2)), I)
+                    # Calculate all the mu terms.
+                    mu = intercept .+ G * coefficients
+                    # Return the distrbution of the response variable, from which the likelihood will be derived
+                    return y ~ Distributions.MvNormal(mu, σ² * I)
+                end
         
 
             end
