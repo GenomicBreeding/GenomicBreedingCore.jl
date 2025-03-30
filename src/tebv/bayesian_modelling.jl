@@ -55,10 +55,6 @@ function analyse(
     )
     # Tabularise the trials data
     df = tabularise(trials)
-    # Make sure the blocks, rows, and columns are specific to each site
-    df.blocks = string.(df.sites, "|", df.blocks)
-    df.rows = string.(df.sites, "|", df.rows)
-    df.cols = string.(df.sites, "|", df.cols)
     # Identify non-fixed factors
     factors_all::Vector{String} = ["years", "seasons", "harvests", "sites", "blocks", "rows", "cols", "entries"]
     factors::Vector{String} = []
@@ -80,17 +76,55 @@ function analyse(
         total_parameters *= (D[string("n_", f)] - 1)
     end
     total_X_size_in_Gb = nrow(df) * (total_parameters + 1) * sizeof(Float64) / (1024^3)
+    @warn "The size of the design matrix is ~$(round(total_X_size_in_Gb)) GB. This may cause out-of-memory errors."
+
+
+    # To prevent OOM errors, we will perform spatial analyses per harvest per site, i.e. remove spatial effects per replication
+    # and perform the potentially GxE analysis on the residulals
+    if ("blocks" ∈ factors) || ("rows" ∈ factors) || ("cols" ∈ factors)
+        # Define spatial factors
+        spatial_factors = factors[.!isnothing.(match.(Regex("blocks|rows|cols"), factors))]
+        # Make sure that each harvest is year- and site-specific
+        df.harvests = string.(df.years, "|", df.sites, "|", df.harvests)
+        for harvest in unique(df.harvests)
+            # harvest = unique(df.harvests)[1]
+            df_sub = filter(x -> x.harvests == harvest, df)
+            sort(unique(df.rows))
+            for trait in traits
+                # trait = traits[1]
+                formula_string = string(trait, " ~ 1 + ", join(spatial_factors, "*"))
+                formula_struct = @eval(@string2formula($formula_string))
+                X = modelmatrix(formula_struct, df_sub)
+                formula_string_ALL = string(trait, " ~ 0 + ", join(spatial_factors, "*"))
+                formula_struct_ALL = @eval(@string2formula($formula_string_ALL))
+                X_ALL = modelmatrix(formula_struct_ALL, df_sub)
+
+                mf = ModelFrame(formula_struct_ALL, df_sub, contrasts = Dict(:x => EffectsCoding()))
+
+                size(X)
+                size(X_ALL)
+
+                f0 = @eval(@string2formula($(replace(formula_string_ALL, trait => "0"))))
+                _, col_labels = coefnames(apply_schema(f0, schema(f0, df), EffectsCoding()))
+        
+
+            end
+        end
+    end
+        
+
+
     # Iterate per trait
     for trait in traits
         # trait = traits[1]
         # Define the formula for the model
         formula_string = string(trait, " ~ 1 + ", join(factors, " * "))
-        formula_full = @eval(@string2formula($formula_string))
-        X = modelmatrix(formula_full, df)
+        formula_struct = @eval(@string2formula($formula_string))
+        X = modelmatrix(formula_struct, df)
 
 
 
-        f0 = @eval(@string2formula($(replace(formulae[i], "y" => "0"))))
+        f0 = @eval(@string2formula($(replace(formula_string, "y" => "0"))))
         _, col_labels = coefnames(apply_schema(f0, schema(f0, df)))
         size(df)
         length(col_labels)
