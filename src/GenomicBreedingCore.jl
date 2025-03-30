@@ -5,7 +5,8 @@ using DataFrames
 using LinearAlgebra
 using StatsBase
 using Distributions, SparseArrays, PDMats
-using StatsModels, MixedModels, Turing
+using StatsModels, MixedModels
+using Turing, Zygote, ReverseDiff
 using MultivariateStats
 using UnicodePlots, Plots
 using JLD2

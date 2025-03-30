@@ -103,10 +103,12 @@ function analyse(
                 X = modelmatrix(formula_struct, df_sub)
                 # Extract the names of all the coefficients including the base level/s and the full design matrix (n x F(p)).
                 # This is not used for regression, rather it is used for the extraction of coefficiencts of all factor levels including the base level/s.
-                mf = ModelFrame(formula_struct, df_sub, contrasts = Q)
+                mf = ModelFrame(formula_struct, df_sub, contrasts = contrasts)
                 _, col_labels_ALL = coefnames(apply_schema(formula_struct, mf.schema))
                 X_ALL = modelmatrix(mf)
-
+                # Check
+                size(X) < size(X_ALL)
+                # Separate each factor from one another
                 coefficient_names = string.(foldl(*, term.(spatial_factors)))
                 vector_of_Xs = []
                 vector_of_Xs_ALL = []
@@ -132,26 +134,38 @@ function analyse(
                     end
                     push!(vector_of_Xs_ALL, X_ALL[:, bool])
                 end
-                # Add the intercepts to the first matrices
-                vector_of_Xs[1] = hcat(ones(nrow(df_sub)), vector_of_Xs[1])
-                vector_of_Xs_ALL[1] = hcat(ones(nrow(df_sub)), vector_of_Xs_ALL[1])
                 # Define the linear model
-                y = df_sub[!, trait]
+                y::Vector{Float64} = df_sub[!, trait]
                 Turing.@model function blr_spatial(vector_of_Xs, y)
                     # Set intercept prior.
                     intercept ~ Normal(0.0, 10.0)
                     # Set variance predictors
                     P = length(vector_of_Xs)
+                    σ²s = fill(0.0, P)
+                    βs = [fill(0.0, size(x,2)) for x in vector_of_Xs]
+                    μ = fill(0.0, size(vector_of_Xs[1],1)) .+ intercept
                     for i in 1:P
-                        s = MvNormal(zeros(size(vector_of_Xs[i], 2)), I)
-                        vector_of_Xs[i] ~ Normal(0.0, 10.0)
+                        σ²s[i] ~ Exponential(1.0)
+                        βs[i] ~ MvNormal(zeros(length(βs[i])), σ²s[i]*I)
+                        μ += vector_of_Xs[i] * βs[i]
                     end
-                    # Set the priors on our coefficients.
-                    coefficients ~ Distributions.MvNormal(zeros(size(G, 2)), I)
-                    # Calculate all the mu terms.
-                    mu = intercept .+ G * coefficients
+                    # Residual variance
+                    σ² ~ Exponential(10.0)
                     # Return the distrbution of the response variable, from which the likelihood will be derived
-                    return y ~ Distributions.MvNormal(mu, σ² * I)
+                    return y ~ Distributions.MvNormal(μ, σ² * I)
+                end
+                function mcmc()
+                    seed = 1234
+                    n_iter = 1000
+                    n_burnin = 150
+                    verbose = true
+                    rng::TaskLocalRNG = Random.seed!(seed)
+                    model = blr_spatial(vector_of_Xs, y)
+                    sampling_function =
+                        NUTS(n_burnin, 0.65, max_depth = 5, Δ_max = 1000.0, init_ϵ = 0.2; adtype = AutoReverseDiff(compile = true))
+                    chain = Turing.sample(rng, model, sampling_function, n_iter - n_burnin, progress = verbose)
+                    # Use the mean paramter values after 150 burn-in iterations
+                    params = Turing.get_params(chain[(n_burnin+1):end, :, :])
                 end
         
 
@@ -178,28 +192,4 @@ function analyse(
     end
 end
 
-Turing.@model function turing_bayesG(G, y)
-    # Set variance prior.
-    σ² ~ Distributions.Exponential(1.0 / std(y))
-    # σ² ~ truncated(Normal(init["σ²"], 1.0); lower=0)
-    # Set intercept prior.
-    intercept ~ Turing.Flat()
-    # intercept ~ Distributions.Normal(init["b0"], 1.0)
-    # Set the priors on our coefficients.
-    # p = size(G, 2)
-    coefficients ~ Distributions.MvNormal(zeros(size(G, 2)), I)
-    # Calculate all the mu terms.
-    mu = intercept .+ G * coefficients
-    # Return the distrbution of the response variable, from which the likelihood will be derived
-    return y ~ Distributions.MvNormal(mu, σ² * I)
-end
 
-function mcmc()
-    rng::TaskLocalRNG = Random.seed!(seed)
-    model = turing_model(X, y)
-    sampling_function =
-        NUTS(n_burnin, 0.65, max_depth = 5, Δ_max = 1000.0, init_ϵ = 0.2; adtype = AutoReverseDiff(compile = true))
-    chain = Turing.sample(rng, model, sampling_function, n_iter - n_burnin, progress = verbose)
-    # Use the mean paramter values after 150 burn-in iterations
-    params = Turing.get_params(chain[(n_burnin+1):end, :, :])
-end
