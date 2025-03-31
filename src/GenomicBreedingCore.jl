@@ -6,7 +6,7 @@ using LinearAlgebra
 using StatsBase
 using Distributions, SparseArrays, PDMats
 using StatsModels, MixedModels
-using Turing, Zygote, ReverseDiff
+using Turing, MCMCDiagnosticTools, Zygote, ReverseDiff
 using MultivariateStats
 using UnicodePlots, Plots
 using JLD2
@@ -45,7 +45,7 @@ include("simulations/simulate_genomes.jl")
 include("simulations/simulate_trials.jl")
 include("simulations/simulate_mating.jl")
 
-export AbstractGB, Genomes, Phenomes, Trials, SimulatedEffects, TEBV, Fit, CV, GRM
+export AbstractGB, Genomes, Phenomes, Trials, SimulatedEffects, BLR, TEBV, Fit, CV, GRM
 export clone, hash, ==
 export checkdims, dimensions, loci_alleles, loci, distances, plot, tabularise, summarise
 export slice, sparsities, filter, filterbysparsity, filterbymaf, filterbypca, filterbysnplist
