@@ -51,7 +51,7 @@ StatsPlots = "0.15.7"
 Suppressor = "0.2.8"
 Turing = "0.37.0"
 UnicodePlots = "3.7.1"
-Zygote = "0.6.75"
+Zygote = "0.6.75, 0.7"
 julia = "1.11"
 
 [extras]
