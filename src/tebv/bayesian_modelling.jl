@@ -47,26 +47,20 @@ function extractvariablesandnames(;
     trait::String,
     factors::Vector{String},
     df::DataFrame,
-    other_covariates::Union{Vector{String}, Nothing} = nothing,
+    other_covariates::Union{Vector{String},Nothing} = nothing,
     verbose::Bool = false,
-)::Dict{String, Union{
-    String,
-    Vector{String},
-    Vector{Float64},
-    Matrix{Float64},
-    Vector{Matrix{Union{Bool, Float64}}},
-}}
+)::Dict{String,Union{String,Vector{String},Vector{Float64},Matrix{Float64},Vector{Matrix{Union{Bool,Float64}}}}}
     # genomes = simulategenomes(n=500, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_harvests=1, n_sites=2, n_replications=3);
     # trait = "trait_1"; factors = ["rows", "cols"]; df = tabularise(trials); other_covariates::Union{Vector{String}, Nothing} = nothing; verbose = true;
     # Check arguments
     if !(trait ∈ names(df))
         throw(ArgumentError("The input data frame does not include the trait: `$trait`."))
     end
-    try 
+    try
         [Float64(x) for x in df[!, trait]]
     catch
         throw(ArgumentError("The other trait: `$trait` is non-numeric and/or possibly have missing data."))
-    end;
+    end
     for f in factors
         if !(f ∈ names(df))
             throw(ArgumentError("The input data frame does not include the factor: `$f`."))
@@ -79,7 +73,7 @@ function extractvariablesandnames(;
             if !(c ∈ names(df))
                 throw(ArgumentError("The input data frame does not include the other covariate: `$c`."))
             end
-            try 
+            try
                 [Float64(x) for x in df[!, c]]
             catch
                 throw(ArgumentError("The other covariate: `$c` is non-numeric and/or possibly have missing data."))
@@ -87,7 +81,7 @@ function extractvariablesandnames(;
             # Make sure the other covariates are strictly numeric
             co::Vector{Float64} = df[!, c]
             df[!, c] = co
-        end    
+        end
     end
     # Define the formula
     formula_struct, coefficients = if isnothing(other_covariates)
@@ -95,7 +89,9 @@ function extractvariablesandnames(;
         (term(trait) ~ term(1) + coefficients), coefficients
     else
         # f = term(trait) ~ term(1) + foldl(*, term.(factors)) + foldl(+, term.(other_covariates))
-        coefficients = foldl(*, term.(factors)) + foldl(+, [concrete_term(term(c), df[!,c], ContinuousTerm) for c in other_covariates])
+        coefficients =
+            foldl(*, term.(factors)) +
+            foldl(+, [concrete_term(term(c), df[!, c], ContinuousTerm) for c in other_covariates])
         (term(trait) ~ term(1) + coefficients), coefficients
     end
     # Extract the names of the coefficients and the design matrix (n x F(p-1); excludes the base level/s) to used for the regression
@@ -108,9 +104,11 @@ function extractvariablesandnames(;
     # This is not used for regression, rather it is used for the extraction of coefficients of all factor levels including the base level/s.
     # But first, define the contrast for one-hot encoding, i.e. including the intercept, i.e. p instead of the p-1
     if verbose
-        println("Extracting the design matrix of the one-hot encoding model, i.e. including all the base levels.\nThis will not be used in model fitting; but used in coefficient extraction.")
+        println(
+            "Extracting the design matrix of the one-hot encoding model, i.e. including all the base levels.\nThis will not be used in model fitting; but used in coefficient extraction.",
+        )
     end
-    contrasts::Dict{Symbol, StatsModels.FullDummyCoding} = Dict()
+    contrasts::Dict{Symbol,StatsModels.FullDummyCoding} = Dict()
     coefficient_names::Vector{String} = [string(x) for x in coefficients]
     for f in coefficient_names
         # f = factors[1]
@@ -122,8 +120,8 @@ function extractvariablesandnames(;
     # Make sure that we have extracted all base levels in X_ALL
     @assert size(X) < size(X_ALL)
     # Separate each factor from one another
-    vector_of_Xs::Vector{Matrix{Union{Bool, Float64}}} = []
-    vector_of_Xs_ALL::Vector{Matrix{Union{Bool, Float64}}} = []
+    vector_of_Xs::Vector{Matrix{Union{Bool,Float64}}} = []
+    vector_of_Xs_ALL::Vector{Matrix{Union{Bool,Float64}}} = []
     for f in coefficient_names
         # f = coefficient_names[end]
         f_split = split(f, " ")
@@ -195,20 +193,20 @@ Bayesian Linear Regression model implemented using Turing.jl.
 - A Turing model object that can be used for MCMC sampling
 """
 Turing.@model function turingblr(
-    vector_of_Xs::Vector{Matrix{Bool}}, 
-    vector_of_Σs::Vector{Union{Matrix{Float64}, UniformScaling{Float64}}},
-    y::Vector{Float64}
+    vector_of_Xs::Vector{Matrix{Bool}},
+    vector_of_Σs::Vector{Union{Matrix{Float64},UniformScaling{Float64}}},
+    y::Vector{Float64},
 )
     # Set intercept prior.
     intercept ~ Normal(0.0, 10.0)
     # Set variance predictors
     P = length(vector_of_Xs)
     σ²s = fill(0.0, P)
-    βs = [fill(0.0, size(x,2)) for x in vector_of_Xs]
-    μ = fill(0.0, size(vector_of_Xs[1],1)) .+ intercept
-    for i in 1:P
+    βs = [fill(0.0, size(x, 2)) for x in vector_of_Xs]
+    μ = fill(0.0, size(vector_of_Xs[1], 1)) .+ intercept
+    for i = 1:P
         σ²s[i] ~ Exponential(1.0)
-        βs[i] ~ MvNormal(zeros(length(βs[i])), σ²s[i]*vector_of_Σs[i])
+        βs[i] ~ MvNormal(zeros(length(βs[i])), σ²s[i] * vector_of_Σs[i])
         μ += Float64.(vector_of_Xs[i]) * βs[i]
     end
     # Residual variance
@@ -260,18 +258,12 @@ Perform Markov Chain Monte Carlo (MCMC) sampling for Bayesian Linear Regression 
 ```
 """
 function turingblrmcmc(;
-    Dict{String, Union{
-    String,
-    Vector{String},
-    Vector{Float64},
-    Matrix{Float64},
-    Vector{Matrix{Union{Bool, Float64}}},
-}},
-    vector_of_Σs::Vector{Union{Matrix{Float64}, UniformScaling{Float64}}},
+    D::Dict{String,Union{String,Vector{String},Vector{Float64},Matrix{Float64},Vector{Matrix{Union{Bool,Float64}}}}},
+    vector_of_Σs::Vector{Union{Matrix{Float64},UniformScaling{Float64}}},
     n_iter::Int64 = 10_000,
     n_burnin::Int64 = 1_000,
     seed::Int64 = 1234,
-    verbose = true
+    verbose = true,
 )::BLR
     # trait = D["trait"]
     col_labels = D["col_labels"]
@@ -284,14 +276,8 @@ function turingblrmcmc(;
     y = D["y"]
     rng::TaskLocalRNG = Random.seed!(seed)
     model = turing_blr(vector_of_Xs, vector_of_Σs, y)
-    sampling_function = NUTS(
-        n_burnin, 
-        0.65, 
-        max_depth = 5,
-        Δ_max = 1000.0,
-        init_ϵ = 0.2; 
-        adtype = AutoReverseDiff(compile = true)
-    )
+    sampling_function =
+        NUTS(n_burnin, 0.65, max_depth = 5, Δ_max = 1000.0, init_ϵ = 0.2; adtype = AutoReverseDiff(compile = true))
     chain = Turing.sample(rng, model, sampling_function, n_iter, discard_initial = n_burnin, progress = verbose)
     # Diagnostics
     R̂ = DataFrame(MCMCDiagnosticTools.rhat(chain))
@@ -324,18 +310,18 @@ function turingblrmcmc(;
     end
     ŷ = X_ALL * βs_ALL
     ϵ = y - ŷ
-    design_matrices::Dict{String, Matrix{Bool}} = Dict("intercept" => Bool.(ones(length(y), 1)))
-    Σs::Dict{String, Union{Matrix{Float64}, UniformScaling{Float64}}} = Dict("σ²" => σ² * I)
-    var_comp::Dict{String, Int64} = Dict("σ²" => 1)
-    for i in 1:length(σ²s)
+    design_matrices::Dict{String,Matrix{Bool}} = Dict("intercept" => Bool.(ones(length(y), 1)))
+    Σs::Dict{String,Union{Matrix{Float64},UniformScaling{Float64}}} = Dict("σ²" => σ² * I)
+    var_comp::Dict{String,Int64} = Dict("σ²" => 1)
+    for i = 1:length(σ²s)
         # i = 1
         design_matrices[coefficient_names[i]] = vector_of_Xs_ALL[i]
-        Σs["σ²s " * coefficient_names[i]] = σ²s[i] * I
-        var_comp["σ²s " * coefficient_names[i]] = size(vector_of_Xs_ALL[i], 2)
+        Σs["σ²s "*coefficient_names[i]] = σ²s[i] * I
+        var_comp["σ²s "*coefficient_names[i]] = size(vector_of_Xs_ALL[i], 2)
     end
     n, p = size(X_ALL)
     blr_model = begin
-        blr_model = BLR(n=n, p=p, var_comp=var_comp)
+        blr_model = BLR(n = n, p = p, var_comp = var_comp)
         @assert length(blr_model.entries) == length(df_sub.entries)
         blr_model.entries = df_sub.entries
         @assert length(blr_model.coefficient_names) == length(col_labels_ALL)
@@ -344,7 +330,8 @@ function turingblrmcmc(;
         blr_model.y = y
         @assert length(blr_model.design_matrices) == length(design_matrices)
         blr_model.design_matrices = design_matrices
-        @assert !isnothing(blr_model.other_covariates) ? length(blr_model.other_covariates) == length(other_covariates) : true
+        @assert !isnothing(blr_model.other_covariates) ?
+                length(blr_model.other_covariates) == length(other_covariates) : true
         blr_model.other_covariates = other_covariates
         @assert length(blr_model.coefficients) == length(βs_ALL)
         blr_model.coefficients = βs_ALL
@@ -381,11 +368,7 @@ function analyse(
     if !isnothing(other_covariates)
         for c in other_covariates
             if !(c ∈ trials.traits)
-                throw(
-                    ArgumentError(
-                        "The `other_covariates` ($c) argument is not a trait in the Trials struct.",
-                    ),
-                )
+                throw(ArgumentError("The `other_covariates` ($c) argument is not a trait in the Trials struct."))
             end
         end
     end
@@ -398,7 +381,7 @@ function analyse(
     else
         traits
     end
-    
+
     # Tabularise the trials data
     df = tabularise(trials)
     # Identify non-fixed factors
@@ -449,9 +432,9 @@ function analyse(
                     verbose = verbose,
                 )
                 # Define the variance-covariance matrices of each design matrix and other_covariates matrix
-                vector_of_Σs::Vector{Union{Matrix{Float64}, UniformScaling{Float64}}} = []
+                vector_of_Σs::Vector{Union{Matrix{Float64},UniformScaling{Float64}}} = []
                 for i in eachindex(D["vector_of_Xs_ALL"])
-                    push!(vector_of_Σs, 1.0*I)
+                    push!(vector_of_Σs, 1.0 * I)
                 end
                 # Bayesian linear regression
                 blr_model = turingblrmcmc(
@@ -466,9 +449,9 @@ function analyse(
             end
         end
     end
-    
+
     # Instantiate output
-    models::Vector{BLR} = fill(BLR(n=1, p=1), length(traits))
+    models::Vector{BLR} = fill(BLR(n = 1, p = 1), length(traits))
     tebv = TEBV(
         traits = traits,
         formulae = string.(traits, " ~ 1"),
@@ -502,5 +485,3 @@ function analyse(
         length(col_labels)
     end
 end
-
-

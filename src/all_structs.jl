@@ -224,16 +224,12 @@ mutable struct BLR <: AbstractGB
     entries::Vector{String}
     coefficient_names::Vector{String}
     y::Vector{Float64}
-    Xs::Dict{String, Matrix{Union{Bool, Float64}}}
+    Xs::Dict{String,Matrix{Union{Bool,Float64}}}
     coefficients::Vector{Float64}
     ŷ::Vector{Float64}
     ϵ::Vector{Float64}
-    Σs::Dict{String, Union{Matrix{Float64}, UniformScaling{Float64}}}
-    function BLR(; 
-        n::Int64,
-        p::Int64,
-        var_comp::Dict{String, Int64} = Dict("σ²" => 1),
-    )
+    Σs::Dict{String,Union{Matrix{Float64},UniformScaling{Float64}}}
+    function BLR(; n::Int64, p::Int64, var_comp::Dict{String,Int64} = Dict("σ²" => 1))
         if length(var_comp) < 1
             throw(ArgumentError("At least one variance component is required, i.e. at leat the residual variance σ²."))
         end
@@ -246,24 +242,15 @@ mutable struct BLR <: AbstractGB
         ϵ = zeros(n)
         # Define the design matrices including the intercept
         Xs = Dict("intercept" => Bool.(zeros(n, 1)))
-        Σs = Dict("σ²" => 1.0*I)
+        Σs = Dict("σ²" => 1.0 * I)
         for v in string.(keys(var_comp))
             # v = string.(keys(var_comp))[1] 
             if v != "σ²"
                 Xs[v] = Bool.(zeros(n, var_comp[v]))
-                Σs[v] = 1.0*I
+                Σs[v] = 1.0 * I
             end
         end
-        return new(
-            entries,
-            coefficient_names,
-            y,
-            Xs,
-            coefficients,
-            ŷ,
-            ϵ,
-            Σs,
-        )
+        return new(entries, coefficient_names, y, Xs, coefficients, ŷ, ϵ, Σs)
     end
 end
 
@@ -292,7 +279,7 @@ julia> tebv.traits
 mutable struct TEBV <: AbstractGB
     traits::Vector{String}
     formulae::Vector{String}
-    models::Union{Vector{LinearMixedModel{Float64}}, Vector{BLR}}
+    models::Union{Vector{LinearMixedModel{Float64}},Vector{BLR}}
     df_BLUEs::Vector{DataFrame}
     df_BLUPs::Vector{DataFrame}
     phenomes::Vector{Phenomes}
