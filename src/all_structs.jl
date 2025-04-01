@@ -199,8 +199,7 @@ Bayesian Linear Regression (BLR) model structure for genomic prediction and sele
 - `entries::Vector{String}`: Names or identifiers for the observations
 - `coefficient_names::Vector{String}`: Names of the model coefficients/effects
 - `y::Vector{Float64}`: Response/dependent variable vector
-- `design_matrices::Dict{String, Matrix{Bool}}`: Design matrices for random effects
-- `other_covariates::Union{Nothing, Matrix{Float64}}`: Additional fixed effects covariates
+- `Xs::Dict{String, Matrix{Union{Bool, Float64}}}`: Design matrices for factors and numeric matrix for the other covariates
 - `coefficients::Vector{Float64}`: Estimated coefficients/effects
 - `ŷ::Vector{Float64}`: Fitted/predicted values
 - `ϵ::Vector{Float64}`: Residuals (y - ŷ)
@@ -225,8 +224,7 @@ mutable struct BLR <: AbstractGB
     entries::Vector{String}
     coefficient_names::Vector{String}
     y::Vector{Float64}
-    design_matrices::Dict{String, Matrix{Bool}}
-    other_covariates::Union{Nothing, Matrix{Float64}}
+    Xs::Dict{String, Matrix{Union{Bool, Float64}}}
     coefficients::Vector{Float64}
     ŷ::Vector{Float64}
     ϵ::Vector{Float64}
@@ -239,21 +237,20 @@ mutable struct BLR <: AbstractGB
         if length(var_comp) < 1
             throw(ArgumentError("At least one variance component is required, i.e. at leat the residual variance σ²."))
         end
-        # Dummy entries, coefficient names, y, other_covariates, coefficients, ŷ, and ϵ
+        # Dummy entries, coefficient names, y, coefficients, ŷ, and ϵ
         entries = fill("", n)
         coefficient_names = fill("", p)
         y = zeros(n)
-        other_covariates = nothing
         coefficients = zeros(p)
         ŷ = zeros(n)
         ϵ = zeros(n)
         # Define the design matrices including the intercept
-        design_matrices = Dict("intercept" => Bool.(zeros(n, 1)))
+        Xs = Dict("intercept" => Bool.(zeros(n, 1)))
         Σs = Dict("σ²" => 1.0*I)
         for v in string.(keys(var_comp))
             # v = string.(keys(var_comp))[1] 
             if v != "σ²"
-                design_matrices[v] = Bool.(zeros(n, var_comp[v]))
+                Xs[v] = Bool.(zeros(n, var_comp[v]))
                 Σs[v] = 1.0*I
             end
         end
@@ -261,8 +258,7 @@ mutable struct BLR <: AbstractGB
             entries,
             coefficient_names,
             y,
-            design_matrices,
-            other_covariates,
+            Xs,
             coefficients,
             ŷ,
             ϵ,

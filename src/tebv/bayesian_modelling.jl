@@ -1,5 +1,181 @@
 """
-    turing_blr(vector_of_Xs::Vector{Matrix{Bool}}, y::Vector{Float64})
+    extractvariablesandnames(; trait::String, factors::Vector{String}, df::DataFrame, 
+                      other_covariates::Union{Vector{String}, Nothing}=nothing, 
+                      verbose::Bool=false)::Dict
+
+Extract design matrices and response variable for Bayesian modeling of factorial experiments.
+
+# Arguments
+- `trait::String`: Name of the response variable (dependent variable) in the DataFrame
+- `factors::Vector{String}`: Vector of factor names (independent variables) to be included in the model
+- `df::DataFrame`: DataFrame containing the data
+- `other_covariates::Union{Vector{String}, Nothing}=nothing`: Additional numeric covariates to include in the model
+- `verbose::Bool=false`: If true, prints additional information during execution
+
+# Returns
+A dictionary with the following keys:
+- `"trait"`: String, name of the response variable
+- `"col_labels"`: Vector{String}, column labels for the design matrix (excluding base levels)
+- `"X"`: Matrix{Float64}, design matrix (n × F(p-1)) excluding base levels
+- `"col_labels_ALL"`: Vector{String}, column labels for the full design matrix (including base levels)
+- `"X_ALL"`: Matrix{Float64}, full design matrix (n × F(p)) including base levels
+- `"coefficient_names"`: Vector{String}, names of the coefficients in the model
+- `"vector_of_Xs"`: Vector{Matrix{Bool}}, vector of Boolean design matrices for each factor combination (excluding base levels)
+- `"vector_of_Xs_ALL"`: Vector{Matrix{Bool}}, vector of Boolean design matrices for each factor combination (including base levels)
+- `"y"`: Vector{Float64}, response variable vector
+
+# Details
+Creates design matrices for factorial experiments using both standard and one-hot encoding approaches.
+The function processes main effects and interaction terms, handling categorical factors and
+continuous covariates differently. It utilizes StatsModels.jl for formula processing and 
+contrast encoding.
+
+# Implementation Notes
+- Converts all factors to strings for categorical treatment
+- Uses FullDummyCoding for contrast encoding
+- Validates numeric nature of trait and covariates
+- Processes interaction terms between factors automatically
+- Handles both categorical factors (as Boolean matrices) and continuous covariates (as Float64 matrices)
+- Creates separate design matrices with and without base levels
+
+# Example
+```
+# TODO
+```
+"""
+function extractvariablesandnames(;
+    trait::String,
+    factors::Vector{String},
+    df::DataFrame,
+    other_covariates::Union{Vector{String}, Nothing} = nothing,
+    verbose::Bool = false,
+)::Dict{String, Union{
+    String,
+    Vector{String},
+    Vector{Float64},
+    Matrix{Float64},
+    Vector{Matrix{Union{Bool, Float64}}},
+}}
+    # genomes = simulategenomes(n=500, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_harvests=1, n_sites=2, n_replications=3);
+    # trait = "trait_1"; factors = ["rows", "cols"]; df = tabularise(trials); other_covariates::Union{Vector{String}, Nothing} = nothing; verbose = true;
+    # Check arguments
+    if !(trait ∈ names(df))
+        throw(ArgumentError("The input data frame does not include the trait: `$trait`."))
+    end
+    try 
+        [Float64(x) for x in df[!, trait]]
+    catch
+        throw(ArgumentError("The other trait: `$trait` is non-numeric and/or possibly have missing data."))
+    end;
+    for f in factors
+        if !(f ∈ names(df))
+            throw(ArgumentError("The input data frame does not include the factor: `$f`."))
+        end
+        # Make sure the factors are strings, i.e. strictly non-numeric
+        df[!, f] = string.(df[!, f])
+    end
+    if !isnothing(other_covariates)
+        for c in other_covariates
+            if !(c ∈ names(df))
+                throw(ArgumentError("The input data frame does not include the other covariate: `$c`."))
+            end
+            try 
+                [Float64(x) for x in df[!, c]]
+            catch
+                throw(ArgumentError("The other covariate: `$c` is non-numeric and/or possibly have missing data."))
+            end
+            # Make sure the other covariates are strictly numeric
+            co::Vector{Float64} = df[!, c]
+            df[!, c] = co
+        end    
+    end
+    # Define the formula
+    formula_struct, coefficients = if isnothing(other_covariates)
+        coefficients = foldl(*, term.(factors))
+        (term(trait) ~ term(1) + coefficients), coefficients
+    else
+        # f = term(trait) ~ term(1) + foldl(*, term.(factors)) + foldl(+, term.(other_covariates))
+        coefficients = foldl(*, term.(factors)) + foldl(+, [concrete_term(term(c), df[!,c], ContinuousTerm) for c in other_covariates])
+        (term(trait) ~ term(1) + coefficients), coefficients
+    end
+    # Extract the names of the coefficients and the design matrix (n x F(p-1); excludes the base level/s) to used for the regression
+    if verbose
+        println("Extracting the design matrix of the model: `$formula_struct`.")
+    end
+    _, col_labels = coefnames(apply_schema(formula_struct, schema(formula_struct, df)))
+    X = modelmatrix(formula_struct, df)
+    # Extract the names of all the coefficients including the base level/s and the full design matrix (n x F(p)).
+    # This is not used for regression, rather it is used for the extraction of coefficients of all factor levels including the base level/s.
+    # But first, define the contrast for one-hot encoding, i.e. including the intercept, i.e. p instead of the p-1
+    if verbose
+        println("Extracting the design matrix of the one-hot encoding model, i.e. including all the base levels.\nThis will not be used in model fitting; but used in coefficient extraction.")
+    end
+    contrasts::Dict{Symbol, StatsModels.FullDummyCoding} = Dict()
+    coefficient_names::Vector{String} = [string(x) for x in coefficients]
+    for f in coefficient_names
+        # f = factors[1]
+        contrasts[Symbol(f)] = StatsModels.FullDummyCoding()
+    end
+    mf = ModelFrame(formula_struct, df, contrasts = contrasts)
+    _, col_labels_ALL = coefnames(apply_schema(formula_struct, mf.schema))
+    X_ALL = modelmatrix(mf)
+    # Make sure that we have extracted all base levels in X_ALL
+    @assert size(X) < size(X_ALL)
+    # Separate each factor from one another
+    vector_of_Xs::Vector{Matrix{Union{Bool, Float64}}} = []
+    vector_of_Xs_ALL::Vector{Matrix{Union{Bool, Float64}}} = []
+    for f in coefficient_names
+        # f = coefficient_names[end]
+        f_split = split(f, " ")
+        # Main design matrices
+        bool = fill(true, length(col_labels))
+        for x in f_split
+            bool = bool .&& .!isnothing.(match.(Regex(x), col_labels))
+        end
+        if length(f_split) == 1
+            bool = bool .&& isnothing.(match.(Regex("&"), col_labels))
+        end
+        if !(f ∈ other_covariates)
+            # For categorical factors --> boolean matrix for memory-efficiency
+            push!(vector_of_Xs, Bool.(X[:, bool]))
+        else
+            # For the continuous numeric other covariates --> Float64 matrix
+            push!(vector_of_Xs, X[:, bool])
+        end
+        # Full design matrices
+        bool = fill(true, length(col_labels_ALL))
+        for x in f_split
+            bool = bool .&& .!isnothing.(match.(Regex(x), col_labels_ALL))
+        end
+        if length(f_split) == 1
+            bool = bool .&& isnothing.(match.(Regex("&"), col_labels_ALL))
+        end
+        if !(f ∈ other_covariates)
+            # For categorical factors --> boolean matrix for memory-efficiency
+            push!(vector_of_Xs_ALL, Bool.(X_ALL[:, bool]))
+        else
+            # For the continuous numeric other covariates --> Float64 matrix
+            push!(vector_of_Xs_ALL, X_ALL[:, bool])
+        end
+    end
+    # Define the linear model
+    y::Vector{Float64} = df[!, trait]
+    # Output
+    Dict(
+        "trait" => trait,
+        "col_labels" => col_labels,
+        "X" => X,
+        "col_labels_ALL" => col_labels_ALL,
+        "X_ALL" => X_ALL,
+        "coefficient_names" => coefficient_names,
+        "vector_of_Xs" => vector_of_Xs,
+        "vector_of_Xs_ALL" => vector_of_Xs_ALL,
+        "y" => y,
+    )
+end
+
+"""
+    turingblr(vector_of_Xs::Vector{Matrix{Bool}}, y::Vector{Float64})
 
 Bayesian Linear Regression model implemented using Turing.jl.
 
@@ -17,13 +193,12 @@ Bayesian Linear Regression model implemented using Turing.jl.
 
 # Returns
 - A Turing model object that can be used for MCMC sampling
-
-# Example
-```
-# TODO
-```
 """
-Turing.@model function turing_blr(vector_of_Xs::Vector{Matrix{Bool}}, y::Vector{Float64})
+Turing.@model function turingblr(
+    vector_of_Xs::Vector{Matrix{Bool}}, 
+    vector_of_Σs::Vector{Union{Matrix{Float64}, UniformScaling{Float64}}},
+    y::Vector{Float64}
+)
     # Set intercept prior.
     intercept ~ Normal(0.0, 10.0)
     # Set variance predictors
@@ -33,7 +208,7 @@ Turing.@model function turing_blr(vector_of_Xs::Vector{Matrix{Bool}}, y::Vector{
     μ = fill(0.0, size(vector_of_Xs[1],1)) .+ intercept
     for i in 1:P
         σ²s[i] ~ Exponential(1.0)
-        βs[i] ~ MvNormal(zeros(length(βs[i])), σ²s[i]*I)
+        βs[i] ~ MvNormal(zeros(length(βs[i])), σ²s[i]*vector_of_Σs[i])
         μ += Float64.(vector_of_Xs[i]) * βs[i]
     end
     # Residual variance
@@ -44,7 +219,7 @@ end
 
 
 """
-    mcmc(;
+    turingblrmcmc(;
         vector_of_Xs::Vector{Matrix{Bool}}, 
         y::Vector{Float64},
         n_iter::Int64 = 10_000,
@@ -84,16 +259,31 @@ Perform Markov Chain Monte Carlo (MCMC) sampling for Bayesian Linear Regression 
 # TODO
 ```
 """
-function mcmc(;
-    vector_of_Xs::Vector{Matrix{Bool}}, 
-    y::Vector{Float64},
+function turingblrmcmc(;
+    Dict{String, Union{
+    String,
+    Vector{String},
+    Vector{Float64},
+    Matrix{Float64},
+    Vector{Matrix{Union{Bool, Float64}}},
+}},
+    vector_of_Σs::Vector{Union{Matrix{Float64}, UniformScaling{Float64}}},
     n_iter::Int64 = 10_000,
     n_burnin::Int64 = 1_000,
     seed::Int64 = 1234,
     verbose = true
 )::BLR
+    # trait = D["trait"]
+    col_labels = D["col_labels"]
+    # X = D["X"]
+    col_labels_ALL = D["col_labels_ALL"]
+    X_ALL = D["X_ALL"]
+    coefficient_names = D["coefficient_names"]
+    vector_of_Xs = D["vector_of_Xs"]
+    vector_of_Xs_ALL = D["vector_of_Xs_ALL"]
+    y = D["y"]
     rng::TaskLocalRNG = Random.seed!(seed)
-    model = turing_blr(vector_of_Xs, y)
+    model = turing_blr(vector_of_Xs, vector_of_Σs, y)
     sampling_function = NUTS(
         n_burnin, 
         0.65, 
@@ -173,12 +363,10 @@ function analyse(
     trials::Trials,
     traits::Vector{String};
     GRM::Union{Matrix{Float64},UniformScaling} = I,
-    other_covariates::Union{String,Nothing} = nothing,
+    other_covariates::Union{Vector{String},Nothing} = nothing,
     verbose::Bool = false,
 )::TEBV
-    # genomes = simulategenomes(n=500, l=1_000)
-    # trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_harvests=1, n_sites=2, n_replications=3)
-    # GRM::Union{Matrix{Float64}, UniformScaling} = I; traits = ["trait_1"]; other_covariates::Union{String, Nothing} = nothing; verbose::Bool = true;
+    # genomes = simulategenomes(n=500, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_harvests=1, n_sites=2, n_replications=3); GRM::Union{Matrix{Float64}, UniformScaling} = I; traits = ["trait_1"]; other_covariates::Union{Vector{String}, Nothing} = ["trait_2"]; verbose::Bool = true;
     # Check arguments
     if !checkdims(trials)
         error("The Trials struct is corrupted.")
@@ -191,12 +379,14 @@ function analyse(
         end
     end
     if !isnothing(other_covariates)
-        if !(other_covariates ∈ trials.traits)
-            throw(
-                ArgumentError(
-                    "The `other_covariates` ($other_covariates) argument is not a trait in the Trials struct.",
-                ),
-            )
+        for c in other_covariates
+            if !(c ∈ trials.traits)
+                throw(
+                    ArgumentError(
+                        "The `other_covariates` ($c) argument is not a trait in the Trials struct.",
+                    ),
+                )
+            end
         end
     end
     # Extract the entries which we want the estimated breeding values for
@@ -208,23 +398,7 @@ function analyse(
     else
         traits
     end
-    # Instantiate output
-    models::Vector{BLR} = fill(BLR(n=1, p=1), length(traits))
-    tebv = TEBV(
-        traits = traits,
-        formulae = string.(traits, " ~ 1"),
-        models = models,
-        df_BLUEs = fill(DataFrame(), length(traits)),
-        df_BLUPs = fill(DataFrame(), length(traits)),
-        phenomes = [
-            begin
-                p = Phenomes(n = n, t = 1)
-                p.entries = entries
-                p.traits = [t]
-                p
-            end for t in traits
-        ],
-    )
+    
     # Tabularise the trials data
     df = tabularise(trials)
     # Identify non-fixed factors
@@ -245,23 +419,19 @@ function analyse(
     total_parameters = 1
     for f in factors
         # f = factors[1]
+        if ("blocks" ∈ factors) || ("rows" ∈ factors) || ("cols" ∈ factors)
+            continue
+        end
         total_parameters *= (D[string("n_", f)] - 1)
     end
     total_X_size_in_Gb = nrow(df) * (total_parameters + 1) * sizeof(Float64) / (1024^3)
     @warn "The size of the design matrix is ~$(round(total_X_size_in_Gb)) GB. This may cause out-of-memory errors."
-
 
     # To prevent OOM errors, we will perform spatial analyses per harvest per site, i.e. remove spatial effects per replication
     # and perform the potentially GxE analysis on the residulals
     if ("blocks" ∈ factors) || ("rows" ∈ factors) || ("cols" ∈ factors)
         # Define spatial factors
         spatial_factors = factors[.!isnothing.(match.(Regex("blocks|rows|cols"), factors))]
-        # Define the contrast for one-hot encoding, i.e. including the intercept, i.e. p instead of the p-1
-        contrasts::Dict{Symbol, StatsModels.FullDummyCoding} = Dict()
-        for f in spatial_factors
-            # f = spatial_factors[1]
-            contrasts[Symbol(f)] = StatsModels.FullDummyCoding()
-        end
         # Make sure that each harvest is year- and site-specific
         df.harvests = string.(df.years, "|", df.sites, "|", df.harvests)
         for harvest in unique(df.harvests)
@@ -270,62 +440,50 @@ function analyse(
             for i in eachindex(traits)
                 # i = 1
                 trait = traits[i]
-                formula_struct = term(trait) ~ term(1) + foldl(*, term.(spatial_factors))
-                # Extract the names of the coefficients and the design matrix (n x F(p-1); excludes the base level/s) to used for the regression
-                _, col_labels = coefnames(apply_schema(formula_struct, schema(formula_struct, df_sub)))
-                X = modelmatrix(formula_struct, df_sub)
-                # Extract the names of all the coefficients including the base level/s and the full design matrix (n x F(p)).
-                # This is not used for regression, rather it is used for the extraction of coefficients of all factor levels including the base level/s.
-                mf = ModelFrame(formula_struct, df_sub, contrasts = contrasts)
-                _, col_labels_ALL = coefnames(apply_schema(formula_struct, mf.schema))
-                X_ALL = modelmatrix(mf)
-                # Check
-                @assert size(X) < size(X_ALL)
-                # Separate each factor from one another
-                coefficient_names::Vector{String} = string.(foldl(*, term.(spatial_factors)))
-                vector_of_Xs::Vector{Matrix{Bool}} = []
-                vector_of_Xs_ALL::Vector{Matrix{Bool}} = []
-                for f in coefficient_names
-                    # f = coefficient_names[1]
-                    f_split = split(f, " ")
-                    # Main design matrices
-                    bool = fill(true, length(col_labels))
-                    for x in f_split
-                        bool = bool .&& .!isnothing.(match.(Regex(x), col_labels))
-                    end
-                    if length(f_split) == 1
-                        bool = bool .&& isnothing.(match.(Regex("&"), col_labels))
-                    end
-                    # push!(vector_of_Xs, X[:, bool])
-                    push!(vector_of_Xs, Bool.(X[:, bool]))
-                    # Full design matrices
-                    bool = fill(true, length(col_labels_ALL))
-                    for x in f_split
-                        bool = bool .&& .!isnothing.(match.(Regex(x), col_labels_ALL))
-                    end
-                    if length(f_split) == 1
-                        bool = bool .&& isnothing.(match.(Regex("&"), col_labels_ALL))
-                    end
-                    # push!(vector_of_Xs_ALL, X_ALL[:, bool])
-                    push!(vector_of_Xs_ALL, Bool.(X_ALL[:, bool]))
+                # Extract the Xs, ys, labels, and coefficient names
+                D = extractvariablesandnames(
+                    trait = trait,
+                    factors = spatial_factors,
+                    other_covariates = other_covariates,
+                    df = df_sub,
+                    verbose = verbose,
+                )
+                # Define the variance-covariance matrices of each design matrix and other_covariates matrix
+                vector_of_Σs::Vector{Union{Matrix{Float64}, UniformScaling{Float64}}} = []
+                for i in eachindex(D["vector_of_Xs_ALL"])
+                    push!(vector_of_Σs, 1.0*I)
                 end
-                # Define the linear model
-                y::Vector{Float64} = df_sub[!, trait]
                 # Bayesian linear regression
-                blr_model = mcmc(
-                    vector_of_Xs = vector_of_Xs, 
-                    y = y,
-                    n_iter = 10_000,
-                    n_burnin = 1_000,
+                blr_model = turingblrmcmc(
+                    D = D,
+                    vector_of_Σs = vector_of_Σs,
+                    n_iter = 1_000,
+                    n_burnin = 500,
                     seed = 1234,
                     verbose = verbose,
                 )
-                tebv.models = blr_model
 
             end
         end
     end
-        
+    
+    # Instantiate output
+    models::Vector{BLR} = fill(BLR(n=1, p=1), length(traits))
+    tebv = TEBV(
+        traits = traits,
+        formulae = string.(traits, " ~ 1"),
+        models = models,
+        df_BLUEs = fill(DataFrame(), length(traits)),
+        df_BLUPs = fill(DataFrame(), length(traits)),
+        phenomes = [
+            begin
+                p = Phenomes(n = n, t = 1)
+                p.entries = entries
+                p.traits = [t]
+                p
+            end for t in traits
+        ],
+    )
 
 
     # Iterate per trait
