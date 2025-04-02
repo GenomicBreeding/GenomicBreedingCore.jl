@@ -32,7 +32,7 @@ end
 Convert a string representation of a formula into a `Formula` object.
 
 This macro parses a string containing a formula expression and evaluates it into
-a proper `Formula` object that can be used in statistical modeling.
+a proper `Formula` object that can be used in statistical modelling.
 
 # Arguments
 - `x::String`: A string containing the formula expression (e.g., "y ~ x + z")

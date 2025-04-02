@@ -193,17 +193,17 @@ end
 """
     BLR <: AbstractGB
 
-Bayesian Linear Regression (BLR) model structure for genomic prediction and selection.
+Bayesian Linear Regression (BLR) model structure for phenotype analyses, genomic prediction and selection.
 
 # Fields
 - `entries::Vector{String}`: Names or identifiers for the observations
-- `coefficient_names::Vector{String}`: Names of the model coefficients/effects
+- `Xs::Dict{String,Matrix{Union{Bool,Float64}}}`: Design matrices for factors and numeric matrix for covariates, including intercept
+- `Σs::Dict{String,Union{Matrix{Float64},UniformScaling{Float64}}}`: Variance-covariance matrices for random effects
+- `coefficients::Dict{String, Vector{Float64}}`: Dictionary of estimated coefficients/effects grouped by component
+- `coefficient_names::Dict{String, Vector{String}}`: Dictionary of names for coefficients grouped by component
 - `y::Vector{Float64}`: Response/dependent variable vector
-- `Xs::Dict{String, Matrix{Union{Bool, Float64}}}`: Design matrices for factors and numeric matrix for the other covariates
-- `coefficients::Vector{Float64}`: Estimated coefficients/effects
 - `ŷ::Vector{Float64}`: Fitted/predicted values
 - `ϵ::Vector{Float64}`: Residuals (y - ŷ)
-- `Σs::Dict{String, Union{Matrix{Float64}, UniformScaling{Float64}}}`: Variance-covariance matrices
 
 # Constructor
     BLR(; n::Int64, p::Int64, var_comp::Dict{String, Int64} = Dict("σ²" => 1))
@@ -212,45 +212,75 @@ Creates a BLR model with specified dimensions and variance components.
 
 # Arguments
 - `n::Int64`: Number of observations
-- `p::Int64`: Number of coefficients/effects
+- `p::Int64`: Number of coefficients/effects (including intercept)
 - `var_comp::Dict{String, Int64}`: Dictionary specifying variance components and their dimensions
 
-# Note
-- At least one variance component (σ²) is required for the residual variance
-- Design matrices are initialized as zero matrices
-- Variance components are initialized as identity matrices scaled by 1.0
+# Details
+The constructor initializes:
+- Design matrices (Xs) with zeros, including an intercept component
+- Variance-covariance matrices (Σs) as identity matrices scaled by 1.0
+- Dictionaries for coefficients and their names, with "intercept" as default first component
+- Zero vectors for y, fitted values (ŷ), and residuals (ϵ)
+- Empty strings for entries and coefficient names (except "intercept")
+
+# Requirements
+- At least one variance component (σ²) must be specified for residual variance
+- Total number of parameters (p) must equal sum of dimensions in variance components
+- Number of coefficients (p) must be ≥ 1
+- If p > 1 and only residual variance is specified, a dummy variance component is added with p-1 dimensions
+
+# Notes
+The structure supports multiple random effects through the dictionary-based design, 
+where each component (except intercept) can have its own design matrix (X), 
+variance-covariance matrix (Σ), coefficients, and coefficient names.
 """
 mutable struct BLR <: AbstractGB
     entries::Vector{String}
-    coefficient_names::Vector{String}
-    y::Vector{Float64}
     Xs::Dict{String,Matrix{Union{Bool,Float64}}}
-    coefficients::Vector{Float64}
+    Σs::Dict{String,Union{Matrix{Float64},UniformScaling{Float64}}}
+    coefficients::Dict{String, Vector{Float64}}
+    coefficient_names::Dict{String, Vector{String}}
+    y::Vector{Float64}
     ŷ::Vector{Float64}
     ϵ::Vector{Float64}
-    Σs::Dict{String,Union{Matrix{Float64},UniformScaling{Float64}}}
     function BLR(; n::Int64, p::Int64, var_comp::Dict{String,Int64} = Dict("σ²" => 1))
+        # Check arguments
         if length(var_comp) < 1
             throw(ArgumentError("At least one variance component is required, i.e. at leat the residual variance σ²."))
         end
+        if p < 1
+            throw(ArgumentError("The number of coefficients or parameters needs to be at least 1, where the first one corresponds to the intercept."))
+        end
+        if !("σ²" ∈ string.(keys(var_comp)))
+            throw(ArgumentError("The variance components need to include the residual variance (`σ²`)."))
+        end
+        # If initialising the struct
+        if (length(var_comp) == 1) && (p > 1)
+            var_comp["dummy"] = p-1
+        end
+        if sum(values(var_comp)) != p
+            throw(ArgumentError("The total number of parameters:\n\t=> (`p=$p`; intercept + the coefficients) must be equal to the total number of parameters in the variance components\n\t=> (`sum(values(var_comp))=$(sum(values(var_comp)))`: residual variance + the coefficients)."))
+        end
         # Dummy entries, coefficient names, y, coefficients, ŷ, and ϵ
         entries = fill("", n)
-        coefficient_names = fill("", p)
         y = zeros(n)
-        coefficients = zeros(p)
         ŷ = zeros(n)
         ϵ = zeros(n)
         # Define the design matrices including the intercept
-        Xs = Dict("intercept" => Bool.(zeros(n, 1)))
-        Σs = Dict("σ²" => 1.0 * I)
+        Xs = Dict("intercept" => Bool.(ones(n, 1)))
+        Σs::Dict{String,Union{Matrix{Float64},UniformScaling{Float64}}} = Dict("σ²" => 1.0*I)
+        coefficients = Dict("intercept" => [0.0])
+        coefficient_names = Dict("intercept" => ["intercept"])
         for v in string.(keys(var_comp))
-            # v = string.(keys(var_comp))[1] 
+            # v = string.(keys(var_comp))[1]
             if v != "σ²"
                 Xs[v] = Bool.(zeros(n, var_comp[v]))
-                Σs[v] = 1.0 * I
+                Σs[v] = Matrix{Float64}(I, var_comp[v], var_comp[v])
+                coefficients[v] = fill(0.0, var_comp[v])
+                coefficient_names[v] = fill("", var_comp[v])
             end
         end
-        return new(entries, coefficient_names, y, Xs, coefficients, ŷ, ϵ, Σs)
+        return new(entries, Xs, Σs, coefficients, coefficient_names, y, ŷ, ϵ)
     end
 end
 

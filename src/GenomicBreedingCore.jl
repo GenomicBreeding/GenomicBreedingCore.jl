@@ -34,6 +34,8 @@ include("tebv/linear_mixed_modelling.jl")
 include("tebv/bayesian_modelling.jl")
 # Linear and non-linear genotype-to-phenotype models struct
 include("fit/fit.jl")
+# Bayesian linear regression fit struct
+include("blr/blr.jl")
 # Genotype-to-phenotype model cross-validation struct
 include("cv/cv.jl")
 # Genomic relationship matrix struct
@@ -54,7 +56,8 @@ export simulatechromstruct,
 export simulategenomes, simulateeffects, simulategenomiceffects, simulatetrials
 export histallelefreqs, simulatemating
 export countlevels,
-    @string2formula, trialsmodelsfomulae!, analyse, extractphenomes, extractvariablesandnames, turingblr, turingblrmcmc
+    @string2formula, trialsmodelsfomulae!, analyse, extractphenomes
+export extractXb, instantiateblr, turingblr, turingblrmcmc
 export @stringevaluation, addcompositetrait
 export maskmissing!, divideintomockscaffolds, estimateld, estimatedistances, knni, knnioptim, impute
 export inflatediagonals!, grmsimple, grmploidyaware

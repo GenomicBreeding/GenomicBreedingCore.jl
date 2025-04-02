@@ -1,9 +1,9 @@
 """
-    extractvariablesandnames(; trait::String, factors::Vector{String}, df::DataFrame, 
+    instantiateblr(; trait::String, factors::Vector{String}, df::DataFrame, 
                       other_covariates::Union{Vector{String}, Nothing}=nothing, 
-                      verbose::Bool=false)::Dict
+                      verbose::Bool=false)::BLR
 
-Extract design matrices and response variable for Bayesian modeling of factorial experiments.
+Extract design matrices and response variable for Bayesian modelling of factorial experiments.
 
 # Arguments
 - `trait::String`: Name of the response variable (dependent variable) in the DataFrame
@@ -15,13 +15,13 @@ Extract design matrices and response variable for Bayesian modeling of factorial
 # Returns
 A dictionary with the following keys:
 - `"trait"`: String, name of the response variable
-- `"col_labels"`: Vector{String}, column labels for the design matrix (excluding base levels)
-- `"X"`: Matrix{Float64}, design matrix (n × F(p-1)) excluding base levels
-- `"col_labels_ALL"`: Vector{String}, column labels for the full design matrix (including base levels)
-- `"X_ALL"`: Matrix{Float64}, full design matrix (n × F(p)) including base levels
-- `"coefficient_names"`: Vector{String}, names of the coefficients in the model
-- `"vector_of_Xs"`: Vector{Matrix{Bool}}, vector of Boolean design matrices for each factor combination (excluding base levels)
-- `"vector_of_Xs_ALL"`: Vector{Matrix{Bool}}, vector of Boolean design matrices for each factor combination (including base levels)
+- `"coefficient_names"`: Vector{String}, column labels for the design matrix (excluding base levels)
+- `"X"`: Matrix{Float64}, design matrix (n × F(p-1)) excluding base levels but includes the intercept
+- `"b_labels"`: Vector{String}, column labels for the full design matrix (including base levels)
+- `"X_ALL"`: Matrix{Float64}, full design matrix (n × F(p)) including base levels and intercept
+- `"explain_var_names"`: Vector{String}, names of the coefficients in the model
+- `"vector_of_Xs_noint"`: Vector{Matrix{Bool}}, vector of Boolean design matrices for each factor combination (excluding base levels and intercept)
+- `"vector_of_Xs_noint_ALL"`: Vector{Matrix{Bool}}, vector of Boolean design matrices for each factor combination (including base levels but excludes the intercept)
 - `"y"`: Vector{Float64}, response variable vector
 
 # Details
@@ -40,16 +40,30 @@ contrast encoding.
 
 # Example
 ```
-# TODO
+julia> genomes = simulategenomes(n=500, l=1_000, verbose=false); 
+
+julia> trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=3, verbose=false);
+
+julia> df = tabularise(trials);
+
+julia> blr, vector_of_Xs_noint = instantiateblr(trait = trials.traits[1], factors = ["rows", "cols"], df = df, other_covariates = nothing, verbose = false);
+
+julia> blr2, vector_of_Xs_noint2 = instantiateblr(trait = trials.traits[1], factors = ["rows", "cols"], df = df, other_covariates = [trials.traits[2]], verbose = false);
+
+julia> blr.coefficient_names != blr2.coefficient_names
+true
+
+julia> sum([size(x,2) for x in vector_of_Xs_noint]) < sum([size(x,2) for x in vector_of_Xs_noint2])
+true
 ```
 """
-function extractvariablesandnames(;
+function instantiateblr(;
     trait::String,
     factors::Vector{String},
     df::DataFrame,
     other_covariates::Union{Vector{String},Nothing} = nothing,
     verbose::Bool = false,
-)::Dict{String,Union{String,Vector{String},Vector{Float64},Matrix{Float64},Vector{Matrix{Union{Bool,Float64}}}}}
+)::BLR
     # genomes = simulategenomes(n=500, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_harvests=1, n_sites=2, n_replications=3);
     # trait = "trait_1"; factors = ["rows", "cols"]; df = tabularise(trials); other_covariates::Union{Vector{String}, Nothing} = nothing; verbose = true;
     # Check arguments
@@ -98,7 +112,7 @@ function extractvariablesandnames(;
     if verbose
         println("Extracting the design matrix of the model: `$formula_struct`.")
     end
-    _, col_labels = coefnames(apply_schema(formula_struct, schema(formula_struct, df)))
+    _, coefficient_names = coefnames(apply_schema(formula_struct, schema(formula_struct, df)))
     X = modelmatrix(formula_struct, df)
     # Extract the names of all the coefficients including the base level/s and the full design matrix (n x F(p)).
     # This is not used for regression, rather it is used for the extraction of coefficients of all factor levels including the base level/s.
@@ -109,81 +123,101 @@ function extractvariablesandnames(;
         )
     end
     contrasts::Dict{Symbol,StatsModels.FullDummyCoding} = Dict()
-    coefficient_names::Vector{String} = [string(x) for x in coefficients]
-    for f in coefficient_names
+    explain_var_names::Vector{String} = [string(x) for x in coefficients]
+    for f in explain_var_names
         # f = factors[1]
         contrasts[Symbol(f)] = StatsModels.FullDummyCoding()
     end
     mf = ModelFrame(formula_struct, df, contrasts = contrasts)
-    _, col_labels_ALL = coefnames(apply_schema(formula_struct, mf.schema))
+    _, b_labels = coefnames(apply_schema(formula_struct, mf.schema))
     X_ALL = modelmatrix(mf)
     # Make sure that we have extracted all base levels in X_ALL
     @assert size(X) < size(X_ALL)
-    # Separate each factor from one another
-    vector_of_Xs::Vector{Matrix{Union{Bool,Float64}}} = []
-    vector_of_Xs_ALL::Vector{Matrix{Union{Bool,Float64}}} = []
-    for f in coefficient_names
-        # f = coefficient_names[end]
-        f_split = split(f, " ")
-        # Main design matrices
-        bool = fill(true, length(col_labels))
-        for x in f_split
-            bool = bool .&& .!isnothing.(match.(Regex(x), col_labels))
-        end
-        if length(f_split) == 1
-            bool = bool .&& isnothing.(match.(Regex("&"), col_labels))
-        end
-        if !(f ∈ other_covariates)
-            # For categorical factors --> boolean matrix for memory-efficiency
-            push!(vector_of_Xs, Bool.(X[:, bool]))
-        else
-            # For the continuous numeric other covariates --> Float64 matrix
-            push!(vector_of_Xs, X[:, bool])
-        end
-        # Full design matrices
-        bool = fill(true, length(col_labels_ALL))
-        for x in f_split
-            bool = bool .&& .!isnothing.(match.(Regex(x), col_labels_ALL))
-        end
-        if length(f_split) == 1
-            bool = bool .&& isnothing.(match.(Regex("&"), col_labels_ALL))
-        end
-        if !(f ∈ other_covariates)
-            # For categorical factors --> boolean matrix for memory-efficiency
-            push!(vector_of_Xs_ALL, Bool.(X_ALL[:, bool]))
-        else
-            # For the continuous numeric other covariates --> Float64 matrix
-            push!(vector_of_Xs_ALL, X_ALL[:, bool])
-        end
+    # Initialise the BLR struct
+    blr = begin
+        n, p = size(X)
+        blr = BLR(n=n, p=p)
+        blr.entries = df.entries
+        delete!(blr.Xs, "dummy")
+        delete!(blr.Σs, "dummy")
+        delete!(blr.coefficients, "dummy")
+        delete!(blr.coefficient_names, "dummy")
+        blr.y = zeros(n)
+        blr.ŷ = zeros(n)
+        blr.ϵ = zeros(n)
+        blr
     end
-    # Define the linear model
-    y::Vector{Float64} = df[!, trait]
+    blr_ALL = begin
+        n, p = size(X_ALL)
+        blr = BLR(n=n, p=p)
+        blr.entries = df.entries
+        delete!(blr.Xs, "dummy")
+        delete!(blr.Σs, "dummy")
+        delete!(blr.coefficients, "dummy")
+        delete!(blr.coefficient_names, "dummy")
+        blr.y = zeros(n)
+        blr.ŷ = zeros(n)
+        blr.ϵ = zeros(n)
+        blr
+    end
+    # Separate each explanatory variable from one another
+    for v in explain_var_names
+        # v = explain_var_names[end]
+        v_split = filter(x -> x != "&", split(v, " "))
+        # Main design matrices (bool) full design matrices (bool_ALL)
+        bool = fill(true, length(coefficient_names))
+        bool_ALL = fill(true, length(b_labels))
+        for x in v_split
+            bool = bool .&& .!isnothing.(match.(Regex(x), coefficient_names))
+            bool_ALL = bool_ALL .&& .!isnothing.(match.(Regex(x), b_labels))
+        end
+        # Make sure we are extract the correct coefficients
+        if length(v_split) == 1
+            bool = bool .&& isnothing.(match.(Regex("&"), coefficient_names))
+            bool_ALL = bool_ALL .&& isnothing.(match.(Regex("&"), b_labels))
+        else
+            m = length(v_split) - 1
+            bool = bool .&& [!isnothing(x) ? sum(.!isnothing.(match.(Regex("&"), split(coefficient_names[i], " ")))) == m : false for (i, x) in enumerate(match.(Regex("&"), coefficient_names))]
+            bool_ALL = bool_ALL .&& [!isnothing(x) ? sum(.!isnothing.(match.(Regex("&"), split(b_labels[i], " ")))) == m : false for (i, x) in enumerate(match.(Regex("&"), b_labels))]
+        end
+        if !isnothing(other_covariates) && !(v ∈ other_covariates)
+            # For categorical variables --> boolean matrix for memory-efficiency
+            blr.Xs[v] = Bool.(X[:, bool])
+            blr_ALL.Xs[v] = Bool.(X_ALL[:, bool_ALL])
+        else
+            # For the continuous numeric other covariates --> Float64 matrix
+            blr.Xs[v] = X[:, bool]
+            blr_ALL.Xs[v] = X_ALL[:, bool_ALL]
+        end
+        blr.Σs[v] = 1.0*I
+        blr_ALL.Σs[v] = 1.0*I
+        blr.coefficients[v] = zeros(sum(bool_ALL))
+        blr_ALL.coefficients[v] = zeros(sum(bool_ALL))
+        blr.coefficient_names[v] = b_labels[bool_ALL]
+        blr_ALL.coefficient_names[v] = b_labels[bool_ALL]
+    end
     # Output
-    Dict(
-        "trait" => trait,
-        "col_labels" => col_labels,
-        "X" => X,
-        "col_labels_ALL" => col_labels_ALL,
-        "X_ALL" => X_ALL,
-        "coefficient_names" => coefficient_names,
-        "vector_of_Xs" => vector_of_Xs,
-        "vector_of_Xs_ALL" => vector_of_Xs_ALL,
-        "y" => y,
-    )
+    if !checkdims(blr)
+        throw(ErrorException("The resulting BLR struct for the model to be fit is corrupted."))
+    end
+    if !checkdims(blr_ALL)
+        throw(ErrorException("The resulting BLR struct for the full model is corrupted."))
+    end
+    (blr, blr_ALL)
 end
 
 """
-    turingblr(vector_of_Xs::Vector{Matrix{Bool}}, y::Vector{Float64})
+    turingblr(vector_of_Xs_noint::Vector{Matrix{Bool}}, y::Vector{Float64})
 
 Bayesian Linear Regression model implemented using Turing.jl.
 
 # Arguments
-- `vector_of_Xs::Vector{Matrix{Bool}}`: Vector of predictor matrices, where each matrix contains binary (Bool) predictors
+- `vector_of_Xs_noint::Vector{Matrix{Bool}}`: Vector of predictor matrices, where each matrix contains binary (Bool) predictors
 - `y::Vector{Float64}`: Vector of response variables
 
 # Model Details
 - Includes an intercept term with Normal(0.0, 10.0) prior
-- For each predictor matrix in `vector_of_Xs`:
+- For each predictor matrix in `vector_of_Xs_noint`:
   - Variance parameter (σ²) with Exponential(1.0) prior
   - Regression coefficients (β) with multivariate normal prior: MvNormal(0, σ² * I)
 - Residual variance (σ²) with Exponential(10.0) prior
@@ -193,21 +227,21 @@ Bayesian Linear Regression model implemented using Turing.jl.
 - A Turing model object that can be used for MCMC sampling
 """
 Turing.@model function turingblr(
-    vector_of_Xs::Vector{Matrix{Bool}},
+    vector_of_Xs_noint::Vector{Matrix{Union{Bool, Float64}}},
     vector_of_Σs::Vector{Union{Matrix{Float64},UniformScaling{Float64}}},
     y::Vector{Float64},
 )
     # Set intercept prior.
     intercept ~ Normal(0.0, 10.0)
     # Set variance predictors
-    P = length(vector_of_Xs)
+    P = length(vector_of_Xs_noint)
     σ²s = fill(0.0, P)
-    βs = [fill(0.0, size(x, 2)) for x in vector_of_Xs]
-    μ = fill(0.0, size(vector_of_Xs[1], 1)) .+ intercept
+    βs = [fill(0.0, size(x, 2)) for x in vector_of_Xs_noint]
+    μ = fill(0.0, size(vector_of_Xs_noint[1], 1)) .+ intercept
     for i = 1:P
         σ²s[i] ~ Exponential(1.0)
         βs[i] ~ MvNormal(zeros(length(βs[i])), σ²s[i] * vector_of_Σs[i])
-        μ += Float64.(vector_of_Xs[i]) * βs[i]
+        μ += Float64.(vector_of_Xs_noint[i]) * βs[i]
     end
     # Residual variance
     σ² ~ Exponential(10.0)
@@ -218,7 +252,7 @@ end
 
 """
     turingblrmcmc(;
-        vector_of_Xs::Vector{Matrix{Bool}}, 
+        vector_of_Xs_noint::Vector{Matrix{Bool}}, 
         y::Vector{Float64},
         n_iter::Int64 = 10_000,
         n_burnin::Int64 = 1_000,
@@ -229,7 +263,7 @@ end
 Perform Markov Chain Monte Carlo (MCMC) sampling for Bayesian Linear Regression using the No-U-Turn Sampler (NUTS).
 
 # Arguments
-- `vector_of_Xs::Vector{Matrix{Bool}}`: A vector of design matrices for different model components
+- `vector_of_Xs_noint::Vector{Matrix{Bool}}`: A vector of design matrices for different model components
 - `y::Vector{Float64}`: Vector of response variables
 - `n_iter::Int64`: Number of MCMC iterations (default: 10,000)
 - `n_burnin::Int64`: Number of burn-in iterations to discard (default: 1,000)
@@ -254,35 +288,74 @@ Perform Markov Chain Monte Carlo (MCMC) sampling for Bayesian Linear Regression 
 
 # Example
 ```
-# TODO
+julia> genomes = simulategenomes(n=500, l=1_000, verbose=false); 
+
+julia> trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=3, verbose=false);
+
+julia> df = tabularise(trials);
+
+julia> blr, vector_of_Xs_noint = instantiateblr(trait = trials.traits[1], factors = ["rows", "cols"], df = df, other_covariates = trials.traits[2:end], verbose = false);
+
+julia> turingblrmcmc(blr, vector_of_Xs_noint=vector_of_Xs_noint, n_iter=1_000, n_burnin=200, seed=123, verbose=false);
+
+julia> 
 ```
 """
-function turingblrmcmc(;
-    D::Dict{String,Union{String,Vector{String},Vector{Float64},Matrix{Float64},Vector{Matrix{Union{Bool,Float64}}}}},
-    vector_of_Σs::Vector{Union{Matrix{Float64},UniformScaling{Float64}}},
+function turingblrmcmc!(
+    blr;
     n_iter::Int64 = 10_000,
     n_burnin::Int64 = 1_000,
     seed::Int64 = 1234,
     verbose = true,
 )::BLR
-    # trait = D["trait"]
-    col_labels = D["col_labels"]
-    # X = D["X"]
-    col_labels_ALL = D["col_labels_ALL"]
-    X_ALL = D["X_ALL"]
-    coefficient_names = D["coefficient_names"]
-    vector_of_Xs = D["vector_of_Xs"]
-    vector_of_Xs_ALL = D["vector_of_Xs_ALL"]
-    y = D["y"]
+    
+    # n_iter = 1_000
+    # n_burnin = 500
+    # seed = 1234
+    # verbose = true
+
+    # Check arguments
+    entries = blr.entries
+    coefficient_names = blr.coefficient_names
+    # b_labels = blr.b_labels
+    # X_ALL = blr.X_ALL
+    # explain_var_names = blr.explain_var_names
+    y = blr.y
+    vector_of_Σs = blr.Σs
+    X, _b, b_labels = extractXb(blr)
+
+    n, p = size(X)
+    if n != length(y)
+        throw(ArgumentError("The number of entries in y (`n=$(length(y))`) is not equal to the number of rows in X_ALL (`n=$n`)."))
+    end
+    if p != length(b_labels)
+        throw(ArgumentError("The number of parameters in b_labels (`n=$(length(b_labels))`) is not equal to the number of columns in X_ALL (`n=$p`)."))
+    end
+    if length(blr.coefficient_names) != (1 + length(vector_of_Xs_noint))
+        throw(ArgumentError("The BLR struct is incompatible with `vector_of_Xs_noint`."))
+    end
+    for i in eachindex(vector_of_Xs_noint)
+        if n != size(vector_of_Xs_noint[i], 1)
+            throw(ArgumentError("The number of entries (`n=$n`) is not equal to the number of rows in the $(i)th X (`size(vector_of_Xs_noint[$i], 1)=$(size(vector_of_Xs_noint[i], 1))`)."))
+        end
+    end
+    for (i, x) in blr.Xs
+        if n != size(x, 1)
+            throw(ArgumentError("The number of entries (`n=$n`) is not equal to the number of rows in the $(i)th X_ALL (`size(vector_of_Xs_noint_ALL[$i], 1)=$(size(vector_of_Xs_noint_ALL[i], 1))`)."))
+        end
+    end
+    # Instantiate the RNG, model, and sampling function
     rng::TaskLocalRNG = Random.seed!(seed)
-    model = turing_blr(vector_of_Xs, vector_of_Σs, y)
+    model = turingblr(vector_of_Xs_noint, vector_of_Σs, y)
     sampling_function =
         NUTS(n_burnin, 0.65, max_depth = 5, Δ_max = 1000.0, init_ϵ = 0.2; adtype = AutoReverseDiff(compile = true))
+    # MCMC
     chain = Turing.sample(rng, model, sampling_function, n_iter, discard_initial = n_burnin, progress = verbose)
     # Diagnostics
-    R̂ = DataFrame(MCMCDiagnosticTools.rhat(chain))
-    n_params_which_may_not_have_converged = sum((R̂.rhat .> 1.1) .|| (R̂.rhat .< 0.9))
-    if n_params_which_may_not_have_converged > 0
+    # R̂ = DataFrame(MCMCDiagnosticTools.rhat(chain, kind=:basic, split_chains=5)) # classic R̂
+    R̂ = DataFrame(MCMCDiagnosticTools.rhat(chain, kind=:rank, split_chains=5)) # new R̂: maximum R̂ of :bulk and :tail
+    n_params_which_may_not_have_converged = sum(abs.(1.0 .- R̂.rhat) .> 0.1)
+    if verbose && (n_params_which_may_not_have_converged > 0)
         @warn "There are $n_params_which_may_not_have_converged parameters (out of $(nrow(R̂)) total parameters) which may not have converged."
     end
     # Use the mean parameter values which excludes the first n_burnin iterations
@@ -292,7 +365,7 @@ function turingblrmcmc(;
     σ² = mean(params.σ²)
     σ²s = [mean(params.σ²s[i]) for i in eachindex(params.σ²s)]
     # Extract all the coefficients including the base level/s of each factor
-    βs_ALL = fill(0.0, length(col_labels_ALL))
+    βs_ALL = fill(0.0, length(b_labels))
     βs_ALL[1] = β0
     for i in eachindex(βs_ALL)
         # i = 200
@@ -301,7 +374,7 @@ function turingblrmcmc(;
             continue
         end
         # Less 1 because the X matrix does not include the intercept
-        idx = findall(col_labels .== col_labels_ALL[i]) .- 1
+        idx = findall(coefficient_names .== b_labels[i]) .- 1
         if length(idx) == 0
             # base level
             continue
@@ -310,38 +383,39 @@ function turingblrmcmc(;
     end
     ŷ = X_ALL * βs_ALL
     ϵ = y - ŷ
-    design_matrices::Dict{String,Matrix{Bool}} = Dict("intercept" => Bool.(ones(length(y), 1)))
+    Xs::Dict{String,Matrix{Union{Bool, Float64}}} = Dict("intercept" => Bool.(ones(length(y), 1)))
     Σs::Dict{String,Union{Matrix{Float64},UniformScaling{Float64}}} = Dict("σ²" => σ² * I)
+    dict_coefficients::Dict{String, Vector{Float64}} = Dict("intercept" => [β0])
+    dict_coefficient_names::Dict{String, Vector{String}} = Dict("intercept" => ["intercept"])
     var_comp::Dict{String,Int64} = Dict("σ²" => 1)
     for i = 1:length(σ²s)
-        # i = 1
-        design_matrices[coefficient_names[i]] = vector_of_Xs_ALL[i]
-        Σs["σ²s "*coefficient_names[i]] = σ²s[i] * I
-        var_comp["σ²s "*coefficient_names[i]] = size(vector_of_Xs_ALL[i], 2)
+        # i = 3
+        v = explain_var_names[i]
+        k = size(vector_of_Xs_noint_ALL[i], 2)
+        p_ini = sum(values(var_comp)) + 1
+        p_fin = (p_ini-1) + k
+        Xs[v] = vector_of_Xs_noint_ALL[i]
+        Σs[v] = σ²s[i] * I
+        dict_coefficients[v] = βs_ALL[p_ini:p_fin]
+        dict_coefficient_names[v] = b_labels[p_ini:p_fin]
+        var_comp[v] = k
     end
-    n, p = size(X_ALL)
     blr_model = begin
+        n, p = size(X_ALL)
         blr_model = BLR(n = n, p = p, var_comp = var_comp)
-        @assert length(blr_model.entries) == length(df_sub.entries)
-        blr_model.entries = df_sub.entries
-        @assert length(blr_model.coefficient_names) == length(col_labels_ALL)
-        blr_model.coefficient_names = col_labels_ALL
-        @assert length(blr_model.y) == length(y)
-        blr_model.y = y
-        @assert length(blr_model.design_matrices) == length(design_matrices)
-        blr_model.design_matrices = design_matrices
-        @assert !isnothing(blr_model.other_covariates) ?
-                length(blr_model.other_covariates) == length(other_covariates) : true
-        blr_model.other_covariates = other_covariates
-        @assert length(blr_model.coefficients) == length(βs_ALL)
-        blr_model.coefficients = βs_ALL
-        @assert length(blr_model.ŷ) == length(ŷ)
-        blr_model.ŷ = ŷ
-        @assert length(blr_model.ϵ) == length(ϵ)
-        blr_model.ϵ = ϵ
-        @assert length(blr_model.Σs) == length(Σs)
+        blr_model.entries = entries
+        blr_model.Xs = Xs
         blr_model.Σs = Σs
+        blr_model.coefficients = dict_coefficients
+        blr_model.coefficient_names = dict_coefficient_names
+        blr_model.y = y
+        blr_model.ŷ = ŷ
+        blr_model.ϵ = ϵ
         blr_model
+    end
+    # Output
+    if !checkdims(blr_model)
+        throw(ErrorException("Error generating the BLR struct."))
     end
     blr_model
 end
@@ -423,23 +497,19 @@ function analyse(
             for i in eachindex(traits)
                 # i = 1
                 trait = traits[i]
-                # Extract the Xs, ys, labels, and coefficient names
-                D = extractvariablesandnames(
+                # Instantiate the BLR struct
+                blr, vector_of_Xs_noint = instantiateblr(
                     trait = trait,
                     factors = spatial_factors,
                     other_covariates = other_covariates,
                     df = df_sub,
                     verbose = verbose,
                 )
-                # Define the variance-covariance matrices of each design matrix and other_covariates matrix
-                vector_of_Σs::Vector{Union{Matrix{Float64},UniformScaling{Float64}}} = []
-                for i in eachindex(D["vector_of_Xs_ALL"])
-                    push!(vector_of_Σs, 1.0 * I)
-                end
+                blr.y = df[:, trait]
                 # Bayesian linear regression
-                blr_model = turingblrmcmc(
-                    D = D,
-                    vector_of_Σs = vector_of_Σs,
+                turingblrmcmc!(
+                    blr,
+                    vector_of_Xs_noint = vector_of_Xs_noint,
                     n_iter = 1_000,
                     n_burnin = 500,
                     seed = 1234,
@@ -480,8 +550,8 @@ function analyse(
 
 
         f0 = @eval(@string2formula($(replace(formula_string, "y" => "0"))))
-        _, col_labels = coefnames(apply_schema(f0, schema(f0, df)))
+        _, coefficient_names = coefnames(apply_schema(f0, schema(f0, df)))
         size(df)
-        length(col_labels)
+        length(coefficient_names)
     end
 end
