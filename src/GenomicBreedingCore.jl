@@ -55,9 +55,8 @@ export simulatechromstruct,
     simulateposandalleles, simulatepopgroups, simulateldblocks, simulateperpopμΣ, simulateallelefreqs!
 export simulategenomes, simulateeffects, simulategenomiceffects, simulatetrials
 export histallelefreqs, simulatemating
-export countlevels,
-    @string2formula, trialsmodelsfomulae!, analyse, extractphenomes
-export extractXb, instantiateblr, turingblr, turingblrmcmc
+export countlevels, @string2formula, trialsmodelsfomulae!, analyse, extractphenomes
+export extractXb, instantiateblr, turingblr, turingblrmcmc!
 export @stringevaluation, addcompositetrait
 export maskmissing!, divideintomockscaffolds, estimateld, estimatedistances, knni, knnioptim, impute
 export inflatediagonals!, grmsimple, grmploidyaware

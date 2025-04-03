@@ -63,7 +63,7 @@ function slice(
     # genomes::Genomes = simulategenomes(); idx_entries::Vector{Int64}=sample(1:100, 10); idx_loci_alleles::Vector{Int64}=sample(1:10_000, 1000); verbose=true
     # Check genomes struct
     if !checkdims(genomes)
-        throw(ArgumentError("Genomes struct is corrupted."))
+        throw(ArgumentError("Genomes struct is corrupted ☹."))
     end
     # Return early if not slicing needed
     if isnothing(idx_entries) && isnothing(idx_loci_alleles)
@@ -275,7 +275,7 @@ function filterbysparsity(
     # genomes = simulategenomes(n=100, l=1_000, n_alleles=4, sparsity=0.25, verbose=true); max_entry_sparsity = 0.0; max_locus_sparsity = 0.0; max_entry_sparsity_percentile = 0.90; max_locus_sparsity_percentile = 0.50; verbose = true;
     # Check arguments
     if !checkdims(genomes)
-        throw(ArgumentError("Genomes struct is corrupted."))
+        throw(ArgumentError("Genomes struct is corrupted ☹."))
     end
     if (max_entry_sparsity < 0.0) || (max_entry_sparsity > 1.0)
         throw(ArgumentError("We accept `max_entry_sparsity` from 0.0 to 1.0."))
@@ -446,7 +446,7 @@ function filterbymaf(genomes::Genomes; maf::Float64 = 0.01, verbose::Bool = fals
     # genomes = simulategenomes(n=100, l=1_000, n_alleles=4, sparsity=0.25, verbose=true); maf = 0.01; verbose = true;
     # Check arguments
     if !checkdims(genomes)
-        throw(ArgumentError("Genomes struct is corrupted."))
+        throw(ArgumentError("Genomes struct is corrupted ☹."))
     end
     if (maf < 0.0) || (maf > 1.0)
         throw(ArgumentError("We accept `maf` from 0.0 to 1.0."))
@@ -536,7 +536,7 @@ function filterbypca(genomes::Genomes; max_prop_pc_varexp::Float64 = 0.9, verbos
     # genomes = simulategenomes(n=100, l=1_000, n_alleles=4, sparsity=0.25, verbose=true); max_prop_pc_varexp = 0.90; verbose = true;
     # Check arguments
     if !checkdims(genomes)
-        throw(ArgumentError("Genomes struct is corrupted."))
+        throw(ArgumentError("Genomes struct is corrupted ☹."))
     end
     if max_prop_pc_varexp < 0.0
         throw(ArgumentError("We accept `max_prop_pc_varexp` from 0.0 to Inf."))
@@ -673,7 +673,7 @@ function filterbysnplist(
     # genomes = simulategenomes(n_populations=3, sparsity=0.25, seed=123456); chr_pos_allele_ids = sample(genomes.loci_alleles, Int(floor(0.5*length(genomes.loci_alleles)))); sort!(chr_pos_allele_ids); verbose = true
     # Check arguments
     if !checkdims(genomes)
-        throw(ArgumentError("Genomes struct is corrupted."))
+        throw(ArgumentError("Genomes struct is corrupted ☹."))
     end
     # Return early if no loci-allele combination names are provided
     if isnothing(chr_pos_allele_ids) || (length(chr_pos_allele_ids) == 0)
@@ -861,7 +861,7 @@ function Base.filter(
     # genomes = simulategenomes(n_populations=3, sparsity=0.01, seed=123456); maf=0.01; max_entry_sparsity=0.1; max_locus_sparsity = 0.25; max_prop_pc_varexp = 1.0; max_entry_sparsity_percentile = 0.9; max_locus_sparsity_percentile = 0.5
     # chr_pos_allele_ids = sample(genomes.loci_alleles, Int(floor(0.5*length(genomes.loci_alleles)))); sort!(chr_pos_allele_ids); verbose = true
     if !checkdims(genomes)
-        throw(ArgumentError("Genomes struct is corrupted."))
+        throw(ArgumentError("Genomes struct is corrupted ☹."))
     end
     if (max_entry_sparsity < 0.0) || (max_entry_sparsity > 1.0)
         throw(ArgumentError("We accept `max_entry_sparsity` from 0.0 to 1.0."))

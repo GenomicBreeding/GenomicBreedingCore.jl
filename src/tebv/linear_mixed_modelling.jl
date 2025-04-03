@@ -685,7 +685,7 @@ function analyse(
     # fname = "/mnt/c/Users/jp3h/Downloads/Lucerne-2024-10-leaf_to_stem_ratio.txt"; using GenomicBreedingIO; trials = GenomicBreedingIO.readdelimited(Trials, fname=fname, sep="\t"); formula_string=""; max_levels::Int64=10; max_time_per_model::Int64=2; verbose::Bool = true;
     # Check Arguments
     if !checkdims(trials)
-        throw(ArgumentError("Trials struct is corrupted."))
+        throw(ArgumentError("Trials struct is corrupted ☹."))
     end
     traits = if isnothing(traits)
         unique(trials.traits)

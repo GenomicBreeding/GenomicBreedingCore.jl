@@ -60,13 +60,13 @@ function Base.merge(
 )::Phenomes
     # Check arguments
     if !checkdims(phenomes) && !checkdims(other)
-        throw(ArgumentError("Both Phenomes structs are corrupted."))
+        throw(ArgumentError("Both Phenomes structs are corrupted ☹."))
     end
     if !checkdims(phenomes)
-        throw(ArgumentError("The first Phenomes struct is corrupted."))
+        throw(ArgumentError("The first Phenomes struct is corrupted ☹."))
     end
     if !checkdims(other)
-        throw(ArgumentError("The second Phenomes struct is corrupted."))
+        throw(ArgumentError("The second Phenomes struct is corrupted ☹."))
     end
     if (length(conflict_resolution) != 2) && (sum(conflict_resolution) != 1.00)
         throw(ArgumentError("We expect `conflict_resolution` 2 be a 2-item tuple which sums up to exactly 1.00."))
@@ -214,7 +214,7 @@ julia> tabularise(phenomes)
 function tabularise(phenomes::Phenomes)::DataFrame
     # phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = rand(10,3);
     if !checkdims(phenomes)
-        throw(ArgumentError("Phenomes struct is corrupted."))
+        throw(ArgumentError("Phenomes struct is corrupted ☹."))
     end
     df_ids::DataFrame =
         DataFrame(; id = 1:length(phenomes.entries), entries = phenomes.entries, populations = phenomes.populations)

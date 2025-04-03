@@ -238,8 +238,8 @@ mutable struct BLR <: AbstractGB
     entries::Vector{String}
     Xs::Dict{String,Matrix{Union{Bool,Float64}}}
     Σs::Dict{String,Union{Matrix{Float64},UniformScaling{Float64}}}
-    coefficients::Dict{String, Vector{Float64}}
-    coefficient_names::Dict{String, Vector{String}}
+    coefficients::Dict{String,Vector{Float64}}
+    coefficient_names::Dict{String,Vector{String}}
     y::Vector{Float64}
     ŷ::Vector{Float64}
     ϵ::Vector{Float64}
@@ -249,17 +249,25 @@ mutable struct BLR <: AbstractGB
             throw(ArgumentError("At least one variance component is required, i.e. at leat the residual variance σ²."))
         end
         if p < 1
-            throw(ArgumentError("The number of coefficients or parameters needs to be at least 1, where the first one corresponds to the intercept."))
+            throw(
+                ArgumentError(
+                    "The number of coefficients or parameters needs to be at least 1, where the first one corresponds to the intercept.",
+                ),
+            )
         end
         if !("σ²" ∈ string.(keys(var_comp)))
             throw(ArgumentError("The variance components need to include the residual variance (`σ²`)."))
         end
         # If initialising the struct
         if (length(var_comp) == 1) && (p > 1)
-            var_comp["dummy"] = p-1
+            var_comp["dummy"] = p - 1
         end
         if sum(values(var_comp)) != p
-            throw(ArgumentError("The total number of parameters:\n\t=> (`p=$p`; intercept + the coefficients) must be equal to the total number of parameters in the variance components\n\t=> (`sum(values(var_comp))=$(sum(values(var_comp)))`: residual variance + the coefficients)."))
+            throw(
+                ArgumentError(
+                    "The total number of parameters:\n\t=> (`p=$p`; intercept + the coefficients) must be equal to the total number of parameters in the variance components\n\t=> (`sum(values(var_comp))=$(sum(values(var_comp)))`: residual variance + the coefficients).",
+                ),
+            )
         end
         # Dummy entries, coefficient names, y, coefficients, ŷ, and ϵ
         entries = fill("", n)
@@ -268,7 +276,7 @@ mutable struct BLR <: AbstractGB
         ϵ = zeros(n)
         # Define the design matrices including the intercept
         Xs = Dict("intercept" => Bool.(ones(n, 1)))
-        Σs::Dict{String,Union{Matrix{Float64},UniformScaling{Float64}}} = Dict("σ²" => 1.0*I)
+        Σs::Dict{String,Union{Matrix{Float64},UniformScaling{Float64}}} = Dict("σ²" => 1.0 * I)
         coefficients = Dict("intercept" => [0.0])
         coefficient_names = Dict("intercept" => ["intercept"])
         for v in string.(keys(var_comp))

@@ -218,7 +218,7 @@ Dict{String, Int64} with 16 entries:
 """
 function dimensions(trials::Trials)::Dict{String,Int64}
     if !checkdims(trials)
-        throw(ArgumentError("Trials struct is corrupted."))
+        throw(ArgumentError("Trials struct is corrupted ☹."))
     end
     idx_non_missing = .!ismissing.(trials.phenotypes)
     Dict(
@@ -280,7 +280,7 @@ julia> size(df)
 function tabularise(trials::Trials)::DataFrame
     # trials::Trials, _ = simulatetrials(genomes = simulategenomes());
     if !checkdims(trials)
-        throw(ArgumentError("The Trials struct is corrupted."))
+        throw(ArgumentError("The Trials struct is corrupted ☹."))
     end
     df_ids::DataFrame = DataFrame(;
         id = 1:length(trials.years),
@@ -516,7 +516,7 @@ julia> GenomicBreedingCore.plot(trials);
 function plot(trials::Trials; nbins::Int64 = 10)
     # trials, _ = simulatetrials(genomes = simulategenomes()); nbins = 10;
     if !checkdims(trials)
-        throw(ArgumentError("Phenomes struct is corrupted."))
+        throw(ArgumentError("Phenomes struct is corrupted ☹."))
     end
     for pop in unique(trials.populations)
         # pop = trials.populations[1]

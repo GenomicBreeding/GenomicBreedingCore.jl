@@ -47,7 +47,7 @@ function slice(
     # phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = rand(10,3); nbins = 10;
     # idx_entries::Vector{Int64}=collect(2:7); idx_traits::Vector{Int64}=collect(1:2);
     if !checkdims(phenomes)
-        throw(ArgumentError("Phenomes struct is corrupted."))
+        throw(ArgumentError("Phenomes struct is corrupted ☹."))
     end
     phenomes_dims::Dict{String,Int64} = dimensions(phenomes)
     n_entries::Int64 = phenomes_dims["n_entries"]

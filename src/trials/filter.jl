@@ -85,7 +85,7 @@ function slice(
     # populations = entries = traits = years = harvests = seasons = sites = replications = blocks = rows = cols = nothing
     # Check arguments
     if !checkdims(trials)
-        throw(ArgumentError("Phenomes struct is corrupted."))
+        throw(ArgumentError("Phenomes struct is corrupted ☹."))
     end
     idx, idx_traits = begin
         all_traits = sort(unique(trials.traits))

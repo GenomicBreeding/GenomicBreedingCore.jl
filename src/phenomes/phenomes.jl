@@ -193,7 +193,7 @@ Dict{String, Int64} with 8 entries:
 """
 function dimensions(phenomes::Phenomes)::Dict{String,Int64}
     if !checkdims(phenomes)
-        throw(ArgumentError("Phenomes struct is corrupted."))
+        throw(ArgumentError("Phenomes struct is corrupted ☹."))
     end
     idx_non_missing = .!ismissing.(phenomes.phenotypes)
     Dict(
@@ -268,7 +268,7 @@ function distances(
     # phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = rand(10,3);
     # distance_metrics = ["euclidean", "correlation", "mad", "rmsd", "χ²"]; standardise_traits = true
     if !checkdims(phenomes)
-        throw(ArgumentError("The phenomes struct is corrupted."))
+        throw(ArgumentError("The phenomes struct is corrupted ☹."))
     end
     recognised_distance_metrics = ["euclidean", "correlation", "mad", "rmsd", "χ²"]
     unique!(distance_metrics)
@@ -464,7 +464,7 @@ julia> GenomicBreedingCore.plot(phenomes);
 function plot(phenomes::Phenomes; nbins::Int64 = 10)
     # phenomes = Phenomes(n=10, t=3); phenomes.entries = string.("entry_", 1:10); phenomes.populations .= "pop_1"; phenomes.traits = ["A", "B", "C"]; phenomes.phenotypes = rand(10,3); nbins = 10;
     if !checkdims(phenomes)
-        throw(ArgumentError("Phenomes struct is corrupted."))
+        throw(ArgumentError("Phenomes struct is corrupted ☹."))
     end
     # View distributions per population per trait using histograms
     for pop in unique(phenomes.populations)

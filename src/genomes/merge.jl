@@ -59,13 +59,13 @@ function Base.merge(
     # conflict_resolution::Tuple{Float64,Float64} = (0.5,0.5); verbose::Bool = true
     # Check arguments
     if !checkdims(genomes) && !checkdims(other)
-        throw(ArgumentError("Both Genomes structs are corrupted."))
+        throw(ArgumentError("Both Genomes structs are corrupted ☹."))
     end
     if !checkdims(genomes)
-        throw(ArgumentError("The first Genomes struct is corrupted."))
+        throw(ArgumentError("The first Genomes struct is corrupted ☹."))
     end
     if !checkdims(other)
-        throw(ArgumentError("The second Genomes struct is corrupted."))
+        throw(ArgumentError("The second Genomes struct is corrupted ☹."))
     end
     if (length(conflict_resolution) != 2) && (sum(conflict_resolution) != 1.00)
         throw(ArgumentError("We expect `conflict_resolution` 2 be a 2-item tuple which sums up to exactly 1.00."))
@@ -227,13 +227,13 @@ function Base.merge(genomes::Genomes, phenomes::Phenomes; keep_all::Bool = true)
     # phenomes = analyse(trials, max_levels=20, max_time_per_model=10, verbose=false).phenomes[1]; keep_all::Bool = false
     # Check input arguments
     if !checkdims(genomes) && !checkdims(phenomes)
-        throw(ArgumentError("The Genomes and Phenomes structs are corrupted."))
+        throw(ArgumentError("The Genomes and Phenomes structs are corrupted ☹."))
     end
     if !checkdims(genomes)
-        throw(ArgumentError("The Genomes struct is corrupted."))
+        throw(ArgumentError("The Genomes struct is corrupted ☹."))
     end
     if !checkdims(phenomes)
-        throw(ArgumentError("The Phenomes struct is corrupted."))
+        throw(ArgumentError("The Phenomes struct is corrupted ☹."))
     end
     # Identify the entries to be included
     entries::Vector{String} = []

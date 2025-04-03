@@ -199,7 +199,7 @@ Dict{String, Int64} with 7 entries:
 """
 function dimensions(genomes::Genomes)::Dict{String,Int64}
     if !checkdims(genomes)
-        throw(ArgumentError("Genomes struct is corrupted."))
+        throw(ArgumentError("Genomes struct is corrupted ☹."))
     end
     n_entries::Int64 = length(unique(genomes.entries))
     n_populations::Int64 = length(unique(genomes.populations))
@@ -281,7 +281,7 @@ julia> length(chromosomes), length(positions), length(alleles)
 """
 function loci_alleles(genomes::Genomes; verbose::Bool = false)::Tuple{Vector{String},Vector{Int64},Vector{String}}
     if !checkdims(genomes)
-        throw(ArgumentError("Genomes struct is corrupted."))
+        throw(ArgumentError("Genomes struct is corrupted ☹."))
     end
     p = length(genomes.loci_alleles)
     chromosomes = Vector{String}(undef, p)
@@ -335,7 +335,7 @@ julia> length(chromosomes), length(positions), length(loci_ini_idx), length(loci
 """
 function loci(genomes::Genomes; verbose::Bool = false)::Tuple{Vector{String},Vector{Int64},Vector{Int64},Vector{Int64}}
     if !checkdims(genomes)
-        throw(ArgumentError("Genomes struct is corrupted."))
+        throw(ArgumentError("Genomes struct is corrupted ☹."))
     end
     chromosomes::Vector{String} = []
     positions::Vector{Int64} = []
@@ -449,7 +449,7 @@ function distances(
     # distance_metrics = ["euclidean", "correlation", "mad", "rmsd", "χ²"]; idx_loci_alleles = nothing
     # include_loci_alleles = true; include_entries = false; include_counts = false; verbose = true
     if !checkdims(genomes)
-        throw(ArgumentError("The genomes struct is corrupted."))
+        throw(ArgumentError("The genomes struct is corrupted ☹."))
     end
     recognised_distance_metrics = ["euclidean", "correlation", "mad", "rmsd", "χ²"]
     unique!(distance_metrics)
@@ -682,7 +682,7 @@ function plot(genomes::Genomes, seed::Int64 = 42)
     #   (2) histogram of mean allele frequencies per locus, and
     #   (3) correlation heatmap of allele frequencies.
     if !checkdims(genomes)
-        throw(ArgumentError("Genomes struct is corrupted."))
+        throw(ArgumentError("Genomes struct is corrupted ☹."))
     end
     rng::TaskLocalRNG = Random.seed!(seed)
     for pop in unique(genomes.populations)

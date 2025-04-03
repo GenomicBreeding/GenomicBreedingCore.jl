@@ -38,7 +38,7 @@ function maskmissing!(genomes::Genomes; verbose::Bool = false)
     # genomes = simulategenomes(n=10, sparsity=0.3, verbose=true); verbose = true
     # Check input arguments
     if !checkdims(genomes)
-        throw(ArgumentError("The Genomes struct is corrupted."))
+        throw(ArgumentError("The Genomes struct is corrupted ☹."))
     end
     thread_lock::ReentrantLock = ReentrantLock()
     if verbose
@@ -100,7 +100,7 @@ function divideintomockscaffolds(
     # genomes = simulategenomes(n=10, sparsity=0.3, verbose=false); max_n_loci_per_chrom = 100; verbose = true
     # Check input arguments
     if !checkdims(genomes)
-        throw(ArgumentError("The Genomes struct is corrupted."))
+        throw(ArgumentError("The Genomes struct is corrupted ☹."))
     end
     # Divide the loci into mock scaffolds
     p = length(genomes.loci_alleles)
@@ -180,7 +180,7 @@ function estimateld(
     # genomes = simulategenomes(n=10, sparsity=0.3, verbose=false); chromosomes = nothing; verbose = true
     # Check input arguments
     if !checkdims(genomes)
-        throw(ArgumentError("The Genomes struct is corrupted."))
+        throw(ArgumentError("The Genomes struct is corrupted ☹."))
     end
     # Define the chromosomes from which LD will be estimated separately
     chromosomes = if isnothing(chromosomes)
@@ -770,7 +770,7 @@ function impute(
     # genomes = simulategenomes(n=10, sparsity=0.3, verbose=false); max_n_loci_per_chrom = 100_000; n_reps = 2; optim_n = 10; min_l_loci = 10; min_k_entries = 2; verbose = true
     # Check input arguments
     if !checkdims(genomes)
-        throw(ArgumentError("The Genomes struct is corrupted."))
+        throw(ArgumentError("The Genomes struct is corrupted ☹."))
     end
     n, p = size(genomes.allele_frequencies)
     if n < 2

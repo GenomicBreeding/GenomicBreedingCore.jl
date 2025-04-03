@@ -24,11 +24,11 @@ original and the cloned object.
 - `Σs::Dict{String, Union{Matrix{Float64}, UniformScaling{Float64}}}`: Variance-covariance matrices
 
 # Examples
-```jldoctest; setup = :(using GenomicBreedingCore)
+```jldoctest; setup = :(using GenomicBreedingCore, LinearAlgebra)
 julia> blr = BLR(n=1, p=1);
 
 julia> copy_blr = clone(blr)
-BLR([""], [""], [0.0], Dict{String, Matrix{Union{Bool, Float64}}}("intercept" => [false;;]), [0.0], [0.0], [0.0], Dict{String, Union{UniformScaling{Float64}, Matrix{Float64}}}("σ²" => UniformScaling{Float64}(1.0)))
+BLR([""], Dict{String, Matrix{Union{Bool, Float64}}}("intercept" => [true;;]), Dict{String, Union{UniformScaling{Float64}, Matrix{Float64}}}("σ²" => UniformScaling{Float64}(1.0)), Dict("intercept" => [0.0]), Dict("intercept" => ["intercept"]), [0.0], [0.0], [0.0])
 ```
 """
 function clone(x::BLR)::BLR
@@ -158,8 +158,8 @@ function checkdims(blr::BLR)::Bool
        prod([(n != size(X, 1)) for (_, X) in blr.Xs]) ||
        (p != sum([length(c) for (_, c) in blr.coefficient_names])) ||
        p != sum([size(X, 2) for (_, X) in blr.Xs]) ||
-       p != sum([!isa(Σ, UniformScaling) ? size(Σ, 1) : k=="σ²" ? 1 : size(blr.Xs[k], 2) for (k, Σ) in blr.Σs]) ||
-       p != sum([!isa(Σ, UniformScaling) ? size(Σ, 2) : k=="σ²" ? 1 : size(blr.Xs[k], 2) for (k, Σ) in blr.Σs]) ||
+       p != sum([!isa(Σ, UniformScaling) ? size(Σ, 1) : k == "σ²" ? 1 : size(blr.Xs[k], 2) for (k, Σ) in blr.Σs]) ||
+       p != sum([!isa(Σ, UniformScaling) ? size(Σ, 2) : k == "σ²" ? 1 : size(blr.Xs[k], 2) for (k, Σ) in blr.Σs]) ||
        !("intercept" ∈ string.(keys(blr.Xs))) ||
        !("σ²" ∈ string.(keys(blr.Σs))) ||
        !("intercept" ∈ string.(keys(blr.coefficients))) ||
@@ -170,22 +170,53 @@ function checkdims(blr::BLR)::Bool
 end
 
 
-function extractXb(blr::BLR)::Tuple{Matrix{Float64}, Vector{Float64}, Vector{String}}
+"""
+    extractXb(blr::BLR)::Tuple{Matrix{Float64}, Vector{Float64}, Vector{String}}
+
+Extract design matrix X, coefficients b, and coefficient labels from a BLR (Bayesian Linear Regression) model.
+
+# Arguments
+- `blr::BLR`: A BLR struct containing model components
+
+# Returns
+A tuple containing:
+- `X::Matrix{Float64}`: The design matrix combining all predictors
+- `b::Vector{Float64}`: Vector of estimated coefficients
+- `b_labels::Vector{String}`: Vector of coefficient labels/names
+
+# Throws
+- `ArgumentError`: If the dimensions in the BLR struct are inconsistent
+
+# Details
+Extracts and combines the design matrices, coefficients and their labels from the BLR model components.
+The intercept is handled separately and placed first, followed by other variance components.
+
+# Note
+The function assumes the BLR struct has valid "intercept" components and optional additional variance components.
+
+# Examples
+```jldoctest; setup = :(using GenomicBreedingCore)
+julia> blr = BLR(n=1, p=4);
+
+julia> X, b, b_labels = extractXb(blr);
+
+julia> size(X) == (1, 4)
+true
+
+julia> length(b) == length(b_labels)
+true
+```
+"""
+function extractXb(blr::BLR)::Tuple{Matrix{Float64},Vector{Float64},Vector{String}}
     # Check argument
     if !checkdims(blr)
         throw(ArgumentError("The BLR struct is corrupted."))
     end
-    components = string.(keys(blr.Xs))
+    variance_components = filter(x -> x != "intercept", string.(keys(blr.Xs)))
     X::Matrix{Float64} = reshape(blr.Xs["intercept"], length(blr.Xs["intercept"]), 1)
     b::Vector{Float64} = blr.coefficients["intercept"]
     b_labels::Vector{String} = blr.coefficient_names["intercept"]
-    if length(components) == 1
-        return (X, b, b_labels)
-    end
-    for c in components
-        if c == "intercept"
-            continue
-        end
+    for c in variance_components
         X = hcat(X, blr.Xs[c])
         b = vcat(b, blr.coefficients[c])
         b_labels = vcat(b_labels, blr.coefficient_names[c])

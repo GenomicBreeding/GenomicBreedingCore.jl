@@ -94,7 +94,7 @@ function grmsimple(genomes::Genomes; max_iter::Int64 = 1_000, verbose::Bool = fa
     # genomzes = simulategenomes(); max_iter = 1_000; verbose = true;
     # Check arguments while extracting the allele frequencies but first create a dummy phenomes struct
     if !checkdims(genomes)
-        throw(ArgumentError("The Genomes struct is corrupted."))
+        throw(ArgumentError("The Genomes struct is corrupted ☹."))
     end
     # Calculate a simple GRM
     n, p = size(genomes.allele_frequencies)
@@ -167,7 +167,7 @@ true
 function grmploidyaware(genomes::Genomes; ploidy::Int64 = 2, max_iter::Int64 = 1_000, verbose::Bool = false)::GRM
     # genomes = simulategenomes(); ploidy = 2; max_iter = 1_000; verbose = true;
     if !checkdims(genomes)
-        throw(ArgumentError("The Genomes struct is corrupted."))
+        throw(ArgumentError("The Genomes struct is corrupted ☹."))
     end
     # Calculate GRM via Bell et al (2017) and VanRaden et al (2008)
     n, _p = size(genomes.allele_frequencies)

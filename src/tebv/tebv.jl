@@ -197,7 +197,7 @@ Dict{String, Int64} with 8 entries:
 """
 function dimensions(tebv::TEBV)::Dict{String,Int64}
     if !checkdims(tebv)
-        throw(ArgumentError("TEBV struct is corrupted."))
+        throw(ArgumentError("TEBV struct is corrupted ☹."))
     end
     entries = tebv.phenomes[1].entries
     populations = tebv.phenomes[1].populations
@@ -273,7 +273,7 @@ function extractphenomes(tebv::TEBV)::Phenomes
     # trials, _simulated_effects = simulatetrials(genomes = simulategenomes(n=10, verbose=false), n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=10, verbose=false);
     # tebv = analyse(trials, max_levels=50, verbose=false);
     if !checkdims(tebv)
-        throw(ArgumentError("The TEBV struct is corrupted."))
+        throw(ArgumentError("The TEBV struct is corrupted ☹."))
     end
     phenomes = Phenomes(n = length(tebv.phenomes[1].entries), t = 1)
     for i in eachindex(tebv.phenomes)
@@ -314,7 +314,7 @@ function extractphenomes(tebv::TEBV)::Phenomes
     end
     # Output
     if !checkdims(phenomes)
-        throw(ArgumentError("The Phenomes struct is corrupted."))
+        throw(ArgumentError("The Phenomes struct is corrupted ☹."))
     end
     phenomes
 end

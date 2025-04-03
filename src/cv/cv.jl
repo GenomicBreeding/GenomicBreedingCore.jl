@@ -302,7 +302,7 @@ function tabularise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
         # i = 1
         # println(i)
         if !checkdims(cvs[i])
-            throw(ArgumentError("The CV struct at index " * string(i) * " is corrupted."))
+            throw(ArgumentError("The CV struct at index " * string(i) * " is corrupted ☹."))
         end
         df_across_entries.training_population[i] = join(sort(unique(cvs[i].fit.populations)), ";")
         df_across_entries.validation_population[i] = join(sort(unique(cvs[i].validation_populations)), ";")
@@ -409,7 +409,7 @@ function summarise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
     # Check arguments
     for (i, cv) in enumerate(cvs)
         if !checkdims(cv)
-            throw(ArgumentError("The element number " * string(i) * " in the vector of CV structs is corrupted."))
+            throw(ArgumentError("The element number " * string(i) * " in the vector of CV structs is corrupted ☹."))
         end
     end
     # Tabularise
