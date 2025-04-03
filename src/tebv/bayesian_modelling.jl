@@ -194,12 +194,7 @@ function instantiateblr(;
                     false for (i, x) in enumerate(match.(Regex("&"), coefficient_names_ALL))
                 ]
         end
-        v = if isnothing(other_covariates) & &!(v ∈ other_covariates) 
-            # For categorical variables --> boolean matrix for memory-efficiency
-            blr.Xs[v] = Bool.(X[:, bool])
-            blr_ALL.Xs[v] = Bool.(X_ALL[:, bool_ALL])
-            v
-        elseif v ∈ other_covariates
+        v = if !isnothing(other_covariates) && (v ∈ other_covariates) 
             # For the continuous numeric other covariates --> Float64 matrix
             # Rename the variance component to "other_covariates"
             v = "other_covariates"
@@ -215,7 +210,10 @@ function instantiateblr(;
             end
             v
         else
-            throw(ArgumentError("The variance component: $v is not among the continuous numeric covariate/s."))
+            # For categorical variables --> boolean matrix for memory-efficiency
+            blr.Xs[v] = Bool.(X[:, bool])
+            blr_ALL.Xs[v] = Bool.(X_ALL[:, bool_ALL])
+            v
         end
         blr.Σs[v] = 1.0 * I
         blr_ALL.Σs[v] = 1.0 * I
