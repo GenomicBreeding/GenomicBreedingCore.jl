@@ -194,7 +194,7 @@ function instantiateblr(;
                     false for (i, x) in enumerate(match.(Regex("&"), coefficient_names_ALL))
                 ]
         end
-        v = if isnothing(other_covariates)
+        v = if isnothing(other_covariates) & &!(v ∈ other_covariates) 
             # For categorical variables --> boolean matrix for memory-efficiency
             blr.Xs[v] = Bool.(X[:, bool])
             blr_ALL.Xs[v] = Bool.(X_ALL[:, bool_ALL])
