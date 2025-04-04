@@ -800,13 +800,6 @@ function impute(
         max_m = max_m < m ? m : max_m
         min_m = min_m > m ? m : min_m
     end
-    if min_m < min_l_loci
-        throw(
-            ArgumentError(
-                "The `min_l_loci` ($min_l_loci) is less than minimum number of loci across all chromosomes or scaffolds (`min_m=$min_m`).",
-            ),
-        )
-    end
     chromosomes = if max_m > max_n_loci_per_chrom
         # # Divide the loci into mock scaffolds
         divideintomockscaffolds(genomes, max_n_loci_per_chrom = max_n_loci_per_chrom, verbose = verbose)
