@@ -786,13 +786,6 @@ function impute(
     if (n_reps < 1) || (n_reps > n)
         throw(ArgumentError("The `n_reps` is expected to be between 1 and $n."))
     end
-    if (min_l_loci < 10) || ((p > max_n_loci_per_chrom) && (min_l_loci > round(p / max_n_loci_per_chrom)))
-        throw(
-            ArgumentError(
-                string("The `min_l_loci` is expected to be between 10 and ", round(p / max_n_loci_per_chrom), "."),
-            ),
-        )
-    end
     if (min_k_entries < 2) || (min_k_entries > n)
         throw(ArgumentError("The `min_k_entries` is expected to be between 2 and $n."))
     end
@@ -806,6 +799,13 @@ function impute(
         m = sum(chromosomes .== chrom)
         max_m = max_m < m ? m : max_m
         min_m = min_m > m ? m : min_m
+    end
+    if min_m < min_l_loci
+        throw(
+            ArgumentError(
+                "The `min_l_loci` ($min_l_loci) is less than minimum number of loci across all chromosomes or scaffolds (`min_m=$min_m`).",
+            ),
+        )
     end
     chromosomes = if max_m > max_n_loci_per_chrom
         # # Divide the loci into mock scaffolds
