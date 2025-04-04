@@ -485,7 +485,9 @@ function turingblrmcmc!(
 end
 
 """
-    removespatialeffects(;df::DataFrame, factors::Vector{String}, traits::Vector{String}, verbose::Bool = false)::Tuple{DataFrame, Vector{String}}
+    removespatialeffects(;df::DataFrame, factors::Vector{String}, traits::Vector{String}, 
+    other_covariates::Union{Vector{String},Nothing} = nothing, n_iter::Int64 = 10_000,
+    n_burnin::Int64 = 1_000, seed::Int64 = 1234, verbose::Bool = false)::Tuple{DataFrame, Vector{String}}
 
 Remove spatial effects from trait measurements in field trials using Bayesian linear regression.
 
@@ -497,7 +499,11 @@ with the prefix "SPATADJ-" for each original trait.
 - `df::DataFrame`: DataFrame containing trial data with columns for traits, spatial factors, and harvests
 - `factors::Vector{String}`: Vector of factor names to be considered in the model
 - `traits::Vector{String}`: Vector of trait names to be spatially adjusted
-- `verbose::Bool=false`: If true, prints detailed information during execution
+- `other_covariates::Union{Vector{String},Nothing}`: Optional vector of additional covariates to include in the model
+- `n_iter::Int64`: Number of MCMC iterations (default: 10_000)
+- `n_burnin::Int64`: Number of burn-in iterations for MCMC (default: 1_000)
+- `seed::Int64`: Random seed for reproducibility (default: 1234)
+- `verbose::Bool`: If true, prints detailed information during execution (default: false)
 
 # Returns
 A tuple containing:
@@ -508,7 +514,7 @@ A tuple containing:
 - Spatial adjustment is only performed if "blocks", "rows", or "cols" are present in factors
 - Each harvest is treated separately for year- and site-specific spatial adjustment
 - Requires "harvests" column in the input DataFrame
-- Uses Bayesian linear regression for spatial modeling
+- Uses Bayesian linear regression for spatial modelling
 - Creates new columns with prefix "SPATADJ-" for adjusted traits
 - Spatial factors are automatically detected using regex pattern "blocks|rows|cols"
 
@@ -517,11 +523,29 @@ A tuple containing:
 - `ErrorException`: If "__new_spatially_adjusted_trait__" column exists in DataFrame
 
 # Examples
-```
-# TODO
+```jldoctest; setup = :(using GenomicBreedingCore, StatsBase)
+julia> genomes = simulategenomes(n=500, l=1_000, verbose=false); 
+
+julia> trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=3, verbose=false);
+
+julia> df = tabularise(trials);
+
+julia> df, factors = removespatialeffects(df = df, factors = ["rows", "cols"], traits = ["trait_1", "trait_2"], other_covariates=["trait_3"], n_iter=1_000, n_burnin=200, verbose = false);
+
+julia> ("SPATADJ-trait_1" ∈ names(df)) && ("SPATADJ-trait_2" ∈ names(df))
+true
 ```
 """
-function removespatialeffects(;df::DataFrame, factors::Vector{String}, traits::Vector{String}, verbose::Bool = false)::Tuple{DataFrame, Vector{String}}
+function removespatialeffects(;
+    df::DataFrame, 
+    factors::Vector{String}, 
+    traits::Vector{String}, 
+    other_covariates::Union{Vector{String},Nothing} = nothing,
+    n_iter::Int64 = 10_000,
+    n_burnin::Int64 = 1_000,
+    seed::Int64 = 1234,
+    verbose::Bool = false,
+)::Tuple{DataFrame, Vector{String}}
     if !(("blocks" ∈ factors) || ("rows" ∈ factors) || ("cols" ∈ factors))
         # No spatial adjustment possible/required
         return (df, factors)
@@ -596,6 +620,9 @@ function analyse(
     traits::Vector{String};
     GRM::Union{Matrix{Float64},UniformScaling} = I,
     other_covariates::Union{Vector{String},Nothing} = nothing,
+    n_iter::Int64 = 10_000,
+    n_burnin::Int64 = 1_000,
+    seed::Int64 = 1234,
     verbose::Bool = false,
 )::TEBV
     # genomes = simulategenomes(n=500, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_harvests=1, n_sites=2, n_replications=3); GRM::Union{Matrix{Float64}, UniformScaling} = I; traits = ["trait_1"]; other_covariates::Union{Vector{String}, Nothing} = ["trait_2"]; verbose::Bool = true;
@@ -661,7 +688,16 @@ function analyse(
     # Spatial analyses per harvest-site-year
     # This is to prevent OOM errors, we will perform spatial analyses per harvest per site per year, i.e. remove spatial effects per harvest-site-year
     # as well as remove the effects of continuous numeric covariate/s.
-    df, factors = removespatialeffects(df=df, factors=factors, traits=traits, verbose=verbose)
+    df, factors = removespatialeffects(
+        df=df,
+        factors=factors,
+        traits=traits,
+        other_covariates=other_covariates,
+        n_iter=n_iter,
+        n_burnin=n_burnin,
+        seed=seed,
+        verbose=verbose,
+    )
     # GxE modelling excluding the effects of spatial factors and continuous covariates
     vector_of_BLRs::Vector{BLR} = []
     non_traits = vcat("id", "replications", "populations", factors_all)
