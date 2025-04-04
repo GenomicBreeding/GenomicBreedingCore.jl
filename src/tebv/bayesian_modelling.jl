@@ -194,7 +194,12 @@ function instantiateblr(;
                     false for (i, x) in enumerate(match.(Regex("&"), coefficient_names_ALL))
                 ]
         end
-        v = if !isnothing(other_covariates) && (v ∈ other_covariates) 
+        v = if isnothing(other_covariates)
+            # For categorical variables --> boolean matrix for memory-efficiency
+            blr.Xs[v] = Bool.(X[:, bool])
+            blr_ALL.Xs[v] = Bool.(X_ALL[:, bool_ALL])
+            v
+        elseif v ∈ other_covariates
             # For the continuous numeric other covariates --> Float64 matrix
             # Rename the variance component to "other_covariates"
             v = "other_covariates"
@@ -210,10 +215,7 @@ function instantiateblr(;
             end
             v
         else
-            # For categorical variables --> boolean matrix for memory-efficiency
-            blr.Xs[v] = Bool.(X[:, bool])
-            blr_ALL.Xs[v] = Bool.(X_ALL[:, bool_ALL])
-            v
+            throw(ArgumentError("The variance component: $v is not among the continuous numeric covariate/s."))
         end
         blr.Σs[v] = 1.0 * I
         blr_ALL.Σs[v] = 1.0 * I
@@ -484,6 +486,113 @@ function turingblrmcmc!(
     nothing
 end
 
+"""
+    removespatialeffects(;df::DataFrame, factors::Vector{String}, traits::Vector{String}, verbose::Bool = false)::Tuple{DataFrame, Vector{String}}
+
+Remove spatial effects from trait measurements in field trials using Bayesian linear regression.
+
+This function performs spatial adjustment for traits measured in field trials by accounting for 
+spatial variation due to blocks, rows, and columns. It creates new spatially adjusted traits 
+with the prefix "SPATADJ-" for each original trait.
+
+# Arguments
+- `df::DataFrame`: DataFrame containing trial data with columns for traits, spatial factors, and harvests
+- `factors::Vector{String}`: Vector of factor names to be considered in the model
+- `traits::Vector{String}`: Vector of trait names to be spatially adjusted
+- `verbose::Bool=false`: If true, prints detailed information during execution
+
+# Returns
+A tuple containing:
+- Modified DataFrame with new spatially adjusted traits (prefix "SPATADJ-")
+- Updated factors vector with spatial factors removed
+
+# Notes
+- Spatial adjustment is only performed if "blocks", "rows", or "cols" are present in factors
+- Each harvest is treated separately for year- and site-specific spatial adjustment
+- Requires "harvests" column in the input DataFrame
+- Uses Bayesian linear regression for spatial modeling
+- Creates new columns with prefix "SPATADJ-" for adjusted traits
+- Spatial factors are automatically detected using regex pattern "blocks|rows|cols"
+
+# Throws
+- `ArgumentError`: If input DataFrame is empty or missing required columns
+- `ErrorException`: If "__new_spatially_adjusted_trait__" column exists in DataFrame
+
+# Examples
+```
+# TODO
+```
+"""
+function removespatialeffects(;df::DataFrame, factors::Vector{String}, traits::Vector{String}, verbose::Bool = false)::Tuple{DataFrame, Vector{String}}
+    if !(("blocks" ∈ factors) || ("rows" ∈ factors) || ("cols" ∈ factors))
+        # No spatial adjustment possible/required
+        return (df, factors)
+    end
+    # Spatial adjustment is required
+    # Check arguments
+    if (size(df, 1) == 0) || (size(df, 2) == 0)
+        throw(ArgumentError("The input data frame is empty."))
+    end
+    for f in factors
+        if !(f ∈ names(df))
+            throw(ArgumentError("The input data frame does not include the factor: `$f`."))
+        end
+    end
+    for t in traits
+        if !(t ∈ names(df))
+            throw(ArgumentError("The input data frame does not include the trait: `$t`."))
+        end
+    end
+    # Make sure the "__new_spatially_adjusted_trait__" for adding new spatially adjusted traits does not exist
+    if sum(names(df) .== "__new_spatially_adjusted_trait__") > 0
+        throw(ErrorException("Please rename the trait `__new_spatially_adjusted_trait__` in the Trials table to allow us to define spatially adjusted traits."))
+    end
+    # Define spatial factors
+    spatial_factors = filter(x -> !isnothing(match(Regex("blocks|rows|cols"), x)), factors)
+    # Make sure that each harvest is year- and site-specific
+    for harvest in unique(df.harvests)
+        # harvest = unique(df.harvests)[2]
+        idx_rows = findall(df.harvests .== harvest)
+        if length(idx_rows) == 0
+            continue
+        end
+        df_sub = df[idx_rows, :]
+        for i in eachindex(traits)
+            # i = 1
+            trait = traits[i]
+            if verbose
+                println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+                println("Spatial modelling for harvest: $harvest; and trait: $trait")
+                println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+            end
+            # Add spatially adjusted trait to df
+            new_spat_adj_trait_name = string("SPATADJ-", trait)
+            if sum(names(df) .== new_spat_adj_trait_name) == 0
+                df[:, "__new_spatially_adjusted_trait__"] .= df[:, trait]
+                rename!(df, "__new_spatially_adjusted_trait__" => new_spat_adj_trait_name)
+            end
+            # Instantiate the BLR struct for spatial analysis to remove the spatial effects as well as the effects of the other covariates
+            blr_and_blr_ALL = instantiateblr(
+                trait = trait,
+                factors = spatial_factors,
+                other_covariates = other_covariates,
+                df = df_sub,
+                verbose = verbose,
+            )
+            # Spatial analysis via Bayesian linear regression
+            turingblrmcmc!(blr_and_blr_ALL, n_iter = n_iter, n_burnin = n_burnin, seed = seed, verbose = verbose)
+            # Update the spatially adjusted trait with the intercept + residuals of the spatial model above
+            # cor(df[idx_rows, new_spat_adj_trait_name], blr_and_blr_ALL[1].coefficients["intercept"] .+ blr_and_blr_ALL[1].ϵ)
+            df[idx_rows, new_spat_adj_trait_name] = blr_and_blr_ALL[1].coefficients["intercept"] .+ blr_and_blr_ALL[1].ϵ
+        end
+    end
+    # Output
+    (
+        df, 
+        filter!(x -> !(x ∈ spatial_factors), factors)
+    )
+end
+
 function analyse(
     trials::Trials,
     traits::Vector{String};
@@ -521,6 +630,8 @@ function analyse(
     end
     # Tabularise the trials data
     df = tabularise(trials)
+    # Make sure the harvests are year- and site-specific
+    df.harvests = string.(df.years, "|", df.sites, "|", df.harvests)
     # Identify non-fixed factors
     factors_all::Vector{String} = ["years", "seasons", "harvests", "sites", "blocks", "rows", "cols", "entries"]
     factors::Vector{String} = []
@@ -550,61 +661,9 @@ function analyse(
         @warn "The size of the design matrix is ~$(round(total_X_size_in_Gb)) GB. This may cause out-of-memory errors."
     end
     # Spatial analyses per harvest-site-year
-    df.harvests = string.(df.years, "|", df.sites, "|", df.harvests)
     # This is to prevent OOM errors, we will perform spatial analyses per harvest per site per year, i.e. remove spatial effects per harvest-site-year
     # as well as remove the effects of continuous numeric covariate/s.
-    df, factors = if ("blocks" ∈ factors) || ("rows" ∈ factors) || ("cols" ∈ factors)
-        # Make sure the "__new_spatially_adjusted_trait__" for adding new spatially adjusted traits does not exist
-        if sum(names(df) .== "__new_spatially_adjusted_trait__") > 0
-            throw(ErrorException("Please rename the trait `__new_spatially_adjusted_trait__` in the Trials table to allow us to define spatially adjusted traits."))
-        end
-        # Define spatial factors
-        spatial_factors = filter(x -> !isnothing(match(Regex("blocks|rows|cols"), x)), factors)
-        # Make sure that each harvest is year- and site-specific
-        for harvest in unique(df.harvests)
-            # harvest = unique(df.harvests)[2]
-            idx_rows = findall(df.harvests .== harvest)
-            if length(idx_rows) == 0
-                continue
-            end
-            df_sub = df[idx_rows, :]
-            for i in eachindex(traits)
-                # i = 1
-                trait = traits[i]
-                if verbose
-                    println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
-                    println("Spatial modelling for harvest: $harvest; and trait: $trait")
-                    println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
-                end
-                # Add spatially adjusted trait to df
-                new_spat_adj_trait_name = string("SPATADJ-", trait)
-                if sum(names(df) .== new_spat_adj_trait_name) == 0
-                    df[:, "__new_spatially_adjusted_trait__"] .= df[:, trait]
-                    rename!(df, "__new_spatially_adjusted_trait__" => new_spat_adj_trait_name)
-                end
-                # Instantiate the BLR struct for spatial analysis to remove the spatial effects as well as the effects of the other covariates
-                blr_and_blr_ALL = instantiateblr(
-                    trait = trait,
-                    factors = spatial_factors,
-                    other_covariates = other_covariates,
-                    df = df_sub,
-                    verbose = verbose,
-                )
-                # Spatial analysis via Bayesian linear regression
-                turingblrmcmc!(blr_and_blr_ALL, n_iter = n_iter, n_burnin = n_burnin, seed = seed, verbose = verbose)
-                # Update the spatially adjusted trait with the intercept + residuals of the spatial model above
-                # cor(df[idx_rows, new_spat_adj_trait_name], blr_and_blr_ALL[1].coefficients["intercept"] .+ blr_and_blr_ALL[1].ϵ)
-                df[idx_rows, new_spat_adj_trait_name] = blr_and_blr_ALL[1].coefficients["intercept"] .+ blr_and_blr_ALL[1].ϵ
-            end
-        end
-        (
-            df, 
-            filter(x -> !(x ∈ spatial_factors), factors)
-        )
-    else
-        # No spatial adjustment possible/required
-        (df, factors)
-    end
+    df, factors = removespatialeffects(df=df, factors=factors, traits=traits, verbose=verbose)
     # GxE modelling excluding the effects of spatial factors and continuous covariates
     vector_of_BLRs::Vector{BLR} = []
     non_traits = vcat("id", "replications", "populations", factors_all)

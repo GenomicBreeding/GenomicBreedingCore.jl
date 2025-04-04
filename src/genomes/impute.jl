@@ -776,16 +776,10 @@ function impute(
     if n < 2
         throw(ArgumentError("The number of entries in the genomes struct is less than 2."))
     end
-    if (p > max_n_loci_per_chrom) && (p / max_n_loci_per_chrom < 10)
+    if p < max_n_loci_per_chrom
         throw(
             ArgumentError(
-                string(
-                    "The number of loci per chromosome is less than 10, i.e. ",
-                    round(p / max_n_loci_per_chrom),
-                    ". Please consider increasing `max_n_loci_per_chrom` (currently set to ",
-                    max_n_loci_per_chrom,
-                    ").",
-                ),
+                "There are less loci (`p=$p`) than the maximum number of loci per chromosome set to define mock scaffolds (`max_n_loci_per_chrom=$max_n_loci_per_chrom`)."
             ),
         )
     end
