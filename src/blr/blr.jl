@@ -28,7 +28,7 @@ original and the cloned object.
 julia> blr = BLR(n=1, p=1);
 
 julia> copy_blr = clone(blr)
-BLR([""], Dict{String, Matrix{Union{Bool, Float64}}}("intercept" => [true;;]), Dict{String, Union{UniformScaling{Float64}, Matrix{Float64}}}("σ²" => UniformScaling{Float64}(1.0)), Dict("intercept" => [0.0]), Dict("intercept" => ["intercept"]), [0.0], [0.0], [0.0])
+BLR([""], Dict{String, Matrix{Union{Bool, Float64}}}("intercept" => [true;;]), Dict{String, Union{Nothing, UniformScaling{Float64}, Matrix{Float64}}}("σ²" => UniformScaling{Float64}(1.0)), Dict("intercept" => [0.0]), Dict("intercept" => ["intercept"]), [0.0], [0.0], [0.0])
 ```
 """
 function clone(x::BLR)::BLR
@@ -222,4 +222,76 @@ function extractXb(blr::BLR)::Tuple{Matrix{Float64},Vector{Float64},Vector{Strin
         b_labels = vcat(b_labels, blr.coefficient_names[c])
     end
     (X, b, b_labels)
+end
+
+"""
+    dimensions(blr::BLR)::Dict{String, Any}
+
+Calculate various dimensional properties of a Bayesian Linear Regression (BLR) model.
+
+# Arguments
+- `blr::BLR`: A Bayesian Linear Regression model structure
+
+# Returns
+A dictionary containing the following keys:
+- `"n_rows"`: Number of observations
+- `"n_coefficients"`: Total number of coefficients across all components
+- `"n_variance_components"`: Number of variance components
+- `"n_entries"`: Number of unique entries
+- `"coeff_per_varcomp"`: Dictionary mapping variance component names to their number of coefficients
+- `"varex_per_varcomp"`: Dictionary mapping variance component names to their variance explained (normalized)
+
+# Details
+The function performs the following:
+1. Validates BLR structure dimensions
+2. Calculates coefficients per variance component
+3. Computes variance explained for each component and normalizes by total variance
+4. Returns dimensional summary as a dictionary
+
+# Throws
+- `ArgumentError`: If the BLR structure dimensions are inconsistent
+
+# Examples
+```jldoctest; setup = :(using GenomicBreedingCore)
+julia> blr = BLR(n=10, p=6, var_comp = Dict("entries" => 5, "σ²" => 1));
+
+julia> dimensions(blr)
+Dict{String, Any} with 6 entries:
+  "n_coefficients"        => 6
+  "n_variance_components" => 2
+  "varex_per_varcomp"     => Dict("entries"=>0.333333, "σ²"=>0.666667)
+  "n_entries"             => 1
+  "n_rows"                => 10
+  "coeff_per_varcomp"     => Dict("entries"=>5.0, "σ²"=>10.0)
+```
+"""
+function dimensions(blr::BLR)::Dict{String,Any}
+    # Check argument
+    if !checkdims(blr)
+        throw(ArgumentError("BLR struct is corrupted ☹."))
+    end
+    coeff_per_varcomp::Dict{String,Float64} = Dict()
+    varex_per_varcomp::Dict{String,Float64} = Dict()
+    for (k, v) in blr.Σs
+        # k = string.(keys(blr.Σs))[2]; v = blr.Σs[k]
+        coeff_per_varcomp[k] = k == "σ²" ? length(blr.entries) : size(v, 1)
+        varex_per_varcomp[k] = if isa(v, UniformScaling{Float64})
+            v.λ * coeff_per_varcomp[k]
+        else
+            sum(diag(v))
+        end
+    end
+    # Normalise variance explained by the total variance
+    total_variance = sum([v for (_, v) in varex_per_varcomp])
+    for (k, v) in varex_per_varcomp
+        varex_per_varcomp[k] = v / total_variance
+    end
+    Dict(
+        "n_rows" => length(blr.entries),
+        "n_coefficients" => sum([length(c) for (_, c) in blr.coefficients]),
+        "n_variance_components" => length(blr.Σs),
+        "n_entries" => length(unique(blr.entries)),
+        "coeff_per_varcomp" => coeff_per_varcomp,
+        "varex_per_varcomp" => varex_per_varcomp,
+    )
 end

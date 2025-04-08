@@ -194,7 +194,7 @@ function instantiateblr(;
                     false for (i, x) in enumerate(match.(Regex("&"), coefficient_names_ALL))
                 ]
         end
-        v = if !isnothing(other_covariates) && (v ∈ other_covariates) 
+        v = if !isnothing(other_covariates) && (v ∈ other_covariates)
             # For the continuous numeric other covariates --> Float64 matrix
             # Rename the variance component to "other_covariates"
             v = "other_covariates"
@@ -298,12 +298,51 @@ Turing.@model function turingblr(
     return y ~ Distributions.MvNormal(μ, σ² * I)
 end
 
+Turing.@model function turingblrΣ(
+    vector_of_Xs_noint::Vector{Matrix{Union{Bool,Float64}}},
+    vector_of_Σs::Vector{Union{Matrix{Float64},UniformScaling{Float64}}},
+    y::Vector{Float64},
+)
+    # Sets priors to vector_of_Σs
+    # TODO: Make vector_of_Σs::Union{Nothing, Vector{Union{Matrix{Float64},UniformScaling{Float64}}}}
+    # so that if isnothing(vector_of_Σs), then we set the priors to LKJ
+
+
+
+    # Set intercept prior.
+    intercept ~ Normal(0.0, 10.0)
+    # Set variance predictors
+    P = length(vector_of_Xs_noint)
+    σ²s = fill(0.0, P)
+    Rs = [zeros(size(x, 2), size(x, 2)) for x in vector_of_Xs_noint]
+    βs = [fill(0.0, size(x, 2)) for x in vector_of_Xs_noint]
+    μ = fill(0.0, size(vector_of_Xs_noint[1], 1)) .+ intercept
+    for i = 1:P
+        p = length(βs[i])
+        σ²s[i] ~ Exponential(1.0)
+        Rs[i] ~ LKJ(p, 1.0)
+        βs[i] ~ MvNormal(zeros(p), (σ²s[i]*I) * Rs[i] * (σ²s[i]*I))
+        μ += Float64.(vector_of_Xs_noint[i]) * βs[i]
+    end
+    # Residual variance
+    σ² ~ Exponential(10.0)
+    # Return the distribution of the response variable, from which the likelihood will be derived
+    return y ~ Distributions.MvNormal(μ, σ² * I)
+end
+
+
 
 """
     turingblrmcmc!(
         blr_and_blr_ALL::Tuple{BLR,BLR};
+        turing_model::Function = turingblr,
         n_iter::Int64 = 10_000,
         n_burnin::Int64 = 1_000,
+        δ::Float64 = 0.65,
+        max_depth::Int64 = 5,
+        Δ_max::Float64 = 1000.0,
+        init_ϵ::Float64 = 0.2,
+        adtype::AutoReverseDiff = AutoReverseDiff(compile = true),
         seed::Int64 = 1234,
         verbose::Bool = true
     )::Nothing
@@ -314,8 +353,14 @@ Perform MCMC sampling for Bayesian Linear Regression on a tuple of BLR models us
 - `blr_and_blr_ALL::Tuple{BLR,BLR}`: Tuple containing two BLR models:
     - First element: Model to be fitted
     - Second element: Full model for comparison
+- `turing_model::Function`: The Turing model function to use (default: turingblr)
 - `n_iter::Int64`: Number of MCMC iterations (default: 10,000)
 - `n_burnin::Int64`: Number of burn-in iterations to discard (default: 1,000)
+- `δ::Float64`: Target acceptance rate for dual averaging (default: 0.65)
+- `max_depth::Int64`: Maximum doubling tree depth (default: 5)
+- `Δ_max::Float64`: Maximum divergence during doubling tree (default: 1000.0)
+- `init_ϵ::Float64`: Initial step size; 0 means auto-search using heuristics (default: 0.2)
+- `adtype::AutoReverseDiff`: Automatic differentiation type (default: AutoReverseDiff(compile = true))
 - `seed::Int64`: Random seed for reproducibility (default: 1234)
 - `verbose::Bool`: Whether to show progress during sampling (default: true)
 
@@ -324,7 +369,7 @@ Perform MCMC sampling for Bayesian Linear Regression on a tuple of BLR models us
 
 # Notes
 - Performs model validation checks before fitting
-- Uses NUTS (No-U-Turn Sampler) with AutoReverseDiff
+- Uses NUTS (No-U-Turn Sampler) with specified AD type
 - Computes convergence diagnostics using Gelman-Rubin statistics (R̂)
 - Warns if parameters haven't converged (|1.0 - R̂| > 0.1)
 - Updates both models with:
@@ -361,8 +406,14 @@ true
 """
 function turingblrmcmc!(
     blr_and_blr_ALL::Tuple{BLR,BLR};
+    turing_model::Function = turingblr,
     n_iter::Int64 = 10_000,
     n_burnin::Int64 = 1_000,
+    δ::Float64 = 0.65, #  Target acceptance rate for dual averaging
+    max_depth::Int64 = 5, # Maximum doubling tree depth
+    Δ_max::Float64 = 1000.0, # Maximum divergence during doubling tree
+    init_ϵ::Float64 = 0.2, # Initial step size; 0 means automatically searching using a heuristic procedure
+    adtype::AutoReverseDiff = AutoReverseDiff(compile = true),
     seed::Int64 = 1234,
     verbose = true,
 )::Nothing
@@ -415,9 +466,8 @@ function turingblrmcmc!(
     end
     # Instantiate the RNG, model, and sampling function
     rng::TaskLocalRNG = Random.seed!(seed)
-    model = turingblr(vector_of_Xs_noint, vector_of_Σs, y)
-    sampling_function =
-        NUTS(n_burnin, 0.65, max_depth = 5, Δ_max = 1000.0, init_ϵ = 0.2; adtype = AutoReverseDiff(compile = true))
+    model = turing_model(vector_of_Xs_noint, vector_of_Σs, y)
+    sampling_function = NUTS(n_burnin, δ, max_depth = max_depth, Δ_max = Δ_max, init_ϵ = init_ϵ; adtype = adtype)
     # MCMC
     if verbose
         println(
@@ -431,8 +481,12 @@ function turingblrmcmc!(
     end
     R̂ = DataFrame(MCMCDiagnosticTools.rhat(chain, kind = :rank, split_chains = 5)) # new R̂: maximum R̂ of :bulk and :tail
     n_params_which_may_not_have_converged = sum(abs.(1.0 .- R̂.rhat) .> 0.1)
-    if verbose && (n_params_which_may_not_have_converged > 0)
-        @warn "There are $n_params_which_may_not_have_converged parameters (out of $(nrow(R̂)) total parameters) which may not have converged. Please consider increasing the number of iterations which is currently at $n_iter."
+    if verbose
+        if n_params_which_may_not_have_converged > 0
+            @warn "There are $n_params_which_may_not_have_converged parameters (out of $(nrow(R̂)) total parameters) which may not have converged. Please consider increasing the number of iterations which is currently at $n_iter."
+        else
+            println("All parameters have converged.")
+        end
     end
     # Use the mean parameter values which excludes the first n_burnin iterations
     params = Turing.get_params(chain[:, :, :])
@@ -537,20 +591,22 @@ true
 ```
 """
 function removespatialeffects(;
-    df::DataFrame, 
-    factors::Vector{String}, 
-    traits::Vector{String}, 
+    df::DataFrame,
+    factors::Vector{String},
+    traits::Vector{String},
     other_covariates::Union{Vector{String},Nothing} = nothing,
     n_iter::Int64 = 10_000,
     n_burnin::Int64 = 1_000,
     seed::Int64 = 1234,
     verbose::Bool = false,
-)::Tuple{DataFrame, Vector{String}}
+)::Tuple{DataFrame,Vector{String}}
     if !(("blocks" ∈ factors) || ("rows" ∈ factors) || ("cols" ∈ factors))
         # No spatial adjustment possible/required
         return (df, factors)
     end
-    # Spatial adjustment is required
+    if !("entries" ∈ names(df))
+        throw(ArgumentError("There is no `entries` in the input data frame (`df`)."))
+    end
     # Check arguments
     if (size(df, 1) == 0) || (size(df, 2) == 0)
         throw(ArgumentError("The input data frame is empty."))
@@ -567,7 +623,11 @@ function removespatialeffects(;
     end
     # Make sure the "__new_spatially_adjusted_trait__" for adding new spatially adjusted traits does not exist
     if sum(names(df) .== "__new_spatially_adjusted_trait__") > 0
-        throw(ErrorException("Please rename the trait `__new_spatially_adjusted_trait__` in the Trials table to allow us to define spatially adjusted traits."))
+        throw(
+            ErrorException(
+                "Please rename the trait `__new_spatially_adjusted_trait__` in the Trials table to allow us to define spatially adjusted traits.",
+            ),
+        )
     end
     # Define spatial factors
     spatial_factors = filter(x -> !isnothing(match(Regex("blocks|rows|cols"), x)), factors)
@@ -608,24 +668,47 @@ function removespatialeffects(;
             df[idx_rows, new_spat_adj_trait_name] = blr_and_blr_ALL[1].coefficients["intercept"] .+ blr_and_blr_ALL[1].ϵ
         end
     end
+    # Is the entries the only factor remaining?
+    if length(factors) == 1
+        return (df, factors)
+    end
+    # Factors with more than 1 level after correcting for spatial effects other than entries
+    factors_out = ["entries"]
+    Xs = [Bool.(modelmatrix(term("entries"), df))]
+    for i in findall([x != "entries" for x in factors])
+        # i = findall([x != "entries" for x in factors])[2]
+        if (factors[i] ∈ spatial_factors) || (length(unique(df[:, factors[i]])) == 1)
+            continue
+        end
+        xi = Bool.(modelmatrix(term(factors[i]), df))
+        matched::Bool = false
+        for j in eachindex(Xs)
+            # j = 1
+            if Xs[j] == xi
+                matched = true
+                break
+            end
+        end
+        if !matched
+            push!(Xs, xi)
+            push!(factors_out, factors[i])
+        end
+    end
     # Output
-    (
-        df, 
-        filter!(x -> !(x ∈ spatial_factors), factors)
-    )
+    (df, factors_out)
 end
 
 function analyse(
     trials::Trials,
     traits::Vector{String};
-    GRM::Union{Matrix{Float64},UniformScaling} = I,
+    grm::Union{GRM,Nothing} = nothing,
     other_covariates::Union{Vector{String},Nothing} = nothing,
     n_iter::Int64 = 10_000,
     n_burnin::Int64 = 1_000,
     seed::Int64 = 1234,
     verbose::Bool = false,
 )::TEBV
-    # genomes = simulategenomes(n=500, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_harvests=1, n_sites=2, n_replications=3); GRM::Union{Matrix{Float64}, UniformScaling} = I; traits = ["trait_1"]; other_covariates::Union{Vector{String}, Nothing} = ["trait_2"]; verbose::Bool = true;
+    # genomes = simulategenomes(n=500, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=2, n_replications=3); grm::Union{GRM, Nothing} = grmploidyaware(genomes; ploidy = 2, max_iter = 10, verbose = true); traits = ["trait_1"]; other_covariates::Union{Vector{String}, Nothing} = ["trait_2"]; n_iter::Int64 = 1_000; n_burnin::Int64 = 100; seed::Int64 = 1234; verbose::Bool = true;
     # Check arguments
     if !checkdims(trials)
         error("The Trials struct is corrupted ☹.")
@@ -636,6 +719,12 @@ function analyse(
                 throw(ArgumentError("The `traits` ($traits) argument is not a trait in the Trials struct."))
             end
         end
+    end
+    if !isnothing(grm)
+        if !checkdims(grm)
+            throw(ArgumentError("The GRM is corrupted ☹."))
+        end
+
     end
     if !isnothing(other_covariates)
         for c in other_covariates
@@ -658,7 +747,7 @@ function analyse(
     # Make sure the harvests are year- and site-specific
     df.harvests = string.(df.years, "|", df.sites, "|", df.harvests)
     # Identify non-fixed factors
-    factors_all::Vector{String} = ["years", "seasons", "harvests", "sites", "blocks", "rows", "cols", "entries"]
+    factors_all::Vector{String} = ["years", "seasons", "sites", "harvests", "blocks", "rows", "cols", "entries"]
     factors::Vector{String} = []
     for f in factors_all
         # f = factors_all[1]
@@ -689,14 +778,14 @@ function analyse(
     # This is to prevent OOM errors, we will perform spatial analyses per harvest per site per year, i.e. remove spatial effects per harvest-site-year
     # as well as remove the effects of continuous numeric covariate/s.
     df, factors = removespatialeffects(
-        df=df,
-        factors=factors,
-        traits=traits,
-        other_covariates=other_covariates,
-        n_iter=n_iter,
-        n_burnin=n_burnin,
-        seed=seed,
-        verbose=verbose,
+        df = df,
+        factors = factors,
+        traits = traits,
+        other_covariates = other_covariates,
+        n_iter = n_iter,
+        n_burnin = n_burnin,
+        seed = seed,
+        verbose = verbose,
     )
     # GxE modelling excluding the effects of spatial factors and continuous covariates
     vector_of_BLRs::Vector{BLR} = []
@@ -710,13 +799,34 @@ function analyse(
             println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
         end
         # Instantiate the BLR struct for GxE analysis
-        blr_and_blr_ALL = instantiateblr(
-            trait = trait,
-            factors = factors,
-            other_covariates = nothing,
-            df = df,
-            verbose = verbose,
-        )
+        # Note that the covariate is now excluded as we should have controlled for them in the per harvest-site-year spatial analyses
+        blr_and_blr_ALL =
+            instantiateblr(trait = trait, factors = factors, other_covariates = nothing, df = df, verbose = verbose)
+
+
+        # Proper variance partitioning
+        # Prepare the variance-covariance matrix for the entries effects, i.e. using I or a GRM
+        if !isnothing(grm)
+            blr_and_blr_ALL[1].Σs["entries"] = grm.genomic_relationship_matrix
+            blr_and_blr_ALL[2].Σs["entries"] = grm.genomic_relationship_matrix
+
+            for (i, entry_1) in enumerate(blr_and_blr_ALL[1].coefficient_names["entries"])
+                for (j, entry_2) in enumerate(blr_and_blr_ALL[1].coefficient_names["entries"])
+
+
+                    blr_and_blr_ALL[1].coefficient_names["harvests & entries"]
+                    factors
+                    n = length(unique(df.entries))
+                    s = length(unique(df.sites))
+                end
+            end
+
+
+        end
+
+
+
+
         # GxE analysis via Bayesian linear regression
         turingblrmcmc!(blr_and_blr_ALL, n_iter = n_iter, n_burnin = n_burnin, seed = seed, verbose = verbose)
         # blr_and_blr_ALL[1].Xs
@@ -726,7 +836,7 @@ function analyse(
         # blr_and_blr_ALL[1].y
         # blr_and_blr_ALL[1].ŷ
         # blr_and_blr_ALL[1].ϵ
-        # Add the full BLR model, i.e. one-hot encoding which includes all factor levels
+        # Collect the full BLR model, i.e. one-hot encoding which includes all factor levels (and not the df-1 model or the model that was fitted)
         push!(vector_of_BLRs, blr_and_blr_ALL[2])
     end
 

@@ -488,22 +488,19 @@ function simulatetrials(;
                                 trials.sites[idx_out_ini:idx_out_fin] = repeat([effects.id[5]]; outer = n)
                                 trials.replications[idx_out_ini:idx_out_fin] = repeat([effects.id[6]]; outer = n)
                                 trials.blocks[idx_out_ini:idx_out_fin] =
-                                    "Block_" .*
-                                    lpad.(
+                                    "Block_" .* lpad.(
                                         field_layout[idx_field_layout, 2][idx_randomised_entries],
                                         length(string(n_blocks)),
                                         "0",
                                     )
                                 trials.rows[idx_out_ini:idx_out_fin] =
-                                    "Row_" .*
-                                    lpad.(
+                                    "Row_" .* lpad.(
                                         field_layout[idx_field_layout, 3][idx_randomised_entries],
                                         length(string(n_rows)),
                                         "0",
                                     )
                                 trials.cols[idx_out_ini:idx_out_fin] =
-                                    "Col_" .*
-                                    lpad.(
+                                    "Col_" .* lpad.(
                                         field_layout[idx_field_layout, 4][idx_randomised_entries],
                                         length(string(n_cols)),
                                         "0",

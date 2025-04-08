@@ -1,25 +1,33 @@
 """
-    inflatediagonals!(X::Matrix{Float64}; ϵ::Float64=eps(Float64), max_iter::Int64=1_000, verbose::Bool=false)::Nothing
+    inflatediagonals!(X::Matrix{Float64}; max_iter::Int64=1_000, verbose::Bool=false)::Nothing
 
 Ensure matrix invertibility by iteratively inflating diagonal elements until the determinant is nonzero.
 
 # Arguments
-- `X::Matrix{Float64}`: Input square matrix to be modified in-place
-- `ϵ::Float64=eps(Float64)`: Initial inflation value for diagonal elements
+- `X::Matrix{Float64}`: Input square symmetric matrix to be modified in-place
 - `max_iter::Int64=1_000`: Maximum number of iterations
 - `verbose::Bool=false`: If true, prints information about the inflation process
 
 # Details
 The function adds progressively larger values to the diagonal elements until the matrix
 becomes invertible (det(X) > eps(Float64)) or the maximum number of iterations is reached.
-The inflation value ϵ increases slightly in each iteration.
+The initial inflation value ϵ is set to the maximum absolute value in the matrix and
+increases slightly in each iteration.
+
+# Throws
+- `ArgumentError`: If the input matrix is not symmetric
+- `ArgumentError`: If the input matrix is not square
+- `ArgumentError`: If the input matrix contains NaN values
+- `ArgumentError`: If the input matrix contains Inf values
 
 # Returns
 `Nothing`. The input matrix `X` is modified in-place.
 
 # Example
 ```jldoctest; setup = :(using GenomicBreedingCore, LinearAlgebra)
-julia> X::Matrix{Float64} = rand(10,10);
+julia> x::Vector{Float64} = rand(10);
+
+julia> X::Matrix{Float64} = x * x';
 
 julia> inflatediagonals!(X);
 
@@ -27,12 +35,23 @@ julia> det(X) > eps(Float64)
 true
 ```
 """
-function inflatediagonals!(
-    X::Matrix{Float64};
-    ϵ::Float64 = eps(Float64),
-    max_iter::Int64 = 1_000,
-    verbose::Bool = false,
-)::Nothing
+function inflatediagonals!(X::Matrix{Float64}; max_iter::Int64 = 1_000, verbose::Bool = false)::Nothing
+    # Check arguments
+    if !issymmetric(X)
+        throw(ArgumentError("The input matrix is not symmetric."))
+    end
+    if size(X, 1) != size(X, 2)
+        throw(ArgumentError("The input matrix is not square."))
+    end
+    if det(X) > eps(Float64)
+        return nothing
+    end
+    if sum(isnan.(X)) > 0
+        throw(ArgumentError("The input matrix contains NaN values."))
+    end
+    if sum(isinf.(X)) > 0
+        throw(ArgumentError("The input matrix contains Inf values."))
+    end
     iter = 0
     ϵ = maximum(abs.(X))
     ϵ_total = 0.0
@@ -108,7 +127,7 @@ function grmsimple(genomes::Genomes; max_iter::Int64 = 1_000, verbose::Bool = fa
         end
     end
     # Inflate the diagonals until invertible
-    inflatediagonals!(grm.genomic_relationship_matrix, verbose = verbose)
+    inflatediagonals!(grm.genomic_relationship_matrix, max_iter = max_iter, verbose = verbose)
     # Output
     if !checkdims(grm)
         throw(ErrorException("Error computing a simple GRM."))
@@ -186,7 +205,7 @@ function grmploidyaware(genomes::Genomes; ploidy::Int64 = 2, max_iter::Int64 = 1
         end
     end
     # Inflate the diagonals until invertible
-    inflatediagonals!(grm.genomic_relationship_matrix, verbose = verbose)
+    inflatediagonals!(grm.genomic_relationship_matrix, max_iter = max_iter, verbose = verbose)
     # Output
     if verbose
         UnicodePlots.heatmap(grm.genomic_relationship_matrix)

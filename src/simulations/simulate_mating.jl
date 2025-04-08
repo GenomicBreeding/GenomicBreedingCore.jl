@@ -150,8 +150,8 @@ function simulatemating(;
             # Sample the progeny allele frequencies
             progeny_allele_freqs::Matrix{Float64} = rand(rng, mvnormal_distribution, pop_size_per_gen[t])'
             # Restrict allele frequencies between zero and one
-            progeny_allele_freqs[progeny_allele_freqs.>1.0] .= 1.0
-            progeny_allele_freqs[progeny_allele_freqs.<0.0] .= 0.0
+            progeny_allele_freqs[progeny_allele_freqs .> 1.0] .= 1.0
+            progeny_allele_freqs[progeny_allele_freqs .< 0.0] .= 0.0
             # Make sure allele frequencies sum up to one for multiallelic loci
             for j in eachindex(loci_ini_idx[idx_loci])
                 # j = 1

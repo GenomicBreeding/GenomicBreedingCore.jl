@@ -198,7 +198,7 @@ Bayesian Linear Regression (BLR) model structure for phenotype analyses, genomic
 # Fields
 - `entries::Vector{String}`: Names or identifiers for the observations
 - `Xs::Dict{String,Matrix{Union{Bool,Float64}}}`: Design matrices for factors and numeric matrix for covariates, including intercept
-- `Σs::Dict{String,Union{Matrix{Float64},UniformScaling{Float64}}}`: Variance-covariance matrices for random effects
+- `Σs::Dict{String,Union{Nothing,Matrix{Float64},UniformScaling{Float64}}}`: Variance-covariance matrices for random effects
 - `coefficients::Dict{String, Vector{Float64}}`: Dictionary of estimated coefficients/effects grouped by component
 - `coefficient_names::Dict{String, Vector{String}}`: Dictionary of names for coefficients grouped by component
 - `y::Vector{Float64}`: Response/dependent variable vector
@@ -237,7 +237,7 @@ variance-covariance matrix (Σ), coefficients, and coefficient names.
 mutable struct BLR <: AbstractGB
     entries::Vector{String}
     Xs::Dict{String,Matrix{Union{Bool,Float64}}}
-    Σs::Dict{String,Union{Matrix{Float64},UniformScaling{Float64}}}
+    Σs::Dict{String,Union{Nothing,Matrix{Float64},UniformScaling{Float64}}}
     coefficients::Dict{String,Vector{Float64}}
     coefficient_names::Dict{String,Vector{String}}
     y::Vector{Float64}
@@ -276,7 +276,7 @@ mutable struct BLR <: AbstractGB
         ϵ = zeros(n)
         # Define the design matrices including the intercept
         Xs = Dict("intercept" => Bool.(ones(n, 1)))
-        Σs::Dict{String,Union{Matrix{Float64},UniformScaling{Float64}}} = Dict("σ²" => 1.0 * I)
+        Σs::Dict{String,Union{Nothing,Matrix{Float64},UniformScaling{Float64}}} = Dict("σ²" => 1.0 * I)
         coefficients = Dict("intercept" => [0.0])
         coefficient_names = Dict("intercept" => ["intercept"])
         for v in string.(keys(var_comp))

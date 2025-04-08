@@ -512,8 +512,8 @@ function simulateallelefreqs!(
                 allele_freqs = 1 .- sum_of_prev_allele_freqs
             end
             # Bound frequencies between 0.0 and 1.0
-            allele_freqs[allele_freqs.>1.0] .= 1.0
-            allele_freqs[allele_freqs.<0.0] .= 0.0
+            allele_freqs[allele_freqs .> 1.0] .= 1.0
+            allele_freqs[allele_freqs .< 0.0] .= 0.0
             # Store frequencies in output matrix
             allele_frequencies[j, range(idx_ini, idx_fin; step = (n_alleles - 1))] = allele_freqs
             if !isnothing(pb)
