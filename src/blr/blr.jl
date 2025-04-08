@@ -273,8 +273,14 @@ function dimensions(blr::BLR)::Dict{String,Any}
     coeff_per_varcomp::Dict{String,Float64} = Dict()
     varex_per_varcomp::Dict{String,Float64} = Dict()
     for (k, v) in blr.Σs
-        # k = string.(keys(blr.Σs))[2]; v = blr.Σs[k]
-        coeff_per_varcomp[k] = k == "σ²" ? length(blr.entries) : size(v, 1)
+        # k = string.(keys(blr.Σs))[1]; v = blr.Σs[k]
+        coeff_per_varcomp[k] = if k == "σ²"
+            length(blr.entries)
+        elseif isa(v, UniformScaling{Float64})
+            size(blr.Xs[k], 2)
+        else
+            size(v, 1)
+        end
         varex_per_varcomp[k] = if isa(v, UniformScaling{Float64})
             v.λ * coeff_per_varcomp[k]
         else
