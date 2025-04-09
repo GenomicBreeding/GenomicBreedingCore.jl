@@ -328,8 +328,7 @@ function filterbysparsity(
         bool[1] =
             (length(entry_sparsities) > 0) &&
             (length(locus_sparsities) > 0) &&
-            (maximum(entry_sparsities) > max_entry_sparsity) &&
-            (maximum(locus_sparsities) > max_locus_sparsity)
+            ((maximum(entry_sparsities) > max_entry_sparsity) || (maximum(locus_sparsities) > max_locus_sparsity))
         if !bool[1]
             break
         end
@@ -342,8 +341,7 @@ function filterbysparsity(
         bool[1] =
             (length(entry_sparsities) > 0) &&
             (length(locus_sparsities) > 0) &&
-            (maximum(entry_sparsities) > max_entry_sparsity) &&
-            (maximum(locus_sparsities) > max_locus_sparsity)
+            ((maximum(entry_sparsities) > max_entry_sparsity) || (maximum(locus_sparsities) > max_locus_sparsity))
         if !bool[1]
             break
         end
