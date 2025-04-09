@@ -300,15 +300,10 @@ end
 
 Turing.@model function turingblrΣ(
     vector_of_Xs_noint::Vector{Matrix{Union{Bool,Float64}}},
-    vector_of_Σs::Vector{Union{Matrix{Float64},UniformScaling{Float64}}},
+    _vector_of_Σs::Vector{Union{Matrix{Float64},UniformScaling{Float64}}},
     y::Vector{Float64},
 )
-    # Sets priors to vector_of_Σs
-    # TODO: Make vector_of_Σs::Union{Nothing, Vector{Union{Matrix{Float64},UniformScaling{Float64}}}}
-    # so that if isnothing(vector_of_Σs), then we set the priors to LKJ
-
-
-
+    # Note: Sets priors to vector_of_Σs, assuming isnothing(vector_of_Σs) == true
     # Set intercept prior.
     intercept ~ Normal(0.0, 10.0)
     # Set variance predictors
@@ -319,9 +314,10 @@ Turing.@model function turingblrΣ(
     μ = fill(0.0, size(vector_of_Xs_noint[1], 1)) .+ intercept
     for i = 1:P
         p = length(βs[i])
-        σ²s[i] ~ Exponential(1.0)
+        σ²s[i] ~ Exponential(10.0)
         Rs[i] ~ LKJ(p, 1.0)
-        βs[i] ~ MvNormal(zeros(p), (σ²s[i]*I) * Rs[i] * (σ²s[i]*I))
+        Σ = Symmetric((σ²s[i]*I) * Rs[i] * (σ²s[i]*I))
+        βs[i] ~ MvNormal(zeros(p), Σ)
         μ += Float64.(vector_of_Xs_noint[i]) * βs[i]
     end
     # Residual variance
@@ -421,8 +417,14 @@ function turingblrmcmc!(
     # trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=3, verbose=false);
     # df = tabularise(trials);
     # blr_and_blr_ALL = instantiateblr(trait = trials.traits[1], factors = ["rows", "cols"], df = df, other_covariates = trials.traits[2:end], verbose = false);
+    # turing_model = turingblr # turing_model = turingblrΣ
     # n_iter = 1_000
     # n_burnin = 500
+    # δ = 0.65
+    # max_depth = 5
+    # Δ_max = 1000.0
+    # init_ϵ = 0.2
+    # adtype = AutoReverseDiff(compile = true)
     # seed = 1234
     # verbose = true
     # Check arguments
