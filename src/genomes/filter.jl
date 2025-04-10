@@ -221,8 +221,8 @@ Filter genomic data by removing entries and loci with high sparsity.
 - `genomes::Genomes`: A `Genomes` struct containing the genomic data.
 - `max_entry_sparsity::Float64`: The maximum allowable sparsity for entries. Default is 0.0.
 - `max_locus_sparsity::Float64`: The maximum allowable sparsity for loci. Default is 0.0.
-- `max_entry_sparsity_percentile::Float64`: The percentile threshold for entry sparsity. Default is 0.90.
-- `max_locus_sparsity_percentile::Float64`: The percentile threshold for locus sparsity. Default is 0.50.
+- `max_entry_sparsity_percentile::Float64`: The percentile threshold for entry sparsity used in iteratively filtering out the sparsest entries. Default is 0.90.
+- `max_locus_sparsity_percentile::Float64`: The percentile threshold for locus sparsity used in iteratively filtering out sparsest loci. Default is 0.50.
 - `verbose::Bool`: If `true`, prints detailed progress information during the filtering process. Default is `false`.
 
 # Returns
@@ -235,8 +235,8 @@ This function filters genomic data by iteratively removing entries and loci with
 2. **Calculate Sparsities**: Computes the sparsities of entries and loci in the genomic data.
 3. **Initial Check**: Checks if the input `Genomes` struct passes all the filtering thresholds. If so, returns the original `Genomes` struct.
 4. **Iterative Filtering**: Iteratively removes the sparsest loci and entries until the maximum allowable sparsity thresholds are met:
-   - **Remove Sparsest Loci**: Removes loci with sparsity above the specified percentile threshold.
-   - **Remove Sparsest Entries**: Removes entries with sparsity above the specified percentile threshold.
+   - **Remove Sparsest Loci**: Removes loci with sparsity above the specified percentile threshold or maximum loci sparsity, whichever is higher.
+   - **Remove Sparsest Entries**: Removes entries with sparsity above the specified percentile threshold or maximum entries sparsity, whichever is higher.
 5. **Verbose Output**: If `verbose` is `true`, prints detailed progress information during each iteration.
 6. **Final Check**: Ensures that there are remaining entries and loci after filtering. Throws an `ErrorException` if all entries or loci are filtered out.
 7. **Output**: Returns the filtered `Genomes` struct.
@@ -245,6 +245,9 @@ This function filters genomic data by iteratively removing entries and loci with
 - The function uses percentile thresholds to iteratively remove the sparsest loci and entries.
 - The `verbose` option provides additional insights into the filtering process by printing progress information.
 - The function ensures that the filtered genomic data retains a minimum number of entries and loci.
+- If one of `max_entry_sparsity` or `max_locus_sparsity` is set to 1.00, the other threshold may not be met because
+ filtering out entries/loci further will mean filtering the other but the requirement at 100% maximum sparsity is already met.
+ At instances like this, you may manually reduced the maximum sparsity level from 1.00.
 
 # Throws
 - `ArgumentError`: If the `Genomes` struct is corrupted.
@@ -262,6 +265,13 @@ julia> size(genomes.allele_frequencies)
 
 julia> size(filtered_genomes.allele_frequencies)
 (92, 1239)
+
+julia> entry_sparsities, locus_sparsities = sparsities(filtered_genomes);
+
+julia> maximum(entry_sparsities) == maximum(locus_sparsities) == 0.0
+true
+
+julia> filtered_genomes_2 = filterbysparsity(genomes, max_entry_sparsity=1.00, max_locus_sparsity=0.00);
 ```
 """
 function filterbysparsity(
@@ -291,6 +301,24 @@ function filterbysparsity(
     end
     # Calculate sparsities
     entry_sparsities, locus_sparsities = sparsities(genomes)
+    if verbose
+        display(
+            UnicodePlots.histogram(
+                entry_sparsities,
+                title = "Entry Sparsities",
+                xlabel = "Sparsity",
+                ylabel = "Frequency",
+            ),
+        )
+        display(
+            UnicodePlots.histogram(
+                locus_sparsities,
+                title = "Locus Sparsities",
+                xlabel = "Sparsity",
+                ylabel = "Frequency",
+            ),
+        )
+    end
     # Instantiate the boolean vector for the while-loop to iteratively filter the Genomes struct
     bool::Vector{Bool} = [
         (length(entry_sparsities) > 0) &&
@@ -321,7 +349,15 @@ function filterbysparsity(
         iter += 1
         # Start every iteration by removing the sparsest loci
         genomes = begin
-            m = maximum([max_locus_sparsity, quantile(locus_sparsities, max_locus_sparsity_percentile)])
+            q = (1.00 - max_locus_sparsity) * max_locus_sparsity_percentile
+            m = maximum([max_locus_sparsity, quantile(locus_sparsities, q)])
+
+            # m = if maximum(entry_sparsities) < max_entry_sparsity
+            #     max_locus_sparsity
+            # else
+
+            # end
+
             slice(genomes, idx_loci_alleles = findall(locus_sparsities .<= m))
         end
         entry_sparsities, locus_sparsities = sparsities(genomes)
@@ -332,9 +368,29 @@ function filterbysparsity(
         if !bool[1]
             break
         end
+        if verbose
+            println("Iteration: $iter | Loci retained: $(length(genomes.loci_alleles)) / $(data_size[2])")
+            display(
+                UnicodePlots.histogram(
+                    entry_sparsities,
+                    title = "Entry Sparsities",
+                    xlabel = "Sparsity",
+                    ylabel = "Frequency",
+                ),
+            )
+            display(
+                UnicodePlots.histogram(
+                    locus_sparsities,
+                    title = "Locus Sparsities",
+                    xlabel = "Sparsity",
+                    ylabel = "Frequency",
+                ),
+            )
+        end
         # Finish each iteration by removing the sparsest entries
         genomes = begin
-            m = maximum([max_entry_sparsity, quantile(entry_sparsities, max_entry_sparsity_percentile)])
+            q = (1.00 - max_entry_sparsity) * max_entry_sparsity_percentile
+            m = maximum([max_entry_sparsity, quantile(entry_sparsities, q)])
             slice(genomes, idx_entries = findall(entry_sparsities .<= m))
         end
         entry_sparsities, locus_sparsities = sparsities(genomes)
@@ -344,6 +400,25 @@ function filterbysparsity(
             ((maximum(entry_sparsities) > max_entry_sparsity) || (maximum(locus_sparsities) > max_locus_sparsity))
         if !bool[1]
             break
+        end
+        if verbose
+            println("Iteration: $iter | Entries retained: $(length(genomes.entries)) / $(data_size[1])")
+            display(
+                UnicodePlots.histogram(
+                    entry_sparsities,
+                    title = "Entry Sparsities",
+                    xlabel = "Sparsity",
+                    ylabel = "Frequency",
+                ),
+            )
+            display(
+                UnicodePlots.histogram(
+                    locus_sparsities,
+                    title = "Locus Sparsities",
+                    xlabel = "Sparsity",
+                    ylabel = "Frequency",
+                ),
+            )
         end
         if data_size == collect(size(genomes.allele_frequencies))
             if verbose
@@ -363,12 +438,29 @@ function filterbysparsity(
             @show dimensions(genomes)
             println("Maximum entry sparsity = $(maximum(entry_sparsities))")
             println("Maximum locus sparsity = $(maximum(locus_sparsities))")
+            display(
+                UnicodePlots.histogram(
+                    entry_sparsities,
+                    title = "Entry Sparsities",
+                    xlabel = "Sparsity",
+                    ylabel = "Frequency",
+                ),
+            )
+            display(
+                UnicodePlots.histogram(
+                    locus_sparsities,
+                    title = "Locus Sparsities",
+                    xlabel = "Sparsity",
+                    ylabel = "Frequency",
+                ),
+            )
         end
     end
     if verbose
         println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
         println("Finished: ")
         @show dimensions(genomes)
+        entry_sparsities, locus_sparsities = sparsities(genomes)
         println("Maximum entry sparsity = $(maximum(entry_sparsities))")
         println("Maximum locus sparsity = $(maximum(locus_sparsities))")
     end
