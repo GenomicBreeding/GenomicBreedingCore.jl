@@ -8,7 +8,7 @@ using Distributions, SparseArrays, PDMats
 using StatsModels, MixedModels
 using Turing, MCMCDiagnosticTools, Zygote, ReverseDiff
 using MultivariateStats
-using UnicodePlots, Plots
+using UnicodePlots
 using JLD2
 using ProgressMeter
 using Suppressor
