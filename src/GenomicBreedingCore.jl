@@ -61,4 +61,6 @@ export @stringevaluation, addcompositetrait
 export maskmissing!, divideintomockscaffolds, estimateld, estimatedistances, knni, knnioptim, impute
 export inflatediagonals!, grmsimple, grmploidyaware
 
+export CorrDist, CorrDistSampler, F
+
 end
