@@ -14,7 +14,7 @@ using Distributions, SparseArrays, PDMats
 using StatsModels, MixedModels
 using Turing, MCMCDiagnosticTools, Zygote, ReverseDiff
 using MultivariateStats
-using UnicodePlots, Plots
+using UnicodePlots
 using ProgressMeter
 using Suppressor
 using JLD2

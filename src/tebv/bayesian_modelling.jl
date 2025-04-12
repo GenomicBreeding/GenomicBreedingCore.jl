@@ -277,253 +277,29 @@ Bayesian Linear Regression model implemented using Turing.jl.
 """
 Turing.@model function turingblr(
     vector_of_Xs_noint::Vector{Matrix{Union{Bool,Float64}}},
-    vector_of_Σs::Vector{Union{Matrix{Float64},UniformScaling{Float64}}},
+    vector_of_Δs::Vector{Union{Matrix{Float64},UniformScaling{Float64}}},
+    length_of_σs::Vector{Int64},
     y::Vector{Float64},
 )
     # Set intercept prior.
     intercept ~ Normal(0.0, 10.0)
     # Set variance predictors
-    P = length(vector_of_Xs_noint)
-    σ²s = fill(0.0, P)
-    βs = [fill(0.0, size(x, 2)) for x in vector_of_Xs_noint]
-    μ = fill(0.0, size(vector_of_Xs_noint[1], 1)) .+ intercept
-    for i = 1:P
-        σ²s[i] ~ Exponential(1.0)
-        βs[i] ~ MvNormal(zeros(length(βs[i])), σ²s[i] * vector_of_Σs[i])
+    p = size(vector_of_Xs_noint[1], 1)
+    k = length(vector_of_Xs_noint)
+    σ²s = [fill(0.0, length_of_σs[i]) for i in 1:k]
+    βs = [fill(0.0, size(vector_of_Xs_noint[i], 2)) for i in 1:k]
+    μ = fill(0.0, p) .+ intercept
+    for i = 1:k
+        σ²s[i] ~ filldist(Exponential(1.0), length(σ²s[i]))
+        σ² = repeat(σ²s[i], 1 + length(βs[i]) - length(σ²s[i]))
+        Σ = Diagonal(σ²) * vector_of_Δs[i] * Diagonal(σ²)
+        βs[i] ~ MvNormal(zeros(length(βs[i])), Σ)
         μ += Float64.(vector_of_Xs_noint[i]) * βs[i]
     end
     # Residual variance
     σ² ~ Exponential(10.0)
     # Return the distribution of the response variable, from which the likelihood will be derived
     return y ~ Distributions.MvNormal(μ, σ² * I)
-end
-
-# Define a matrix-variate distribution for the covariance matrix
-begin
-    using Distributions, Turing, Random, Bijectors
-    struct CorrDist <: ContinuousMatrixDistribution
-        β1::Real
-        β2::Real
-        π0::Real
-        p::Int64
-    end
-    function Base.size(d::CorrDist)
-        return (d.p, d.p)
-    end
-    function Distributions.rand(rng::AbstractRNG, d::CorrDist)
-        # rng = Random.TaskLocalRNG()
-        # d = CorrDist(2.0, 2.0, 0.2, 5)
-        β = Distributions.Beta(d.β1, d.β2)
-        idx_negatives = sample(rng, collect(1:d.p), Int(round(d.p*d.π0)), replace = false)
-        c = rand(β, d.p)
-        c[idx_negatives] .*= -1.0
-        C = c * c'
-        C[diagind(C)] .= 1.00
-        C = if !isposdef(C)
-            K = deepcopy(C)
-            while !isposdef(K)
-                k = rand(β, d.p)
-                K = Matrix(Symmetric(k * k'))
-                K[diagind(K)] .= 1.00
-            end
-            K
-        else
-            C
-        end
-        if !isposdef(C)
-            throw(ArgumentError("The output matrix is not positive definite."))
-        end
-        return Matrix(Symmetric(C))
-    end
-    
-    struct CorrDistSampler{D<:CorrDist} <: Sampleable{Matrixvariate, Continuous}
-        dist::D
-    end
-    function Distributions.sampler(d::CorrDist)
-        CorrDistSampler(d)
-    end
-    function Distributions.sampler(s::CorrDistSampler)
-        rand(s.dist)
-    end
-    
-    function Distributions.logpdf(d::CorrDist, X::AbstractMatrix)
-        # d = CorrDist(2.0, 2.0, 0.2, 5)
-        # d = CorrDist(1.0, 5.0, 0.2, 5)
-        # X = rand(d)
-        if !issymmetric(X)
-            throw(ArgumentError("The input matrix is not symmetric."))
-        end
-        if size(X,1) != d.p
-            throw(ArgumentError("The input matrix does not match the expected size."))
-        end
-        # if !isposdef(X)
-        #     throw(ArgumentError("The input matrix is not positive definite."))
-        # end
-        β = Distributions.Beta(d.β1, d.β2)
-        x = filter(x -> (x<1) && (x>0), reshape(sqrt.(abs.(X)), prod(size(X))))
-        sum(logpdf(β, x))
-    end
-    # d_1 = CorrDist(2.0, 2.0, 0.2, 5)
-    # d_2 = CorrDist(1.0, 5.0, 0.2, 5)
-    # mean([logpdf(d_1, rand(d_1)) for _ in 1:100])
-    # mean([logpdf(d_1, rand(d_2)) for _ in 1:100])
-    # mean([logpdf(d_2, rand(d_1)) for _ in 1:100])
-    # mean([logpdf(d_2, rand(d_2)) for _ in 1:100])
-    # Bijectors.bijector(d::CorrDist) = Bijectors.Logit(-1.0, 1.0)
-    Bijectors.bijector(d::CorrDist) = Bijectors.CorrBijector()
-    # Distributions.minimum(d::CorrDist) = -1.0
-    # Distributions.maximum(d::CorrDist) =  1.0
-    # Test
-    Turing.@model function F(
-        vector_of_Xs_noint::Vector{Matrix{Union{Bool,Float64}}},
-        _vector_of_Σs::Vector{Union{Matrix{Float64},UniformScaling{Float64}}},
-        y::Vector{Float64},
-    )
-        intercept ~ Normal(0.0, 10.0)
-        P = length(vector_of_Xs_noint)
-        σ²s = fill(0.0, P)
-        Σs = [fill(0.0, size(x, 2), size(x, 2)) for x in vector_of_Xs_noint]
-        βs = [fill(0.0, size(x, 2)) for x in vector_of_Xs_noint]
-        μ = fill(0.0, size(vector_of_Xs_noint[1], 1)) .+ intercept
-        for i = 1:P
-            σ²s[i] ~ Exponential(1.0)
-            Σs[i] ~ CorrDist(2.0, 2.0, 0.1, size(Σs[i], 2))
-            @show "@@@@@@@@@@@@@@@@@@@@@@@@@@"
-            Σs[i] = Matrix(Symmetric(Σs[i]))
-            @show isposdef(Σs[i])
-            if !isposdef(Σs[i])
-                Turing.@addlogprob! -Inf
-                return nothing
-            end
-            # C = cholesky(Σs[i])
-            C = LinearAlgebra._chol!(Σs[i], LowerTriangular)
-            # # C = LinearAlgebra._chol!(Σs[i], UpperTriangular)
-            @show C[2]
-            @show Σs[i][1:2,1:2]
-            # βs[i] ~ MvNormal(zeros(length(βs[i])), σ²s[i] * Σs[i])
-            # βs[i] ~ MvNormal(zeros(length(βs[i])), σ²s[i] * Σ)
-            # βs[i] ~ MvNormal(zeros(length(βs[i])), (σ²s[i]*I) * Σ * (σ²s[i]*I))
-            # βs[i] ~ MvNormal(zeros(length(βs[i])), Σs[i])
-            J = Symmetric(inv(Σs[i]))
-            for _ in 1:10 
-                if isposdef(J)
-                    break
-                end
-                J[diagind(J)] .+= 1.0
-            end
-            if !isposdef(J)
-                Turing.@addlogprob! -Inf
-                return nothing
-            end
-            h = J * zeros(length(βs[i]))
-            @show size(J)
-            @show issymmetric(J)
-            @show ishermitian(J)
-            @show isposdef(J)
-            @show J[1:2,1:2]
-            # @show cholesky(J)
-            βs[i] ~ Distributions.MvNormalCanon(h, J)
-            @show size(βs[i])
-            μ += Real.(vector_of_Xs_noint[i]) * βs[i]
-            @show mean(μ)
-        end
-        σ² ~ Exponential(10.0)
-        y ~ Distributions.MvNormal(μ, σ² * I)
-        @show "==================end================="
-        return y
-    end
-    # model = G(vector_of_Xs_noint, vector_of_Σs, y)
-    # model = F(vector_of_Xs_noint, vector_of_Σs, y)
-    # model = turingblr(vector_of_Xs_noint, vector_of_Σs, y)
-    # map_estimate = maximum_a_posteriori(model)
-    # mle_estimate = maximum_likelihood(model)
-    # σ²s = []
-    # Σs = []
-    # βs = []
-    # for i in 1:length(vector_of_Xs_noint)
-    #     p = size(vector_of_Xs_noint[i], 2)
-    #     d = CorrDist(2.0, 2.0, 0.1, p)
-    #     Σ = zeros(p,p); Σ[diagind(Σ)] .= 1.0
-    #     push!(σ²s, 1.0)
-    #     # push!(Σs, rand(d))
-    #     push!(Σs, Σ)
-    #     push!(βs, zeros(p))
-    # end
-    # n = size(vector_of_Xs_noint[1], 1)
-    # initial_params = vcat(
-    #     0.0,
-    #     σ²s,
-    #     Σs,
-    #     βs,
-    #     rand(n)
-    # )
-    # chain = Turing.sample(rng, model, sampling_function, n_iter, discard_initial = n_burnin, initial_params=initial_params, progress = verbose);
-    # chain = Turing.sample(rng, model, sampling_function, n_iter, discard_initial = n_burnin, progress = verbose);
-
-
-    # Turing.@model function G(
-    #     vector_of_Xs_noint::Vector{Matrix{Union{Bool,Float64}}},
-    #     _vector_of_Σs::Vector{Union{Matrix{Float64},UniformScaling{Float64}}},
-    #     y::Vector{Float64},
-    # )
-    #     intercept ~ Normal(0.0, 10.0)
-    #     P = length(vector_of_Xs_noint)
-    #     σ²s = fill(0.0, P)
-    #     Vs = [fill(0.0, size(x, 2)) for x in vector_of_Xs_noint]
-    #     Πs = fill(0.0, P)
-    #     βs = [fill(0.0, size(x, 2)) for x in vector_of_Xs_noint]
-    #     μ = fill(0.0, size(vector_of_Xs_noint[1], 1)) .+ intercept
-    #     for i = 1:P
-    #         p = size(vector_of_Xs_noint[i], 2)
-    #         σ²s[i] ~ Exponential(1.0)
-    #         Vs[i] ~ filldist(Beta(2.0, 2.0), p)
-    #         Πs[i] ~ Beta(2.0, 2.0)
-    #         v = deepcopy(Vs[i])
-    #         idx_negatives = sample(collect(1:p), Int(round(p*Πs[i])), replace = false)
-    #         v[idx_negatives] .*= -1.0
-    #         Σ =  v * v'
-    #         Σ[diagind(Σ)] .= 1.0
-    #         @show isposdef(Σ)
-    #         βs[i] ~ MvNormal(zeros(p), σ²s[i] * Σ)
-    #         μ += Float64.(vector_of_Xs_noint[i]) * βs[i]
-    #     end
-    #     σ² ~ Exponential(10.0)
-    #     return y ~ Distributions.MvNormal(μ, σ² * I)
-    # end
-
-
-    # ## Non BLAS/LAPACK element types (generic)
-    # function LinearAlgebra._chol!(A::AbstractMatrix, ::Type{LowerTriangular})
-    #     LinearAlgebra.require_one_based_indexing(A)
-    #     n = LinearAlgebra.checksquare(A)
-    #     realdiag = eltype(A) <: Complex
-    #     @inbounds begin
-    #         for k = 1:n
-    #             Akk = realdiag ? real(A[k,k]) : A[k,k]
-    #             for i = 1:k - 1
-    #                 Akk -= realdiag ? abs2(A[k,i]) : A[k,i]*A[k,i]'
-    #             end
-    #             A[k,k] = Akk
-    #             Akk, info = LinearAlgebra._chol!(Akk, LowerTriangular)
-    #             if info != 0
-    #                 return LowerTriangular(A), convert(LinearAlgebra.BlasInt, k)
-    #             end
-    #             A[k,k] = Akk
-    #             AkkInv = inv(Akk)
-    #             for j = 1:k - 1
-    #                 @simd for i = k + 1:n
-    #                     A[i,k] -= A[i,j]*A[k,j]'
-    #                 end
-    #             end
-    #             for i = k + 1:n
-    #                 A[i,k] *= AkkInv'
-    #             end
-    #         end
-    #      end
-    #     return LowerTriangular(A), convert(LinearAlgebra.BlasInt, 0)
-    # end
-    
-
 end
 
 
@@ -617,7 +393,6 @@ function turingblrmcmc!(
     # df = tabularise(trials);
     # blr_and_blr_ALL = instantiateblr(trait = trials.traits[1], factors = ["rows", "cols"], df = df, other_covariates = trials.traits[2:end], verbose = false);
     # turing_model = turingblr 
-    # turing_model = F
     # n_iter = 1_000
     # n_burnin = 500
     # δ = 0.65
@@ -657,18 +432,27 @@ function turingblrmcmc!(
     # Extract the response variable, y, and the vectors of Xs, and Σs for model fitting, as well as the coefficient names for each variance component
     y::Vector{Float64} = blr_and_blr_ALL[1].y
     vector_of_Xs_noint::Vector{Matrix{Union{Bool,Float64}}} = []
-    vector_of_Σs::Vector{Union{Matrix{Float64},UniformScaling{Float64}}} = []
+    vector_of_Δs::Vector{Union{Matrix{Float64},UniformScaling{Float64}}} = []
+    length_of_σs::Vector{Int64} = []
     vector_coefficient_names::Vector{String} = []
     variance_components = filter(x -> x != "intercept", string.(keys(blr_and_blr_ALL[1].Xs)))
     for v in variance_components
         # v = variance_components[1]
         push!(vector_of_Xs_noint, blr_and_blr_ALL[1].Xs[v])
-        push!(vector_of_Σs, blr_and_blr_ALL[1].Σs[v])
+        push!(vector_of_Δs, blr_and_blr_ALL[1].Σs[v])
+        if isa(blr_and_blr_ALL[1].Σs[v], UniformScaling{Float64})
+            # If variance matrix is UniformScaling (identity matrix), only need 1 variance component, i.e. common/spherical variance
+            push!(length_of_σs, 1)
+        else
+            # Otherwise, define separate variance scaler per coefficient
+            push!(length_of_σs, size(blr_and_blr_ALL[1].Σs[v], 1))
+        end
+        push!(length_of_σs)
         vector_coefficient_names = vcat(vector_coefficient_names, blr_and_blr_ALL[1].coefficient_names[v])
     end
     # Instantiate the RNG, model, and sampling function
     rng::TaskLocalRNG = Random.seed!(seed)
-    model = turing_model(vector_of_Xs_noint, vector_of_Σs, y)
+    model = turing_model(vector_of_Xs_noint, vector_of_Δs, length_of_σs, y)
     sampling_function = NUTS(n_burnin, δ, max_depth = max_depth, Δ_max = Δ_max, init_ϵ = init_ϵ; adtype = adtype)
     # MCMC
     if verbose
@@ -695,6 +479,7 @@ function turingblrmcmc!(
     β0 = mean(params.intercept)
     βs = [mean(params.βs[i]) for i in eachindex(params.βs)]
     σ² = mean(params.σ²)
+    # TODO: parse the σ²s properly when there are vectors
     σ²s = [mean(params.σ²s[i]) for i in eachindex(params.σ²s)]
     # Extract coefficients
     if verbose
@@ -702,18 +487,25 @@ function turingblrmcmc!(
     end
     blr_and_blr_ALL[1].coefficients["intercept"] = blr_and_blr_ALL[2].coefficients["intercept"] = [β0]
     blr_and_blr_ALL[1].Σs["σ²"] = blr_and_blr_ALL[2].Σs["σ²"] = σ² * blr_and_blr_ALL[1].Σs["σ²"]
-    ini = 0
-    fin = 0
+    ini = 0; ini_σ = 0
+    fin = 0; fin_σ = 0
     for (i, v) in enumerate(variance_components)
         # i = 1; v = variance_components[i];
         ini = fin + 1
         fin = (ini - 1) + size(vector_of_Xs_noint[i], 2)
+        ini_σ = fin_σ + 1
+        fin_σ = (ini_σ - 1) + length_of_σs[i]
         # Model fit
         if blr_and_blr_ALL[1].coefficient_names[v] != vector_coefficient_names[ini:fin]
             throw(ErrorException("The expected coefficient names do not match for the variance component: $v."))
         end
         blr_and_blr_ALL[1].coefficients[v] = βs[ini:fin]
-        blr_and_blr_ALL[1].Σs[v] = σ²s[i] * vector_of_Σs[i]
+        blr_and_blr_ALL[1].Σs[v] = if isa(vector_of_Δs[i], UniformScaling{Float64}) && (fin_σ - ini_σ == 0)
+            σ²s[ini_σ] * vector_of_Δs[i]
+        else
+            σ² = repeat(σ²s[ini_σ:fin_σ], 1 + length(blr_and_blr_ALL[1].coefficients[v]) - length(σ²s[ini_σ:fin_σ]))
+            Matrix(Diagonal(σ²) * vector_of_Δs[i] * Diagonal(σ²))
+        end
         # Full model
         for (j, c) in enumerate(blr_and_blr_ALL[1].coefficient_names[v])
             # j = 29; c = blr_and_blr_ALL[1].coefficient_names[v][j]
