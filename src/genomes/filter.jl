@@ -667,7 +667,7 @@ function filterbypca(genomes::Genomes; max_prop_pc_varexp::Float64 = 0.9, verbos
     G = (G .- μ) ./ σ
     # PCA and filtering by a fraction of the sum of the proportion of variance explained by the first 2 PCs
     M = MultivariateStats.fit(PCA, G')
-    variance_explained_pc1_pc2 = sum((M.prinvars ./ sum(M.prinvars))[1:2])
+    variance_explained_pc1_pc2 = sum((M.prinvars./sum(M.prinvars))[1:2])
     max_pc = variance_explained_pc1_pc2 * max_prop_pc_varexp
     pc1 = M.proj[:, 1]
     pc2 = M.proj[:, 2]

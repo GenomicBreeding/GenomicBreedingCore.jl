@@ -286,8 +286,8 @@ Turing.@model function turingblr(
     # Set variance predictors
     p = size(vector_of_Xs_noint[1], 1)
     k = length(vector_of_Xs_noint)
-    σ²s = [fill(0.0, length_of_σs[i]) for i in 1:k]
-    βs = [fill(0.0, size(vector_of_Xs_noint[i], 2)) for i in 1:k]
+    σ²s = [fill(0.0, length_of_σs[i]) for i = 1:k]
+    βs = [fill(0.0, size(vector_of_Xs_noint[i], 2)) for i = 1:k]
     μ = fill(0.0, p) .+ intercept
     for i = 1:k
         σ²s[i] ~ filldist(Exponential(1.0), length(σ²s[i]))
@@ -302,10 +302,122 @@ Turing.@model function turingblr(
     return y ~ Distributions.MvNormal(μ, σ² * I)
 end
 
+"""
+    extractmodelinputs(blr_and_blr_ALL::Tuple{BLR,BLR}; multiple_σs::Union{Nothing, Dict{String, Bool}}=nothing)::Dict
+
+Extract model inputs from BLR objects for Bayesian modeling.
+
+# Arguments
+- `blr_and_blr_ALL::Tuple{BLR,BLR}`: A tuple containing two BLR (Bayesian Linear Regression) objects
+- `multiple_σs::Union{Nothing, Dict{String, Bool}}=nothing`: Optional dictionary specifying whether each variance component should use single (false) or multiple (true) variance scalers. If nothing, defaults to single scaler for all components.
+
+# Returns
+A dictionary containing:
+- `"y"`: Response variable vector
+- `"vector_of_Xs_noint"`: Vector of design matrices for each variance component
+- `"vector_of_Δs"`: Vector of variance-covariance matrices or uniform scaling factors
+- `"length_of_σs"`: Vector specifying number of variance components for each term
+- `"variance_components"`: Vector of variance component names
+- `"vector_coefficient_names"`: Vector of coefficient names for all variance components
+
+# Notes
+- Excludes intercept from variance components 
+- For each variance component:
+  - If multiple_σs[component] = false: Uses single variance scaler
+  - If multiple_σs[component] = true: Uses separate variance scaler per coefficient
+- Processes design matrices, variance-covariance structures, and coefficient names from the BLR objects
+
+# Throws
+- `ErrorException`: If a variance component is not specified in the multiple_σs dictionary
+
+# Example
+```jldoctest; setup = :(using GenomicBreedingCore, StatsBase)
+julia> genomes = simulategenomes(n=500, l=1_000, verbose=false); 
+
+julia> trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=3, verbose=false);
+
+julia> df = tabularise(trials);
+
+julia> blr_and_blr_ALL = instantiateblr(trait = trials.traits[1], factors = ["rows", "cols"], df = df, other_covariates = trials.traits[2:end], verbose = false);
+
+julia> model_inputs_1 = extractmodelinputs(blr_and_blr_ALL, multiple_σs = nothing);
+
+julia> model_inputs_2 = extractmodelinputs(blr_and_blr_ALL, multiple_σs = Dict("rows" => true, "cols" => true, "rows & cols" => false, "other_covariates" => true));
+
+julia> (model_inputs_1["y"] == model_inputs_2["y"]) && (model_inputs_1["vector_of_Xs_noint"] == model_inputs_2["vector_of_Xs_noint"]) && (model_inputs_1["vector_of_Δs"] == model_inputs_2["vector_of_Δs"]) && (model_inputs_1["vector_coefficient_names"] == model_inputs_2["vector_coefficient_names"])
+true
+
+julia> sum(model_inputs_1["length_of_σs"]) < sum(model_inputs_2["length_of_σs"])
+true
+```
+"""
+function extractmodelinputs(
+    blr_and_blr_ALL::Tuple{BLR,BLR};
+    multiple_σs::Union{Nothing,Dict{String,Bool}} = nothing,
+)::Dict{
+    String,
+    Union{
+        Vector{Float64},
+        Vector{Matrix{Union{Bool,Float64}}},
+        Vector{Union{Matrix{Float64},UniformScaling{Float64}}},
+        Vector{Int64},
+        Vector{String},
+    },
+}
+    # Extract the response variable, y, and the vectors of Xs, and Σs for model fitting, as well as the coefficient names for each variance component
+    y::Vector{Float64} = blr_and_blr_ALL[1].y
+    vector_of_Xs_noint::Vector{Matrix{Union{Bool,Float64}}} = []
+    vector_of_Δs::Vector{Union{Matrix{Float64},UniformScaling{Float64}}} = []
+    length_of_σs::Vector{Int64} = []
+    vector_coefficient_names::Vector{String} = []
+    variance_components::Vector{String} = filter(x -> x != "intercept", string.(keys(blr_and_blr_ALL[1].Xs)))
+    multiple_σs = if isnothing(multiple_σs)
+        multiple_σs = Dict()
+        for v in variance_components
+            multiple_σs[v] = false
+        end
+        multiple_σs
+    else
+        multiple_σs
+    end
+    for v in variance_components
+        if !(v ∈ string.(keys(multiple_σs)))
+            throw(
+                ErrorException(
+                    "The variance component: $v is not in the dictionary specifying if each variance component should be estimated with a single or multiple variance scaler, `multiple_σs`.",
+                ),
+            )
+        end
+    end
+    for v in variance_components
+        # v = variance_components[1]
+        push!(vector_of_Xs_noint, blr_and_blr_ALL[1].Xs[v])
+        push!(vector_of_Δs, blr_and_blr_ALL[1].Σs[v])
+        # if isa(blr_and_blr_ALL[1].Σs[v], UniformScaling{Float64})
+        if !multiple_σs[v]
+            # If only 1 variance component is requested, i.e. common/spherical variance
+            push!(length_of_σs, 1)
+        else
+            # Otherwise, define separate variance scaler per coefficient
+            push!(length_of_σs, size(blr_and_blr_ALL[1].Xs[v], 2))
+        end
+        push!(length_of_σs)
+        vector_coefficient_names = vcat(vector_coefficient_names, blr_and_blr_ALL[1].coefficient_names[v])
+    end
+    Dict(
+        "y" => y,
+        "vector_of_Xs_noint" => vector_of_Xs_noint,
+        "vector_of_Δs" => vector_of_Δs,
+        "length_of_σs" => length_of_σs,
+        "vector_coefficient_names" => vector_coefficient_names,
+        "variance_components" => variance_components,
+    )
+end
 
 """
     turingblrmcmc!(
         blr_and_blr_ALL::Tuple{BLR,BLR};
+        multiple_σs::Union{Nothing, Dict{String, Bool}} = nothing,
         turing_model::Function = turingblr,
         n_iter::Int64 = 10_000,
         n_burnin::Int64 = 1_000,
@@ -321,12 +433,11 @@ end
 Perform MCMC sampling for Bayesian Linear Regression on a tuple of BLR models using NUTS sampler.
 
 # Arguments
-- `blr_and_blr_ALL::Tuple{BLR,BLR}`: Tuple containing two BLR models:
-    - First element: Model to be fitted
-    - Second element: Full model for comparison
+- `blr_and_blr_ALL::Tuple{BLR,BLR}`: Tuple containing two BLR models - first for fitting, second for inferring
+- `multiple_σs::Union{Nothing, Dict{String, Bool}}`: Optional dictionary specifying multiple (true) or single (false) variance scalers per component
 - `turing_model::Function`: The Turing model function to use (default: turingblr)
 - `n_iter::Int64`: Number of MCMC iterations (default: 10,000)
-- `n_burnin::Int64`: Number of burn-in iterations to discard (default: 1,000)
+- `n_burnin::Int64`: Number of burn-in iterations to discard (default: 1,000) 
 - `δ::Float64`: Target acceptance rate for dual averaging (default: 0.65)
 - `max_depth::Int64`: Maximum doubling tree depth (default: 5)
 - `Δ_max::Float64`: Maximum divergence during doubling tree (default: 1000.0)
@@ -343,11 +454,7 @@ Perform MCMC sampling for Bayesian Linear Regression on a tuple of BLR models us
 - Uses NUTS (No-U-Turn Sampler) with specified AD type
 - Computes convergence diagnostics using Gelman-Rubin statistics (R̂)
 - Warns if parameters haven't converged (|1.0 - R̂| > 0.1)
-- Updates both models with:
-    - Estimated coefficients
-    - Variance components
-    - Predicted values
-    - Residuals
+- Updates both models with estimated coefficients, variance components, predicted values, and residuals
 - Ensures consistency between fitted and full models
 
 # Example
@@ -377,6 +484,7 @@ true
 """
 function turingblrmcmc!(
     blr_and_blr_ALL::Tuple{BLR,BLR};
+    multiple_σs::Union{Nothing,Dict{String,Bool}} = nothing,
     turing_model::Function = turingblr,
     n_iter::Int64 = 10_000,
     n_burnin::Int64 = 1_000,
@@ -392,6 +500,8 @@ function turingblrmcmc!(
     # trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=3, verbose=false);
     # df = tabularise(trials);
     # blr_and_blr_ALL = instantiateblr(trait = trials.traits[1], factors = ["rows", "cols"], df = df, other_covariates = trials.traits[2:end], verbose = false);
+    # # multiple_σs::Union{Nothing, Dict{String, Bool}} = nothing
+    # multiple_σs::Union{Nothing, Dict{String, Bool}} = Dict("rows" => true, "cols" => true, "rows & cols" => false, "other_covariates" => true)
     # turing_model = turingblr 
     # n_iter = 1_000
     # n_burnin = 500
@@ -429,30 +539,16 @@ function turingblrmcmc!(
             ),
         )
     end
-    # Extract the response variable, y, and the vectors of Xs, and Σs for model fitting, as well as the coefficient names for each variance component
-    y::Vector{Float64} = blr_and_blr_ALL[1].y
-    vector_of_Xs_noint::Vector{Matrix{Union{Bool,Float64}}} = []
-    vector_of_Δs::Vector{Union{Matrix{Float64},UniformScaling{Float64}}} = []
-    length_of_σs::Vector{Int64} = []
-    vector_coefficient_names::Vector{String} = []
-    variance_components = filter(x -> x != "intercept", string.(keys(blr_and_blr_ALL[1].Xs)))
-    for v in variance_components
-        # v = variance_components[1]
-        push!(vector_of_Xs_noint, blr_and_blr_ALL[1].Xs[v])
-        push!(vector_of_Δs, blr_and_blr_ALL[1].Σs[v])
-        if isa(blr_and_blr_ALL[1].Σs[v], UniformScaling{Float64})
-            # If variance matrix is UniformScaling (identity matrix), only need 1 variance component, i.e. common/spherical variance
-            push!(length_of_σs, 1)
-        else
-            # Otherwise, define separate variance scaler per coefficient
-            push!(length_of_σs, size(blr_and_blr_ALL[1].Σs[v], 1))
-        end
-        push!(length_of_σs)
-        vector_coefficient_names = vcat(vector_coefficient_names, blr_and_blr_ALL[1].coefficient_names[v])
-    end
+    # # Extract the response variable, y, and the vectors of Xs, and Σs for model fitting, as well as the coefficient names for each variance component
+    model_inputs = extractmodelinputs(blr_and_blr_ALL, multiple_σs = multiple_σs)
     # Instantiate the RNG, model, and sampling function
     rng::TaskLocalRNG = Random.seed!(seed)
-    model = turing_model(vector_of_Xs_noint, vector_of_Δs, length_of_σs, y)
+    model = turing_model(
+        model_inputs["vector_of_Xs_noint"],
+        model_inputs["vector_of_Δs"],
+        model_inputs["length_of_σs"],
+        model_inputs["y"],
+    )
     sampling_function = NUTS(n_burnin, δ, max_depth = max_depth, Δ_max = Δ_max, init_ϵ = init_ϵ; adtype = adtype)
     # MCMC
     if verbose
@@ -460,7 +556,7 @@ function turingblrmcmc!(
             "Single chain MCMC sampling for $n_iter total iterations where the first $n_burnin iteractions are omitted.",
         )
     end
-    chain = Turing.sample(rng, model, sampling_function, n_iter, discard_initial = n_burnin, progress = verbose);
+    chain = Turing.sample(rng, model, sampling_function, n_iter, discard_initial = n_burnin, progress = verbose)
     # Diagnostics
     if verbose
         println("Diagnosing the MCMC chain for convergence by dividing the chain into 5 and finding the maximum R̂.")
@@ -487,25 +583,28 @@ function turingblrmcmc!(
     end
     blr_and_blr_ALL[1].coefficients["intercept"] = blr_and_blr_ALL[2].coefficients["intercept"] = [β0]
     blr_and_blr_ALL[1].Σs["σ²"] = blr_and_blr_ALL[2].Σs["σ²"] = σ² * blr_and_blr_ALL[1].Σs["σ²"]
-    ini = 0; ini_σ = 0
-    fin = 0; fin_σ = 0
-    for (i, v) in enumerate(variance_components)
-        # i = 1; v = variance_components[i];
+    ini = 0
+    ini_σ = 0
+    fin = 0
+    fin_σ = 0
+    for (i, v) in enumerate(model_inputs["variance_components"])
+        # i = 1; v = model_inputs["variance_components"][i];
         ini = fin + 1
-        fin = (ini - 1) + size(vector_of_Xs_noint[i], 2)
+        fin = (ini - 1) + size(model_inputs["vector_of_Xs_noint"][i], 2)
         ini_σ = fin_σ + 1
-        fin_σ = (ini_σ - 1) + length_of_σs[i]
+        fin_σ = (ini_σ - 1) + model_inputs["length_of_σs"][i]
         # Model fit
-        if blr_and_blr_ALL[1].coefficient_names[v] != vector_coefficient_names[ini:fin]
+        if blr_and_blr_ALL[1].coefficient_names[v] != model_inputs["vector_coefficient_names"][ini:fin]
             throw(ErrorException("The expected coefficient names do not match for the variance component: $v."))
         end
         blr_and_blr_ALL[1].coefficients[v] = βs[ini:fin]
-        blr_and_blr_ALL[1].Σs[v] = if isa(vector_of_Δs[i], UniformScaling{Float64}) && (fin_σ - ini_σ == 0)
-            σ²s[ini_σ] * vector_of_Δs[i]
-        else
-            σ² = repeat(σ²s[ini_σ:fin_σ], 1 + length(blr_and_blr_ALL[1].coefficients[v]) - length(σ²s[ini_σ:fin_σ]))
-            Matrix(Diagonal(σ²) * vector_of_Δs[i] * Diagonal(σ²))
-        end
+        blr_and_blr_ALL[1].Σs[v] =
+            if isa(model_inputs["vector_of_Δs"][i], UniformScaling{Float64}) && (fin_σ - ini_σ == 0)
+                σ²s[ini_σ] * model_inputs["vector_of_Δs"][i]
+            else
+                σ² = repeat(σ²s[ini_σ:fin_σ], 1 + length(blr_and_blr_ALL[1].coefficients[v]) - length(σ²s[ini_σ:fin_σ]))
+                Matrix(Diagonal(σ²) * model_inputs["vector_of_Δs"][i] * Diagonal(σ²))
+            end
         # Full model
         for (j, c) in enumerate(blr_and_blr_ALL[1].coefficient_names[v])
             # j = 29; c = blr_and_blr_ALL[1].coefficient_names[v][j]
@@ -533,44 +632,54 @@ function turingblrmcmc!(
 end
 
 """
-    removespatialeffects(;df::DataFrame, factors::Vector{String}, traits::Vector{String}, 
-    other_covariates::Union{Vector{String},Nothing} = nothing, n_iter::Int64 = 10_000,
-    n_burnin::Int64 = 1_000, seed::Int64 = 1234, verbose::Bool = false)::Tuple{DataFrame, Vector{String}}
+    removespatialeffects(; df::DataFrame, factors::Vector{String}, traits::Vector{String}, 
+                        other_covariates::Union{Vector{String},Nothing} = nothing,
+                        n_iter::Int64 = 10_000, n_burnin::Int64 = 1_000, 
+                        seed::Int64 = 1234, verbose::Bool = false)::Tuple{DataFrame, Vector{String}}
 
 Remove spatial effects from trait measurements in field trials using Bayesian linear regression.
 
-This function performs spatial adjustment for traits measured in field trials by accounting for 
-spatial variation due to blocks, rows, and columns. It creates new spatially adjusted traits 
-with the prefix "SPATADJ-" for each original trait.
-
 # Arguments
 - `df::DataFrame`: DataFrame containing trial data with columns for traits, spatial factors, and harvests
-- `factors::Vector{String}`: Vector of factor names to be considered in the model
+- `factors::Vector{String}`: Vector of factor names to be considered in the model 
 - `traits::Vector{String}`: Vector of trait names to be spatially adjusted
-- `other_covariates::Union{Vector{String},Nothing}`: Optional vector of additional covariates to include in the model
+- `other_covariates::Union{Vector{String},Nothing}`: Optional vector of additional covariates
 - `n_iter::Int64`: Number of MCMC iterations (default: 10_000)
-- `n_burnin::Int64`: Number of burn-in iterations for MCMC (default: 1_000)
+- `n_burnin::Int64`: Number of burn-in iterations (default: 1_000) 
 - `seed::Int64`: Random seed for reproducibility (default: 1234)
-- `verbose::Bool`: If true, prints detailed information during execution (default: false)
+- `verbose::Bool`: If true, prints detailed information (default: false)
 
 # Returns
 A tuple containing:
-- Modified DataFrame with new spatially adjusted traits (prefix "SPATADJ-")
-- Updated factors vector with spatial factors removed
+1. Modified DataFrame with new spatially adjusted traits (prefix "SPATADJ-")  
+2. Updated factors vector with spatial factors removed
+
+# Details
+This function performs spatial adjustment for traits measured in field trials by:
+
+1. Identifying spatial factors (blocks, rows, columns) and creating design matrices
+2. Fitting Bayesian linear model per harvest to account for:
+   - Spatial effects (blocks, rows, columns and interactions)
+   - Additional numeric covariates if specified
+3. Creating spatially adjusted traits by adding intercept and residuals
+4. Removing redundant factors and retaining only unique design matrices
+
+The spatial adjustment is only performed if blocks, rows or columns are present.
+Each harvest is treated separately to allow for year and site-specific spatial effects.
+
+Variance component scalers are specified as follows:
+- Rows, columns and other covariates use unique variance scalers (multiple_σs = true)
+- Row-by-column interactions use a single spherical variance-covariance matrix (multiple_σs = false)
+- This improves model tractability while allowing for flexible variance structures where needed
 
 # Notes
-- Spatial adjustment is only performed if "blocks", "rows", or "cols" are present in factors
-- Each harvest is treated separately for year- and site-specific spatial adjustment
-- Requires "harvests" column in the input DataFrame
-- Uses Bayesian linear regression for spatial modelling
-- Creates new columns with prefix "SPATADJ-" for adjusted traits
-- Spatial factors are automatically detected using regex pattern "blocks|rows|cols"
+- Requires "entries" and "harvests" columns in input DataFrame
+- Uses Bayesian linear regression via MCMC for spatial modeling
+- Creates new columns with "SPATADJ-" prefix for adjusted traits
+- Returns original DataFrame if no spatial factors present
+- Automatically detects spatial factors via regex pattern "blocks|rows|cols"
 
-# Throws
-- `ArgumentError`: If input DataFrame is empty or missing required columns
-- `ErrorException`: If "__new_spatially_adjusted_trait__" column exists in DataFrame
-
-# Examples
+# Example
 ```jldoctest; setup = :(using GenomicBreedingCore, StatsBase)
 julia> genomes = simulategenomes(n=500, l=1_000, verbose=false); 
 
@@ -655,6 +764,20 @@ function removespatialeffects(;
                 df = df_sub,
                 verbose = verbose,
             )
+            # Set-up variance component multipliers/scalers such that row, columns and other covariates have unique multipliers;
+            # while the row-by-col interaction only has 1, i.e. spherical variance-covariance matrix for model tractability
+            multiple_σs::Union{Nothing,Dict{String,Bool}} = Dict()
+            for varcomp in string.(keys(blr_and_blr_ALL[1].Σs))
+                # varcomp = string.(keys(blr_and_blr_ALL[1].Σs))[1]
+                if varcomp == "σ²"
+                    continue
+                end
+                if (varcomp ∈ spatial_factors) || (varcomp == "other_covariates")
+                    multiple_σs[varcomp] = true
+                else
+                    multiple_σs[varcomp] = false
+                end
+            end
             # Spatial analysis via Bayesian linear regression
             turingblrmcmc!(blr_and_blr_ALL, n_iter = n_iter, n_burnin = n_burnin, seed = seed, verbose = verbose)
             # Update the spatially adjusted trait with the intercept + residuals of the spatial model above
@@ -692,6 +815,7 @@ function removespatialeffects(;
     (df, factors_out)
 end
 
+# TODO: Add flexibility to specify whether to use one or multiplr variance scalers in the GxE model
 function analyse(
     trials::Trials,
     traits::Vector{String};
@@ -765,7 +889,7 @@ function analyse(
     end
     total_X_size_in_Gb = nrow(df) * (total_parameters + 1) * sizeof(Float64) / (1024^3)
     total_system_RAM_in_GB = Sys.free_memory() / (1024^3)
-    if verbose && (total_X_size_in_Gb > 0.9*total_system_RAM_in_GB)
+    if verbose && (total_X_size_in_Gb > 0.9 * total_system_RAM_in_GB)
         @warn "The size of the design matrix is ~$(round(total_X_size_in_Gb)) GB. This may cause out-of-memory errors."
     end
     # Spatial analyses per harvest-site-year
@@ -816,6 +940,18 @@ function analyse(
             end
 
 
+        end
+
+
+
+        # TODO: Set-up variance component multipliers/scalers, for now it's just based on a maximumnumber of coefficients thresholds
+        multiple_σs::Union{Nothing,Dict{String,Bool}} = Dict()
+        for v in factors
+            multiple_σs[v] = if size(blr_and_blr_ALL[1].Xs[v], 2) > 100
+                false
+            else
+                true
+            end
         end
 
 
