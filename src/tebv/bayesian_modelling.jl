@@ -1,3 +1,13 @@
+function ar1(; p::Int, ρ::Float64 = 0.5, σ²::Float64 = 1.00)
+    Σ = zeros(p, p)
+    for i = 1:p
+        for j = 1:p
+            Σ[i, j] = σ² * ρ^(abs(i - j))
+        end
+    end
+    Σ
+end
+
 """
     instantiateblr(; trait::String, factors::Vector{String}, df::DataFrame, 
                       other_covariates::Union{Vector{String}, Nothing}=nothing, 
@@ -764,6 +774,10 @@ function removespatialeffects(;
                 df = df_sub,
                 verbose = verbose,
             )
+            # Define autoregressive variance-covariance matrix for the spatial factors
+
+
+
             # Set-up variance component multipliers/scalers such that row, columns and other covariates have unique multipliers;
             # while the row-by-col interaction only has 1, i.e. spherical variance-covariance matrix for model tractability
             multiple_σs::Union{Nothing,Dict{String,Bool}} = Dict()
