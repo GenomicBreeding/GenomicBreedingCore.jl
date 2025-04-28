@@ -829,7 +829,7 @@ function removespatialeffects(;
     (df, factors_out)
 end
 
-# TODO: Add flexibility to specify whether to use one or multiplr variance scalers in the GxE model
+# TODO: Add flexibility to specify whether to use one or multiple variance scalers in the GxE model
 function analyse(
     trials::Trials,
     traits::Vector{String};

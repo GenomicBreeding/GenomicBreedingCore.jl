@@ -752,14 +752,22 @@ julia> filtered_genomes = filterbysnplist(genomes, chr_pos_allele_ids=chr_pos_al
 
 julia> size(filtered_genomes.allele_frequencies)
 (100, 100)
+
+julia> chr_pos_allele_ids_no_alleles = unique([join(split(x, "\t")[1:2], "\t") for x in chr_pos_allele_ids]);
+
+julia> filtered_genomes_2 = filterbysnplist(genomes, chr_pos_allele_ids=chr_pos_allele_ids_no_alleles, match_alleles=false);
+
+julia> size(filtered_genomes_2.allele_frequencies, 2) > size(filtered_genomes.allele_frequencies, 2)
+true
 ```
 """
 function filterbysnplist(
     genomes::Genomes;
     chr_pos_allele_ids::Union{Nothing,Vector{String}} = nothing,
+    match_alleles::Bool = true,
     verbose::Bool = false,
 )::Genomes
-    # genomes = simulategenomes(n_populations=3, sparsity=0.25, seed=123456); chr_pos_allele_ids = sample(genomes.loci_alleles, Int(floor(0.5*length(genomes.loci_alleles)))); sort!(chr_pos_allele_ids); verbose = true
+    # genomes = simulategenomes(n_populations=3, sparsity=0.25, seed=123456); chr_pos_allele_ids = sample(genomes.loci_alleles, Int(floor(0.5*length(genomes.loci_alleles)))); sort!(chr_pos_allele_ids); match_alleles = true; verbose = true
     # Check arguments
     if !checkdims(genomes)
         throw(ArgumentError("Genomes struct is corrupted ☹."))
@@ -775,18 +783,23 @@ function filterbysnplist(
     requested_chr_pos_allele_ids = begin
         chr::Vector{String} = fill("", length(chr_pos_allele_ids))
         pos::Vector{Int64} = fill(0, length(chr_pos_allele_ids))
-        ale::Vector{String} = fill("", length(chr_pos_allele_ids))
+        ale::Union{Nothing, Vector{String}} = if match_alleles
+            fill("", length(chr_pos_allele_ids))
+        else
+            nothing
+        end
         if verbose
             pb = ProgressMeter.Progress(length(chr_pos_allele_ids), desc = "Parsing loci-allele combination names")
         end
         # Multi-threaded loci-allele names (no need for thread locking as we are accessing unique indexes)
+        n_items = match_alleles ? 3 : 2
         Threads.@threads for i in eachindex(chr_pos_allele_ids)
             ids = split(chr_pos_allele_ids[i], "\t")
-            if length(ids) < 3
+            if length(ids) < n_items
                 throw(
                     ArgumentError(
                         string(
-                            "We expect the first two elements of each item in `chr_pos_allele_ids` to be the chromosome name, and position, while the last element is the allele id which are all delimited by tabs. See the element ",
+                            "We expect the first two elements of each item in `chr_pos_allele_ids` to be the chromosome name, and position, while the last element is the allele id (if match_alleles==true) which are all delimited by tabs. See the element ",
                             i,
                             ": ",
                             chr_pos_allele_ids[i],
@@ -809,7 +822,9 @@ function filterbysnplist(
                     ),
                 )
             end
-            ale[i] = ids[end]
+            if match_alleles
+                ale[i] = ids[end]
+            end
             if verbose
                 ProgressMeter.next!(pb)
             end
@@ -817,11 +832,19 @@ function filterbysnplist(
         if verbose
             ProgressMeter.finish!(pb)
         end
-        sort(string.(chr, "\t", pos, "\t", ale))
+        if match_alleles
+            unique(sort(string.(chr, "\t", pos, "\t", ale)))
+        else
+            unique(sort(string.(chr, "\t", pos)))
+        end 
     end
     # Extract the loci-allele combination names from the genomes struct
     chromosomes, positions, alleles = loci_alleles(genomes)
-    available_chr_pos_allele_ids = string.(chromosomes, "\t", positions, "\t", alleles)
+    available_chr_pos_allele_ids = if match_alleles
+        string.(chromosomes, "\t", positions, "\t", alleles)
+    else
+        string.(chromosomes, "\t", positions)
+    end
     # Find the loci-allele combination indices to retain
     bool_loci_alleles = fill(false, length(available_chr_pos_allele_ids))
     if verbose
@@ -945,10 +968,11 @@ function Base.filter(
     max_entry_sparsity_percentile::Float64 = 0.90,
     max_locus_sparsity_percentile::Float64 = 0.50,
     chr_pos_allele_ids::Union{Nothing,Vector{String}} = nothing,
+    match_alleles::Bool = true,
     verbose::Bool = false,
 )::Tuple{Genomes,Dict{String,Vector{String}}}
     # genomes = simulategenomes(n_populations=3, sparsity=0.01, seed=123456); maf=0.01; max_entry_sparsity=0.1; max_locus_sparsity = 0.25; max_prop_pc_varexp = 1.0; max_entry_sparsity_percentile = 0.9; max_locus_sparsity_percentile = 0.5
-    # chr_pos_allele_ids = sample(genomes.loci_alleles, Int(floor(0.5*length(genomes.loci_alleles)))); sort!(chr_pos_allele_ids); verbose = true
+    # chr_pos_allele_ids = sample(genomes.loci_alleles, Int(floor(0.5*length(genomes.loci_alleles)))); sort!(chr_pos_allele_ids); match_alleles = true; verbose = true
     if !checkdims(genomes)
         throw(ArgumentError("Genomes struct is corrupted ☹."))
     end
@@ -996,7 +1020,7 @@ function Base.filter(
         reduce(vcat, values(omitted_loci_alleles)),
     )
     # Are we filtering using a list of loci-allele combination names?
-    filtered_genomes = filterbysnplist(filtered_genomes, chr_pos_allele_ids = chr_pos_allele_ids, verbose = verbose)
+    filtered_genomes = filterbysnplist(filtered_genomes, chr_pos_allele_ids = chr_pos_allele_ids, match_alleles = match_alleles, verbose = verbose)
     omitted_loci_alleles["by_snplist"] = setdiff(
         setdiff(genomes.loci_alleles, filtered_genomes.loci_alleles),
         reduce(vcat, values(omitted_loci_alleles)),
