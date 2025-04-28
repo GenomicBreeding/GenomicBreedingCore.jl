@@ -1,13 +1,3 @@
-function ar1(; p::Int, ρ::Float64 = 0.5, σ²::Float64 = 1.00)
-    Σ = zeros(p, p)
-    for i = 1:p
-        for j = 1:p
-            Σ[i, j] = σ² * ρ^(abs(i - j))
-        end
-    end
-    Σ
-end
-
 """
     instantiateblr(; trait::String, factors::Vector{String}, df::DataFrame, 
                       other_covariates::Union{Vector{String}, Nothing}=nothing, 
@@ -644,6 +634,8 @@ end
 """
     removespatialeffects(; df::DataFrame, factors::Vector{String}, traits::Vector{String}, 
                         other_covariates::Union{Vector{String},Nothing} = nothing,
+                        autoregressive_Σ::Bool = true,
+                        ρs::Dict{String, Float64} = Dict("rows" => 0.5, "cols" => 0.5),
                         n_iter::Int64 = 10_000, n_burnin::Int64 = 1_000, 
                         seed::Int64 = 1234, verbose::Bool = false)::Tuple{DataFrame, Vector{String}}
 
@@ -654,6 +646,8 @@ Remove spatial effects from trait measurements in field trials using Bayesian li
 - `factors::Vector{String}`: Vector of factor names to be considered in the model 
 - `traits::Vector{String}`: Vector of trait names to be spatially adjusted
 - `other_covariates::Union{Vector{String},Nothing}`: Optional vector of additional covariates
+- `autoregressive_Σ::Bool`: Whether to use autoregressive covariance structure for spatial factors (default: true)
+- `ρs::Dict{String, Float64}`: Correlation parameters for autoregressive structure, keys are factor names (default: rows=0.5, cols=0.5)
 - `n_iter::Int64`: Number of MCMC iterations (default: 10_000)
 - `n_burnin::Int64`: Number of burn-in iterations (default: 1_000) 
 - `seed::Int64`: Random seed for reproducibility (default: 1234)
@@ -669,7 +663,8 @@ This function performs spatial adjustment for traits measured in field trials by
 
 1. Identifying spatial factors (blocks, rows, columns) and creating design matrices
 2. Fitting Bayesian linear model per harvest to account for:
-   - Spatial effects (blocks, rows, columns and interactions)
+   - Spatial effects (blocks, rows, columns and interactions) 
+   - Autoregressive covariance structure for spatial dependence if enabled
    - Additional numeric covariates if specified
 3. Creating spatially adjusted traits by adding intercept and residuals
 4. Removing redundant factors and retaining only unique design matrices
@@ -683,11 +678,12 @@ Variance component scalers are specified as follows:
 - This improves model tractability while allowing for flexible variance structures where needed
 
 # Notes
-- Requires "entries" and "harvests" columns in input DataFrame
+- Requires "entries" and "harvests" columns in input DataFrame 
 - Uses Bayesian linear regression via MCMC for spatial modeling
 - Creates new columns with "SPATADJ-" prefix for adjusted traits
 - Returns original DataFrame if no spatial factors present
 - Automatically detects spatial factors via regex pattern "blocks|rows|cols"
+- Supports autoregressive correlation structure for ordered spatial factors
 
 # Example
 ```jldoctest; setup = :(using GenomicBreedingCore, StatsBase)
@@ -708,6 +704,8 @@ function removespatialeffects(;
     factors::Vector{String},
     traits::Vector{String},
     other_covariates::Union{Vector{String},Nothing} = nothing,
+    autoregressive_Σ::Bool = true,
+    ρs::Dict{String, Float64} = Dict("rows" => 0.5, "cols" => 0.5),
     n_iter::Int64 = 10_000,
     n_burnin::Int64 = 1_000,
     seed::Int64 = 1234,
@@ -716,7 +714,7 @@ function removespatialeffects(;
     # genomes = simulategenomes(n=500, l=1_000, verbose=false); 
     # trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=3, verbose=false);
     # df = tabularise(trials);
-    # factors = ["rows", "cols"]; traits = ["trait_1", "trait_2"]; other_covariates=["trait_3"]; n_iter=1_000; n_burnin=200; verbose = false;
+    # factors = ["rows", "cols"]; traits = ["trait_1", "trait_2"]; other_covariates=["trait_3"]; autoregressive_Σ::Bool = true; ρs::Dict{String, Float64} = Dict("rows" => 0.5, "cols" => 0.5); n_iter=1_000; n_burnin=200; seed=123;  verbose = false;
     # Check arguments
     if !(("blocks" ∈ factors) || ("rows" ∈ factors) || ("cols" ∈ factors))
         # No spatial adjustment possible/required
@@ -726,7 +724,6 @@ function removespatialeffects(;
     if !("entries" ∈ names(df))
         throw(ArgumentError("There is no `entries` in the input data frame (`df`)."))
     end
-    # Check arguments
     if (size(df, 1) == 0) || (size(df, 2) == 0)
         throw(ArgumentError("The input data frame is empty."))
     end
@@ -738,6 +735,28 @@ function removespatialeffects(;
     for t in traits
         if !(t ∈ names(df))
             throw(ArgumentError("The input data frame does not include the trait: `$t`."))
+        end
+    end
+    if !isnothing(other_covariates)
+        for c in other_covariates
+            if !(c ∈ names(df))
+                throw(ArgumentError("The input data frame does not include the other covariate: `$c`."))
+            end
+            try
+                [Float64(x) for x in df[!, c]]
+            catch
+                throw(ArgumentError("The other covariate: `$c` is non-numeric and/or possibly have missing data."))
+            end
+            # Make sure the other covariates are strictly numeric
+            co::Vector{Float64} = df[!, c]
+            df[!, c] = co
+        end
+    end
+    if autoregressive_Σ
+        for (k, _) in ρs
+            if !(k ∈ names(df))
+                throw(ArgumentError("The input data frame does not include the factor: `$k`."))
+            end
         end
     end
     # Make sure the "__new_spatially_adjusted_trait__" for adding new spatially adjusted traits does not exist
@@ -781,9 +800,29 @@ function removespatialeffects(;
                 verbose = verbose,
             )
             # Define autoregressive variance-covariance matrix for the spatial factors
-
-
-
+            # We assume that the coefficient names of the factor which will have an autoregressive variance-covariance matrix
+            # can be sorted sensibly, e.g. names like "rows_01", "rows_02", "rows_03" to "row_99" can be sorted to get the order.
+            if autoregressive_Σ
+                for varcomp in string.(keys(ρs))
+                    # varcomp = string.(keys(ρs))[1]
+                    idx = sortperm(blr_and_blr_ALL[1].coefficient_names[varcomp])
+                    p = length(idx)
+                    AR1 = Matrix(Diagonal(ones(p)))
+                    for i in idx
+                        for j in idx
+                            # i = idx[1]; j = idx[2];
+                            if i == j
+                                continue
+                            end
+                            # Farther factor levels less correlated
+                            AR1[i, j] = ρs[varcomp]^abs(i-j)
+                        end
+                    end
+                    inflatediagonals!(AR1)
+                    det(AR1)
+                    blr_and_blr_ALL[1].Σs[varcomp] = AR1
+                end
+            end
             # Set-up variance component multipliers/scalers such that row, columns and other covariates have unique multipliers;
             # while the row-by-col interaction only has 1, i.e. spherical variance-covariance matrix for model tractability
             multiple_σs::Union{Nothing,Dict{String,Bool}} = Dict()
@@ -807,7 +846,6 @@ function removespatialeffects(;
                 seed = seed,
                 verbose = verbose,
             )
-            turingblrmcmc!(blr_and_blr_ALL, multiple_σs=multiple_σs, n_iter = n_iter, n_burnin = n_burnin, seed = seed, verbose = verbose)
             # Update the spatially adjusted trait with the intercept + residuals of the spatial model above
             # cor(df[idx_rows, new_spat_adj_trait_name], blr_and_blr_ALL[1].coefficients["intercept"] .+ blr_and_blr_ALL[1].ϵ)
             df[idx_rows, new_spat_adj_trait_name] = blr_and_blr_ALL[1].coefficients["intercept"] .+ blr_and_blr_ALL[1].ϵ
@@ -870,7 +908,6 @@ function analyse(
         if !checkdims(grm)
             throw(ArgumentError("The GRM is corrupted ☹."))
         end
-
     end
     if !isnothing(other_covariates)
         for c in other_covariates
@@ -938,7 +975,7 @@ function analyse(
     non_traits = vcat("id", "replications", "populations", factors_all)
     traits = filter(x -> !(x ∈ non_traits), names(df)) # includes spatially adjusted and non-spatially adjusted traits
     for (i, trait) in enumerate(traits)
-        # i = 1; trait = traits[i];
+        # i = length(traits); trait = traits[i];
         if verbose
             println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
             println("GxE modelling for trait: $trait")
@@ -953,21 +990,31 @@ function analyse(
         # Proper variance partitioning
         # Prepare the variance-covariance matrix for the entries effects, i.e. using I or a GRM
         if !isnothing(grm)
-            blr_and_blr_ALL[1].Σs["entries"] = grm.genomic_relationship_matrix
-            blr_and_blr_ALL[2].Σs["entries"] = grm.genomic_relationship_matrix
-
-            for (i, entry_1) in enumerate(blr_and_blr_ALL[1].coefficient_names["entries"])
-                for (j, entry_2) in enumerate(blr_and_blr_ALL[1].coefficient_names["entries"])
-
-
-                    blr_and_blr_ALL[1].coefficient_names["harvests & entries"]
-                    factors
-                    n = length(unique(df.entries))
-                    s = length(unique(df.sites))
+            for idx in 1:2
+                # idx = 1
+                # Replace the variance-covariance matrix for the factors involving entries with the GRM
+                factors_with_entries = begin
+                    x = string.(keys(blr_and_blr_ALL[idx].coefficient_names))
+                    x[.!isnothing.(match.(Regex("entries"), x))]
+                end
+                for f in factors_with_entries
+                    # f = factors_with_entries[1]
+                    n = length(blr_and_blr_ALL[idx].coefficient_names[f])
+                    blr_and_blr_ALL[idx].Σs[f] = zeros(n, n)
+                    for (i, entry_1) in enumerate(blr_and_blr_ALL[idx].coefficient_names[f])
+                        for (j, entry_2) in enumerate(blr_and_blr_ALL[idx].coefficient_names[f])
+                            # i = 1; entry_1 = blr_and_blr_ALL[idx].coefficient_names[f][i]
+                            # j = 3; entry_2 = blr_and_blr_ALL[idx].coefficient_names[f][j]
+                            k = findall(grm.entries .== join(split(entry_1, ": ")[2:end], ": "))[idx]
+                            l = findall(grm.entries .== join(split(entry_2, ": ")[2:end], ": "))[idx]
+                            blr_and_blr_ALL[idx].Σs[f][i, j] = grm.genomic_relationship_matrix[k, l]
+                        end
+                    end
                 end
             end
-
-
+        else
+            # Keep the identity matrix for the entries variance-covariance matrix
+            nothing
         end
 
 

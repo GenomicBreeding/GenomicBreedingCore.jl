@@ -158,8 +158,8 @@ function checkdims(blr::BLR)::Bool
        prod([(n != size(X, 1)) for (_, X) in blr.Xs]) ||
        (p != sum([length(c) for (_, c) in blr.coefficient_names])) ||
        p != sum([size(X, 2) for (_, X) in blr.Xs]) ||
-       p != sum([!isa(Σ, UniformScaling) ? size(Σ, 1) : k == "σ²" ? 1 : size(blr.Xs[k], 2) for (k, Σ) in blr.Σs]) ||
-       p != sum([!isa(Σ, UniformScaling) ? size(Σ, 2) : k == "σ²" ? 1 : size(blr.Xs[k], 2) for (k, Σ) in blr.Σs]) ||
+       p != sum([k == "σ²" ? 1 : size(blr.Xs[k], 2) for (k, Σ) in blr.Σs]) ||
+       p != sum([k == "σ²" ? 1 : size(blr.Xs[k], 2) for (k, Σ) in blr.Σs]) ||
        !("intercept" ∈ string.(keys(blr.Xs))) ||
        !("σ²" ∈ string.(keys(blr.Σs))) ||
        !("intercept" ∈ string.(keys(blr.coefficients))) ||
