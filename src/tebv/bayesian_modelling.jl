@@ -504,7 +504,7 @@ function turingblrmcmc!(
     init_ϵ::Float64 = 0.2, # Initial step size; 0 means automatically searching using a heuristic procedure
     adtype::AutoReverseDiff = AutoReverseDiff(compile = true),
     seed::Int64 = 1234,
-    verbose = true,
+    verbose::Bool = true,
 )::Nothing
     # genomes = simulategenomes(n=500, l=1_000, verbose=false); 
     # trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=3, verbose=false);
@@ -713,8 +713,14 @@ function removespatialeffects(;
     seed::Int64 = 1234,
     verbose::Bool = false,
 )::Tuple{DataFrame,Vector{String}}
+    # genomes = simulategenomes(n=500, l=1_000, verbose=false); 
+    # trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=3, verbose=false);
+    # df = tabularise(trials);
+    # factors = ["rows", "cols"]; traits = ["trait_1", "trait_2"]; other_covariates=["trait_3"]; n_iter=1_000; n_burnin=200; verbose = false;
+    # Check arguments
     if !(("blocks" ∈ factors) || ("rows" ∈ factors) || ("cols" ∈ factors))
         # No spatial adjustment possible/required
+        @warn "Spatial adjustment is not required as there are no blocks, rows or columns in the input data frame."
         return (df, factors)
     end
     if !("entries" ∈ names(df))
@@ -746,7 +752,7 @@ function removespatialeffects(;
     spatial_factors = filter(x -> !isnothing(match(Regex("blocks|rows|cols"), x)), factors)
     # Make sure that each harvest is year- and site-specific
     for harvest in unique(df.harvests)
-        # harvest = unique(df.harvests)[2]
+        # harvest = unique(df.harvests)[1]
         idx_rows = findall(df.harvests .== harvest)
         if length(idx_rows) == 0
             continue
@@ -793,7 +799,15 @@ function removespatialeffects(;
                 end
             end
             # Spatial analysis via Bayesian linear regression
-            turingblrmcmc!(blr_and_blr_ALL, n_iter = n_iter, n_burnin = n_burnin, seed = seed, verbose = verbose)
+            turingblrmcmc!(
+                blr_and_blr_ALL,
+                multiple_σs = multiple_σs,
+                n_iter = n_iter,
+                n_burnin = n_burnin,
+                seed = seed,
+                verbose = verbose,
+            )
+            turingblrmcmc!(blr_and_blr_ALL, multiple_σs=multiple_σs, n_iter = n_iter, n_burnin = n_burnin, seed = seed, verbose = verbose)
             # Update the spatially adjusted trait with the intercept + residuals of the spatial model above
             # cor(df[idx_rows, new_spat_adj_trait_name], blr_and_blr_ALL[1].coefficients["intercept"] .+ blr_and_blr_ALL[1].ϵ)
             df[idx_rows, new_spat_adj_trait_name] = blr_and_blr_ALL[1].coefficients["intercept"] .+ blr_and_blr_ALL[1].ϵ

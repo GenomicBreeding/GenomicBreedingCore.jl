@@ -707,40 +707,40 @@ end
     filterbysnplist(
         genomes::Genomes;
         chr_pos_allele_ids::Union{Nothing,Vector{String}} = nothing,
+        match_alleles::Bool = true,
         verbose::Bool = false,
     )::Genomes
 
-Filter genomic data by retaining only the specified loci-allele combinations.
+Filter genomic data by retaining only the specified loci or loci-allele combinations.
 
 # Arguments
 - `genomes::Genomes`: A `Genomes` struct containing the genomic data.
-- `chr_pos_allele_ids::Union{Nothing, Vector{String}}`: A vector of loci-allele combination names in the format "chromosome\tposition\tallele". If `nothing`, no filtering is applied. Default is `nothing`.
+- `chr_pos_allele_ids::Union{Nothing, Vector{String}}`: A vector of loci or loci-allele combination names in the format "chromosome\\tposition" or "chromosome\\tposition\\tallele". If `nothing`, no filtering is applied. Default is `nothing`.
+- `match_alleles::Bool`: If `true`, matches both loci coordinates (chromosome and position) and alleles. If `false`, matches only by chromosome and position regardless of alleles. Default is `true`.
 - `verbose::Bool`: If `true`, prints detailed progress information during the filtering process. Default is `false`.
 
 # Returns
 - `Genomes`: A `Genomes` struct with filtered genomic data.
 
 # Details
-This function filters genomic data by retaining only the specified loci-allele combinations. The function performs the following steps:
+This function filters genomic data by retaining only the specified loci or loci-allele combinations. The function performs the following steps:
 
-1. **Input Validation**: Ensures that the `Genomes` struct is not corrupted. Throws an `ArgumentError` if the struct is corrupted.
-2. **Early Return for No Loci-Allele Combinations**: If no loci-allele combination names are provided, the function returns the original `Genomes` struct without filtering.
-3. **Parse Loci-Allele Combination Names**: Parses the input loci-allele combination names and ensures they are valid.
-4. **Extract Available Loci-Allele Combinations**: Extracts the loci-allele combination names from the `Genomes` struct.
-5. **Filter Loci-Alleles**: Identifies the indices of the loci-allele combinations to retain based on the provided list.
-6. **Verbose Output**: If `verbose` is `true`, prints detailed progress information during the filtering process.
-7. **Final Check**: Ensures that there are remaining loci-alleles after filtering. Throws an `ErrorException` if no loci-alleles are retained.
-8. **Output**: Returns the filtered `Genomes` struct.
+1. **Input Validation**: Ensures that the `Genomes` struct is not corrupted.
+2. **Early Return for No Filtering**: If no IDs are provided, returns the original `Genomes` struct.
+3. **Parse Input IDs**: Parses the input IDs and validates their format.
+4. **Extract Available IDs**: Gets the current loci or loci-allele combinations from the `Genomes` struct.
+5. **Filter Data**: Identifies and retains only the specified combinations.
+6. **Verbose Output**: If enabled, prints detailed progress information.
+7. **Final Check**: Ensures that filtering retains at least some data.
 
 # Notes
-- The function uses multi-threading to parse and filter the loci-allele combination names, improving performance on large datasets.
-- The `verbose` option provides additional insights into the filtering process by printing progress information.
-- The function ensures that the filtered genomic data retains a minimum number of loci-alleles.
+- Uses multi-threading for parsing and filtering operations
+- When `match_alleles=false`, matches only chromosome and position
+- Preserves the original data structure while filtering unwanted entries
 
 # Throws
-- `ArgumentError`: If the `Genomes` struct is corrupted.
-- `ArgumentError`: If the loci-allele combination names are not in the expected format.
-- `ErrorException`: If no loci-alleles are retained after filtering.
+- `ArgumentError`: If the `Genomes` struct is corrupted or input IDs are malformed
+- `ErrorException`: If no data remains after filtering
 
 # Example
 ```jldoctest; setup = :(using GenomicBreedingCore, StatsBase)
@@ -900,6 +900,7 @@ end
         max_entry_sparsity_percentile::Float64 = 0.90,
         max_locus_sparsity_percentile::Float64 = 0.50,
         chr_pos_allele_ids::Union{Nothing,Vector{String}} = nothing,
+        match_alleles::Bool = true,
         verbose::Bool = false,
     )::Tuple{Genomes, Dict{String,Vector{String}}}
 
@@ -913,7 +914,8 @@ Filter genomic data based on multiple criteria including sparsity, minor allele 
 - `max_prop_pc_varexp::Float64`: The maximum proportion of variance explained by the first two principal components (PC1 and PC2). Default is 0.90.
 - `max_entry_sparsity_percentile::Float64`: The percentile threshold for entry sparsity. Default is 0.90.
 - `max_locus_sparsity_percentile::Float64`: The percentile threshold for locus sparsity. Default is 0.50.
-- `chr_pos_allele_ids::Union{Nothing, Vector{String}}`: A vector of loci-allele combination names in the format "chromosome\tposition\tallele". If `nothing`, no filtering is applied. Default is `nothing`.
+- `chr_pos_allele_ids::Union{Nothing, Vector{String}}`: A vector of loci-allele combination names in the format "chromosome\\tposition\\tallele". If `nothing`, no filtering is applied. Default is `nothing`.
+- `match_alleles::Bool`: If `true`, matches alleles exactly when filtering by SNP list. If `false`, matches only chromosome and position. Default is `true`.
 - `verbose::Bool`: If `true`, prints detailed progress information during the filtering process. Default is `false`.
 
 # Returns
@@ -921,20 +923,19 @@ Filter genomic data based on multiple criteria including sparsity, minor allele 
   - A `Genomes` struct with filtered genomic data.
   - A dictionary of omitted loci-allele names categorized by the filtering criteria.
 
-# DetailS
+# Details
 This function filters genomic data based on multiple criteria including sparsity, minor allele frequency (MAF), principal component analysis (PCA), and a list of loci-allele combinations. The function performs the following steps:
 
-1. **Input Validation**: Ensures that the `Genomes` struct is not corrupted and that the filtering thresholds are within valid ranges. Throws an `ArgumentError` if any argument is out of range.
+1. **Input Validation**: Ensures that the `Genomes` struct is not corrupted and that the filtering thresholds are within valid ranges.
 2. **Filter by Sparsity**: Removes the sparsest entries and loci-alleles until the maximum allowable sparsity thresholds are met.
 3. **Filter by MAF**: Removes loci-alleles with minor allele frequencies below the specified threshold.
 4. **Filter by PCA**: Removes outlier loci-alleles based on the proportion of variance explained by the first two principal components.
-5. **Filter by SNP List**: Retains only the specified loci-allele combinations.
+5. **Filter by SNP List**: Retains only the specified loci-allele combinations, with optional exact allele matching.
 6. **Verbose Output**: If `verbose` is `true`, prints detailed progress information during each filtering step.
-7. **Output**: Returns the filtered `Genomes` struct and a dictionary of omitted loci-allele names categorized by the filtering criteria.
 
 # Notes
 - The function uses multi-threading to improve performance on large datasets.
-- The `verbose` option provides additional insights into the filtering process by printing progress information.
+- The `match_alleles` parameter provides flexibility in SNP list filtering.
 - The function ensures that the filtered genomic data retains a minimum number of entries and loci-alleles.
 
 # Throws
