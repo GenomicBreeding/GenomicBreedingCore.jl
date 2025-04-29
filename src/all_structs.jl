@@ -204,6 +204,7 @@ Bayesian Linear Regression (BLR) model structure for phenotype analyses, genomic
 - `y::Vector{Float64}`: Response/dependent variable vector
 - `ŷ::Vector{Float64}`: Fitted/predicted values
 - `ϵ::Vector{Float64}`: Residuals (y - ŷ)
+- `diagnostics::DataFrame`: Model diagnostics and convergence metrics
 
 # Constructor
     BLR(; n::Int64, p::Int64, var_comp::Dict{String, Int64} = Dict("σ²" => 1))
@@ -222,6 +223,7 @@ The constructor initializes:
 - Dictionaries for coefficients and their names, with "intercept" as default first component
 - Zero vectors for y, fitted values (ŷ), and residuals (ϵ)
 - Empty strings for entries and coefficient names (except "intercept")
+- Empty DataFrame for model diagnostics
 
 # Requirements
 - At least one variance component (σ²) must be specified for residual variance
@@ -243,6 +245,7 @@ mutable struct BLR <: AbstractGB
     y::Vector{Float64}
     ŷ::Vector{Float64}
     ϵ::Vector{Float64}
+    diagnostics::DataFrame
     function BLR(; n::Int64, p::Int64, var_comp::Dict{String,Int64} = Dict("σ²" => 1))
         # Check arguments
         if length(var_comp) < 1
@@ -288,7 +291,7 @@ mutable struct BLR <: AbstractGB
                 coefficient_names[v] = fill("", var_comp[v])
             end
         end
-        return new(entries, Xs, Σs, coefficients, coefficient_names, y, ŷ, ϵ)
+        return new(entries, Xs, Σs, coefficients, coefficient_names, y, ŷ, ϵ, DataFrame())
     end
 end
 
@@ -324,7 +327,7 @@ mutable struct TEBV <: AbstractGB
     function TEBV(;
         traits::Vector{String},
         formulae::Vector{String},
-        models::Union{Vector{LinearMixedModel{Float64}},Tuple{Vector{String},Vector{Float64},Matrix{Float64}}},
+        models::Union{Vector{LinearMixedModel{Float64}},Vector{BLR}},
         df_BLUEs::Vector{DataFrame},
         df_BLUPs::Vector{DataFrame},
         phenomes::Vector{Phenomes},

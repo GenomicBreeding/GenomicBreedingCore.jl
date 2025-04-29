@@ -783,7 +783,7 @@ function filterbysnplist(
     requested_chr_pos_allele_ids = begin
         chr::Vector{String} = fill("", length(chr_pos_allele_ids))
         pos::Vector{Int64} = fill(0, length(chr_pos_allele_ids))
-        ale::Union{Nothing, Vector{String}} = if match_alleles
+        ale::Union{Nothing,Vector{String}} = if match_alleles
             fill("", length(chr_pos_allele_ids))
         else
             nothing
@@ -836,7 +836,7 @@ function filterbysnplist(
             unique(sort(string.(chr, "\t", pos, "\t", ale)))
         else
             unique(sort(string.(chr, "\t", pos)))
-        end 
+        end
     end
     # Extract the loci-allele combination names from the genomes struct
     chromosomes, positions, alleles = loci_alleles(genomes)
@@ -1021,7 +1021,12 @@ function Base.filter(
         reduce(vcat, values(omitted_loci_alleles)),
     )
     # Are we filtering using a list of loci-allele combination names?
-    filtered_genomes = filterbysnplist(filtered_genomes, chr_pos_allele_ids = chr_pos_allele_ids, match_alleles = match_alleles, verbose = verbose)
+    filtered_genomes = filterbysnplist(
+        filtered_genomes,
+        chr_pos_allele_ids = chr_pos_allele_ids,
+        match_alleles = match_alleles,
+        verbose = verbose,
+    )
     omitted_loci_alleles["by_snplist"] = setdiff(
         setdiff(genomes.loci_alleles, filtered_genomes.loci_alleles),
         reduce(vcat, values(omitted_loci_alleles)),

@@ -1,7 +1,8 @@
 """
     instantiateblr(; trait::String, factors::Vector{String}, df::DataFrame, 
-                      other_covariates::Union{Vector{String}, Nothing}=nothing, 
-                      verbose::Bool=false)::Tuple{BLR,BLR}
+                  other_covariates::Union{Vector{String}, Nothing}=nothing,
+                  saturated_model::Bool=false,
+                  verbose::Bool=false)::Tuple{BLR,BLR}
 
 Extract design matrices and response variable for Bayesian modelling of factorial experiments.
 
@@ -10,6 +11,7 @@ Extract design matrices and response variable for Bayesian modelling of factoria
 - `factors::Vector{String}`: Vector of factor names (independent variables) to be included in the model 
 - `df::DataFrame`: DataFrame containing the data
 - `other_covariates::Union{Vector{String}, Nothing}=nothing`: Additional numeric covariates to include in the model
+- `saturated_model::Bool=false`: If true, includes all possible interactions between factors
 - `verbose::Bool=false`: If true, prints additional information during execution
 
 # Returns
@@ -31,12 +33,31 @@ Each BLR struct contains:
 Creates design matrices for factorial experiments using both standard and one-hot encoding approaches.
 The function processes main effects and interaction terms, handling categorical factors and
 continuous covariates differently. Other implementation notes:
-- Converts all factors to strings for categorical treatment
+
+- Converts all factors to strings for categorical treatment 
 - Uses FullDummyCoding for contrast encoding
 - Validates numeric nature of trait and covariates
-- Processes interaction terms between factors automatically
+- Processes either pre-defined interaction terms or all possible interactions (if saturated_model=true)
 - Handles both categorical factors (as Boolean matrices) and continuous covariates (as Float64 matrices)
 - Creates separate design matrices with and without base levels
+
+Pre-defined interaction terms (when saturated_model=false) include:
+- Stage-2 effects (GxE effects after spatial corrections per year-season-site-harvest combination):
+    + entries
+    + sites
+    + seasons
+    + years
+    + seasons:sites
+    + years:sites
+    + entries:seasons:sites
+- Stage-1 effects (spatial effects per year-season-site-harvest combination):
+    + rows
+    + cols
+    + rows:cols
+
+# Throws
+- `ArgumentError`: If trait/covariates not found or not numeric
+- `ErrorException`: If design matrix extraction or BLR construction fails
 
 # Example
 ```jldoctest; setup = :(using GenomicBreedingCore)
@@ -68,10 +89,11 @@ function instantiateblr(;
     factors::Vector{String},
     df::DataFrame,
     other_covariates::Union{Vector{String},Nothing} = nothing,
+    saturated_model::Bool = false,
     verbose::Bool = false,
 )::Tuple{BLR,BLR}
     # genomes = simulategenomes(n=500, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_harvests=1, n_sites=2, n_replications=3);
-    # trait = "trait_1"; factors = ["rows", "cols"]; df = tabularise(trials); other_covariates::Union{Vector{String}, Nothing} = ["trait_2", "trait_3"]; verbose = true;
+    # trait = "trait_1"; factors = ["rows", "cols"]; df = tabularise(trials); other_covariates::Union{Vector{String}, Nothing} = ["trait_2", "trait_3"]; saturated_model = false; verbose = true;
     # Check arguments
     if !(trait ∈ names(df))
         throw(ArgumentError("The input data frame does not include the trait: `$trait`."))
@@ -103,15 +125,47 @@ function instantiateblr(;
             df[!, c] = co
         end
     end
+    # Main effects and interaction terms we are most interested in fitting
+    focal_terms = [
+        # Stage-2 effects
+        "entries",
+        "sites",
+        "seasons",
+        "years",
+        "seasons:sites",
+        "years:sites",
+        "entries:seasons:sites",
+        # Spatial effects per harvest (i.e. stage-1 effects per year-site-season-harvest combination)
+        "rows",
+        "cols",
+        "rows:cols",
+    ]
+    # Define the coefficients excluding possible additional continuous covariates
+    coefficients_base = if !saturated_model
+        vector_of_terms = []
+        for t in focal_terms
+            # t = focal_terms[5]
+            ts = split(t, ":")
+            if length(intersect(ts, factors)) == length(ts)
+                if length(ts) > 1
+                    # t = "rows:cols"
+                    push!(vector_of_terms, foldl(*, term.(ts))[end]) ### insert only the last most complex term
+                else
+                    push!(vector_of_terms, term(t))
+                end
+            end
+        end
+        foldl(+, vector_of_terms)
+    else
+        foldl(*, term.(factors))
+    end
     # Define the formula
     formula_struct, coefficients = if isnothing(other_covariates)
-        coefficients = foldl(*, term.(factors))
-        (concrete_term(term(trait), df[!, trait], ContinuousTerm) ~ term(1) + coefficients), coefficients
+        (concrete_term(term(trait), df[!, trait], ContinuousTerm) ~ term(1) + coefficients_base), coefficients_base
     else
         # f = term(trait) ~ term(1) + foldl(*, term.(factors)) + foldl(+, term.(other_covariates))
         coefficients =
-            foldl(*, term.(factors)) +
-            foldl(+, [concrete_term(term(c), df[!, c], ContinuousTerm) for c in other_covariates])
+            coefficients_base + foldl(+, [concrete_term(term(c), df[!, c], ContinuousTerm) for c in other_covariates])
         (concrete_term(term(trait), df[!, trait], ContinuousTerm) ~ term(1) + coefficients), coefficients
     end
     # Extract the names of the coefficients and the design matrix (n x F(p-1); excludes the base level/s) to used for the regression
@@ -292,7 +346,7 @@ Turing.@model function turingblr(
     for i = 1:k
         σ²s[i] ~ filldist(Exponential(1.0), length(σ²s[i]))
         σ² = repeat(σ²s[i], 1 + length(βs[i]) - length(σ²s[i]))
-        Σ = Diagonal(σ²) * vector_of_Δs[i] * Diagonal(σ²)
+        Σ = Symmetric(Diagonal(σ²) * vector_of_Δs[i] * Diagonal(σ²))
         βs[i] ~ MvNormal(zeros(length(βs[i])), Σ)
         μ += Float64.(vector_of_Xs_noint[i]) * βs[i]
     end
@@ -447,18 +501,24 @@ Perform MCMC sampling for Bayesian Linear Regression on a tuple of BLR models us
 - `verbose::Bool`: Whether to show progress during sampling (default: true)
 
 # Returns
-- `Nothing`: Updates the input BLR models in-place
+- `Nothing`: The function mutates the input BLR structs in-place, updating their:
+    + coefficients, 
+    + variance components, 
+    + predicted values, 
+    + residuals, and 
+    + MCMC diagnostics
 
 # Notes
 - Performs model validation checks before fitting
 - Uses NUTS (No-U-Turn Sampler) with specified AD type
-- Computes convergence diagnostics using Gelman-Rubin statistics (R̂)
-- Warns if parameters haven't converged (|1.0 - R̂| > 0.1)
+- Computes convergence diagnostics using improved Gelman-Rubin statistics (R̂; https://doi.org/10.1214/20-BA1221)
+- Warns if parameters haven't converged based on R̂ (≥ 1.01) or effective sample size (< 100)
 - Updates both models with estimated coefficients, variance components, predicted values, and residuals
 - Ensures consistency between fitted and full models
+- Mutates the input BLR models in-place
 
 # Example
-```jldoctest; setup = :(using GenomicBreedingCore, StatsBase)
+```jldoctest; setup = :(using GenomicBreedingCore, StatsBase, DataFrames)
 julia> genomes = simulategenomes(n=500, l=1_000, verbose=false); 
 
 julia> trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=3, verbose=false);
@@ -479,6 +539,12 @@ julia> cor(blr_and_blr_ALL[1].y, blr_and_blr_ALL[1].ŷ) > 0.0
 true
 
 julia> cor(blr_and_blr_ALL[1].ŷ, blr_and_blr_ALL[2].ŷ) > 0.99
+true
+
+julia> (sum(blr_and_blr_ALL[1].diagnostics.rhat .< 1.01) < nrow(blr_and_blr_ALL[1].diagnostics))
+true
+
+julia> (sum(blr_and_blr_ALL[1].diagnostics.ess .>= 100) < nrow(blr_and_blr_ALL[1].diagnostics))
 true
 ```
 """
@@ -561,11 +627,16 @@ function turingblrmcmc!(
     if verbose
         println("Diagnosing the MCMC chain for convergence by dividing the chain into 5 and finding the maximum R̂.")
     end
-    R̂ = DataFrame(MCMCDiagnosticTools.rhat(chain, kind = :rank, split_chains = 5)) # new R̂: maximum R̂ of :bulk and :tail
-    n_params_which_may_not_have_converged = sum(abs.(1.0 .- R̂.rhat) .> 0.1)
+    diagnostics = DataFrame(MCMCDiagnosticTools.ess_rhat(chain, split_chains = 5)) # new R̂: maximum R̂ of :bulk and :tail
+    p = size(diagnostics, 1)
+    n_rhat_converged = sum(diagnostics.rhat .< 1.01)
+    n_ess_converged = sum(diagnostics.ess .>= 100)
     if verbose
-        if n_params_which_may_not_have_converged > 0
-            @warn "There are $n_params_which_may_not_have_converged parameters (out of $(nrow(R̂)) total parameters) which may not have converged. Please consider increasing the number of iterations which is currently at $n_iter."
+        if ((p - n_rhat_converged) > 0) || ((p - n_ess_converged) > 0)
+            @warn "Convergence rates:\n" *
+                  "\t‣ $(round(n_rhat_converged*100 / p))%: $(p - n_rhat_converged) parameters which may not have converged based on R̂ (>= 1.01) and,\n" *
+                  "\t‣ $(round(n_ess_converged*100 / p))%: $(p - n_ess_converged) parameters which may not have converged based on effective sample size (< 100).\n" *
+                  "Please consider increasing the number of iterations which is currently at $n_iter."
         else
             println("All parameters have converged.")
         end
@@ -620,6 +691,9 @@ function turingblrmcmc!(
     X, b, _b_labels = extractXb(blr_and_blr_ALL[2])
     blr_and_blr_ALL[2].ŷ = X * b
     blr_and_blr_ALL[2].ϵ = blr_and_blr_ALL[2].y .- blr_and_blr_ALL[2].ŷ
+    # Insert the diagnostics into the BLR structs
+    blr_and_blr_ALL[1].diagnostics = diagnostics
+    blr_and_blr_ALL[2].diagnostics = diagnostics
     # Output checks
     if !checkdims(blr_and_blr_ALL[1]) || !checkdims(blr_and_blr_ALL[2])
         throw(ErrorException("Error updating the BLR structs after MCMC."))
@@ -628,16 +702,16 @@ function turingblrmcmc!(
        (mean(abs.(blr_and_blr_ALL[1].ϵ - blr_and_blr_ALL[2].ϵ)) > 1e-7)
         throw(ErrorException("The BLR struts do not yield the same ŷ and ϵ. After fitting and updating the fields."))
     end
-    nothing
+    return nothing
 end
 
 """
-    removespatialeffects(; df::DataFrame, factors::Vector{String}, traits::Vector{String}, 
-                        other_covariates::Union{Vector{String},Nothing} = nothing,
-                        autoregressive_Σ::Bool = true,
-                        ρs::Dict{String, Float64} = Dict("rows" => 0.5, "cols" => 0.5),
-                        n_iter::Int64 = 10_000, n_burnin::Int64 = 1_000, 
-                        seed::Int64 = 1234, verbose::Bool = false)::Tuple{DataFrame, Vector{String}}
+    removespatialeffects!(df::DataFrame; factors::Vector{String}, traits::Vector{String}, 
+                         other_covariates::Union{Vector{String},Nothing} = nothing,
+                         autoregressive_Σ::Bool = true,
+                         ρs::Dict{String, Float64} = Dict("rows" => 0.5, "cols" => 0.5),
+                         n_iter::Int64 = 10_000, n_burnin::Int64 = 1_000, 
+                         seed::Int64 = 1234, verbose::Bool = false)::Tuple{Vector{String}, Dict{String, DataFrame}}
 
 Remove spatial effects from trait measurements in field trials using Bayesian linear regression.
 
@@ -654,9 +728,10 @@ Remove spatial effects from trait measurements in field trials using Bayesian li
 - `verbose::Bool`: If true, prints detailed information (default: false)
 
 # Returns
-A tuple containing:
-1. Modified DataFrame with new spatially adjusted traits (prefix "SPATADJ-")  
-2. Updated factors vector with spatial factors removed
+In addition to mutating `df` by adding the spatially adjusted traits as new columns with the prefix "SPATADJ-",
+it returns a tuple containing:
+1. Vector of remaining significant factors after spatial adjustment
+2. Dictionary mapping harvest-trait combinations to diagnostic DataFrame results
 
 # Details
 This function performs spatial adjustment for traits measured in field trials by:
@@ -684,33 +759,37 @@ Variance component scalers are specified as follows:
 - Returns original DataFrame if no spatial factors present
 - Automatically detects spatial factors via regex pattern "blocks|rows|cols"
 - Supports autoregressive correlation structure for ordered spatial factors
+- Modifies the input DataFrame in-place
 
 # Example
-```jldoctest; setup = :(using GenomicBreedingCore, StatsBase)
-julia> genomes = simulategenomes(n=500, l=1_000, verbose=false); 
+```jldoctest; setup = :(using GenomicBreedingCore, StatsBase, DataFrames)
+julia> genomes = simulategenomes(n=10, l=1_000, verbose=false);
 
 julia> trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=3, verbose=false);
 
 julia> df = tabularise(trials);
 
-julia> df, factors = removespatialeffects(df = df, factors = ["rows", "cols"], traits = ["trait_1", "trait_2"], other_covariates=["trait_3"], n_iter=1_000, n_burnin=200, verbose = false);
+julia> factors, diagnostics = removespatialeffects!(df, factors = ["rows", "cols", "blocks"], traits = ["trait_1", "trait_2"], other_covariates=["trait_3"], n_iter=1_000, n_burnin=200, verbose = false);
 
 julia> ("SPATADJ-trait_1" ∈ names(df)) && ("SPATADJ-trait_2" ∈ names(df))
 true
+
+julia> [(sum(d.rhat .< 1.01) < nrow(d)) && (sum(d.ess .>= 100) < nrow(d)) for (_, d) in diagnostics] == [true, true]
+true
 ```
 """
-function removespatialeffects(;
-    df::DataFrame,
+function removespatialeffects!(
+    df::DataFrame;
     factors::Vector{String},
     traits::Vector{String},
     other_covariates::Union{Vector{String},Nothing} = nothing,
     autoregressive_Σ::Bool = true,
-    ρs::Dict{String, Float64} = Dict("rows" => 0.5, "cols" => 0.5),
+    ρs::Dict{String,Float64} = Dict("rows" => 0.5, "cols" => 0.5),
     n_iter::Int64 = 10_000,
     n_burnin::Int64 = 1_000,
     seed::Int64 = 1234,
     verbose::Bool = false,
-)::Tuple{DataFrame,Vector{String}}
+)::Tuple{Vector{String},Dict{String,DataFrame}}
     # genomes = simulategenomes(n=500, l=1_000, verbose=false); 
     # trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=3, verbose=false);
     # df = tabularise(trials);
@@ -770,8 +849,12 @@ function removespatialeffects(;
     # Define spatial factors
     spatial_factors = filter(x -> !isnothing(match(Regex("blocks|rows|cols"), x)), factors)
     # Make sure that each harvest is year- and site-specific
-    for harvest in unique(df.harvests)
-        # harvest = unique(df.harvests)[1]
+    harvests = unique(df.harvests)
+    # Instantiate the diagnostics dictionary for each harvest-by-trait combination
+    spatial_diagnostics::Dict{String,DataFrame} = Dict()
+    # Loop through each harvest
+    for harvest in harvests
+        # harvest = harvests[1]
         idx_rows = findall(df.harvests .== harvest)
         if length(idx_rows) == 0
             continue
@@ -782,7 +865,9 @@ function removespatialeffects(;
             trait = traits[i]
             if verbose
                 println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
-                println("Spatial modelling for harvest: $harvest; and trait: $trait")
+                println(
+                    " ($(1 + length(spatial_diagnostics))/$(length(harvests) * length(traits))) Spatial modelling for harvest: $harvest; and trait: $trait",
+                )
                 println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
             end
             # Add spatially adjusted trait to df
@@ -815,7 +900,7 @@ function removespatialeffects(;
                                 continue
                             end
                             # Farther factor levels less correlated
-                            AR1[i, j] = ρs[varcomp]^abs(i-j)
+                            AR1[i, j] = ρs[varcomp]^abs(i - j)
                         end
                     end
                     inflatediagonals!(AR1)
@@ -849,11 +934,13 @@ function removespatialeffects(;
             # Update the spatially adjusted trait with the intercept + residuals of the spatial model above
             # cor(df[idx_rows, new_spat_adj_trait_name], blr_and_blr_ALL[1].coefficients["intercept"] .+ blr_and_blr_ALL[1].ϵ)
             df[idx_rows, new_spat_adj_trait_name] = blr_and_blr_ALL[1].coefficients["intercept"] .+ blr_and_blr_ALL[1].ϵ
+            # Update the spatial_diagnostics
+            spatial_diagnostics[string(harvest, "|", new_spat_adj_trait_name)] = blr_and_blr_ALL[1].diagnostics
         end
     end
     # Is the entries the only factor remaining?
     if length(factors) == 1
-        return (df, factors)
+        return (factors, spatial_diagnostics)
     end
     # Factors with more than 1 level after correcting for spatial effects other than entries
     factors_out = ["entries"]
@@ -878,21 +965,22 @@ function removespatialeffects(;
         end
     end
     # Output
-    (df, factors_out)
+    (factors_out, spatial_diagnostics)
 end
 
-# TODO: Add flexibility to specify whether to use one or multiple variance scalers in the GxE model
+
 function analyse(
     trials::Trials,
     traits::Vector{String};
     grm::Union{GRM,Nothing} = nothing,
     other_covariates::Union{Vector{String},Nothing} = nothing,
+    multiple_σs_threshols::Int64 = 500,
     n_iter::Int64 = 10_000,
     n_burnin::Int64 = 1_000,
     seed::Int64 = 1234,
     verbose::Bool = false,
-)::TEBV
-    # genomes = simulategenomes(n=500, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=2, n_replications=3); grm::Union{GRM, Nothing} = grmploidyaware(genomes; ploidy = 2, max_iter = 10, verbose = true); traits = ["trait_1"]; other_covariates::Union{Vector{String}, Nothing} = ["trait_2"]; n_iter::Int64 = 1_000; n_burnin::Int64 = 100; seed::Int64 = 1234; verbose::Bool = true;
+)::Tuple{TEBV,Dict{String,DataFrame}}
+    # genomes = simulategenomes(n=100, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_harvests=1, n_sites=3, n_replications=3); grm::Union{GRM, Nothing} = grmploidyaware(genomes; ploidy = 2, max_iter = 10, verbose = true); traits::Vector{String} = ["trait_1"]; other_covariates::Union{Vector{String}, Nothing} = ["trait_2"]; multiple_σs_threshols = 500; n_iter::Int64 = 1_000; n_burnin::Int64 = 100; seed::Int64 = 1234; verbose::Bool = true;
     # Check arguments
     if !checkdims(trials)
         error("The Trials struct is corrupted ☹.")
@@ -928,12 +1016,12 @@ function analyse(
     # Tabularise the trials data
     df = tabularise(trials)
     # Make sure the harvests are year- and site-specific
-    df.harvests = string.(df.years, "|", df.sites, "|", df.harvests)
+    df.harvests = string.(df.years, "|", df.seasons, "|", df.sites, "|", df.harvests)
     # Identify non-fixed factors
     factors_all::Vector{String} = ["years", "seasons", "sites", "harvests", "blocks", "rows", "cols", "entries"]
     factors::Vector{String} = []
     for f in factors_all
-        # f = factors_all[1]
+        # f = factors_all[4]
         if length(unique(df[!, f])) > 1
             push!(factors, f)
         end
@@ -960,8 +1048,8 @@ function analyse(
     # Spatial analyses per harvest-site-year
     # This is to prevent OOM errors, we will perform spatial analyses per harvest per site per year, i.e. remove spatial effects per harvest-site-year
     # as well as remove the effects of continuous numeric covariate/s.
-    df, factors = removespatialeffects(
-        df = df,
+    factors, spatial_diagnostics = removespatialeffects!(
+        df,
         factors = factors,
         traits = traits,
         other_covariates = other_covariates,
@@ -971,9 +1059,8 @@ function analyse(
         verbose = verbose,
     )
     # GxE modelling excluding the effects of spatial factors and continuous covariates
-    vector_of_BLRs::Vector{BLR} = []
-    non_traits = vcat("id", "replications", "populations", factors_all)
-    traits = filter(x -> !(x ∈ non_traits), names(df)) # includes spatially adjusted and non-spatially adjusted traits
+    BLRs::Dict{String,BLR} = Dict()
+    traits = filter(x -> !isnothing(match(Regex("^SPATADJ-"), x)), names(df)) # includes only the spatially adjusted traits
     for (i, trait) in enumerate(traits)
         # i = length(traits); trait = traits[i];
         if verbose
@@ -983,31 +1070,48 @@ function analyse(
         end
         # Instantiate the BLR struct for GxE analysis
         # Note that the covariate is now excluded as we should have controlled for them in the per harvest-site-year spatial analyses
+        # - Stage-1 effects (spatial effects per year-season-site-harvest combination):
+        #     + rows
+        #     + cols
+        #     + rows:cols
+        # - Stage-2 effects (GxE effects after spatial corrections per year-season-site-harvest combination):
+        #     + entries
+        #     + sites
+        #     + seasons
+        #     + years
+        #     + seasons:sites
+        #     + years:sites
+        #     + entries:seasons:sites
         blr_and_blr_ALL =
             instantiateblr(trait = trait, factors = factors, other_covariates = nothing, df = df, verbose = verbose)
-
-
-        # Proper variance partitioning
         # Prepare the variance-covariance matrix for the entries effects, i.e. using I or a GRM
+
+        # TODO TODO TODO TODO TODO TODO TODO TODO
+        # TODO: Test GRM!
+        # TODO TODO TODO TODO TODO TODO TODO TODO
         if !isnothing(grm)
-            for idx in 1:2
-                # idx = 1
+            for idx = 1:2
+                # idx = 2
                 # Replace the variance-covariance matrix for the factors involving entries with the GRM
                 factors_with_entries = begin
                     x = string.(keys(blr_and_blr_ALL[idx].coefficient_names))
                     x[.!isnothing.(match.(Regex("entries"), x))]
                 end
-                for f in factors_with_entries
-                    # f = factors_with_entries[1]
-                    n = length(blr_and_blr_ALL[idx].coefficient_names[f])
-                    blr_and_blr_ALL[idx].Σs[f] = zeros(n, n)
-                    for (i, entry_1) in enumerate(blr_and_blr_ALL[idx].coefficient_names[f])
-                        for (j, entry_2) in enumerate(blr_and_blr_ALL[idx].coefficient_names[f])
-                            # i = 1; entry_1 = blr_and_blr_ALL[idx].coefficient_names[f][i]
-                            # j = 3; entry_2 = blr_and_blr_ALL[idx].coefficient_names[f][j]
-                            k = findall(grm.entries .== join(split(entry_1, ": ")[2:end], ": "))[idx]
-                            l = findall(grm.entries .== join(split(entry_2, ": ")[2:end], ": "))[idx]
-                            blr_and_blr_ALL[idx].Σs[f][i, j] = grm.genomic_relationship_matrix[k, l]
+                for fentries in factors_with_entries
+                    # fentries = factors_with_entries[1]
+                    n = length(blr_and_blr_ALL[idx].coefficient_names[fentries])
+                    blr_and_blr_ALL[idx].Σs[fentries] = zeros(n, n)
+                    for (i, name_1) in enumerate(blr_and_blr_ALL[idx].coefficient_names[fentries])
+                        for (j, name_2) in enumerate(blr_and_blr_ALL[idx].coefficient_names[fentries])
+                            # i = 1; name_1 = blr_and_blr_ALL[idx].coefficient_names[fentries][i]
+                            # j = 1; name_2 = blr_and_blr_ALL[idx].coefficient_names[fentries][j]
+                            entry_1 = split(name_1, " ")
+                            entry_1 = entry_1[.!isnothing.(match.(Regex("entry_"), entry_1))][end]
+                            entry_2 = split(name_2, " ")
+                            entry_2 = entry_2[.!isnothing.(match.(Regex("entry_"), entry_2))][end]
+                            k = findall(grm.entries .== entry_1)[end]
+                            l = findall(grm.entries .== entry_2)[end]
+                            blr_and_blr_ALL[idx].Σs[fentries][i, j] = grm.genomic_relationship_matrix[k, l]
                         end
                     end
                 end
@@ -1016,33 +1120,66 @@ function analyse(
             # Keep the identity matrix for the entries variance-covariance matrix
             nothing
         end
-
-
-
-        # TODO: Set-up variance component multipliers/scalers, for now it's just based on a maximumnumber of coefficients thresholds
+        # Set-up variance component multipliers/scalers, for now it's just based on a maximumnumber of coefficients thresholds
         multiple_σs::Union{Nothing,Dict{String,Bool}} = Dict()
-        for v in factors
-            multiple_σs[v] = if size(blr_and_blr_ALL[1].Xs[v], 2) > 100
+        for v in string.(keys(blr_and_blr_ALL[1].coefficient_names))
+            # v = string.(keys(blr_and_blr_ALL[1].coefficient_names))[2]
+            if v == "intercept"
+                continue
+            end
+            multiple_σs[v] = if size(blr_and_blr_ALL[1].Xs[v], 2) > multiple_σs_threshols
                 false
             else
                 true
             end
         end
-
-
-
-
         # GxE analysis via Bayesian linear regression
-        turingblrmcmc!(blr_and_blr_ALL, n_iter = n_iter, n_burnin = n_burnin, seed = seed, verbose = verbose)
-        # blr_and_blr_ALL[1].Xs
-        # blr_and_blr_ALL[1].Σs
-        # blr_and_blr_ALL[1].coefficients
-        # blr_and_blr_ALL[1].coefficient_names["other_covariates"]
-        # blr_and_blr_ALL[1].y
-        # blr_and_blr_ALL[1].ŷ
-        # blr_and_blr_ALL[1].ϵ
-        # Collect the full BLR model, i.e. one-hot encoding which includes all factor levels (and not the df-1 model or the model that was fitted)
-        push!(vector_of_BLRs, blr_and_blr_ALL[2])
+        turingblrmcmc!(
+            blr_and_blr_ALL,
+            multiple_σs = multiple_σs,
+            n_iter = n_iter,
+            n_burnin = n_burnin,
+            seed = seed,
+            verbose = verbose,
+        )
+        # Add the fitted BLR struct to the dictionary of BLRs
+        BLRs[trait] = blr_and_blr_ALL[2]
     end
-
+    # Instantiate and populate the TEBV struct
+    traits = []
+    formulae::Vector{String} = []
+    models::Vector{BLR} = []
+    phenomes::Vector{Phenomes} = []
+    for (k, v) in BLRs
+        # k = string.(keys(BLRs))[1]; v = BLRs[k];
+        factors_with_entries = begin
+            x = string.(keys(v.coefficient_names))
+            x[.!isnothing.(match.(Regex("entries"), x))]
+        end
+        for fentries in factors_with_entries
+            # fentries = factors_with_entries[1]
+            trait = string(k, "|", fentries)
+            push!(traits, trait)
+            push!(formulae, string(trait, "~", join(string.(keys(v.coefficients)), "+")))
+            push!(models, v)
+            n = length(v.coefficient_names[fentries])
+            ϕ = begin
+                ϕ = Phenomes(n = n, t = 1)
+                ϕ.entries = v.coefficient_names[fentries]
+                ϕ.populations .= "unspecified"
+                ϕ.traits = [trait]
+                ϕ.phenotypes = reshape(v.coefficients[fentries], (n, 1))
+                ϕ.mask .= true
+                ϕ
+            end
+            push!(phenomes, ϕ)
+        end
+    end
+    # tabularise(phenomes[2])
+    # Output
+    df_empty::Vector{DataFrame} = []
+    (
+        TEBV(traits = traits, formulae = formulae, models = models, df_BLUEs = df_empty, df_BLUPs = df_empty, phenomes = phenomes),
+        spatial_diagnostics,
+    )
 end

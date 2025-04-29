@@ -28,7 +28,7 @@ original and the cloned object.
 julia> blr = BLR(n=1, p=1);
 
 julia> copy_blr = clone(blr)
-BLR([""], Dict{String, Matrix{Union{Bool, Float64}}}("intercept" => [true;;]), Dict{String, Union{Nothing, UniformScaling{Float64}, Matrix{Float64}}}("σ²" => UniformScaling{Float64}(1.0)), Dict("intercept" => [0.0]), Dict("intercept" => ["intercept"]), [0.0], [0.0], [0.0])
+BLR([""], Dict{String, Matrix{Union{Bool, Float64}}}("intercept" => [true;;]), Dict{String, Union{Nothing, UniformScaling{Float64}, Matrix{Float64}}}("σ²" => UniformScaling{Float64}(1.0)), Dict("intercept" => [0.0]), Dict("intercept" => ["intercept"]), [0.0], [0.0], [0.0], 0×0 DataFrame)
 ```
 """
 function clone(x::BLR)::BLR
@@ -163,7 +163,8 @@ function checkdims(blr::BLR)::Bool
        !("intercept" ∈ string.(keys(blr.Xs))) ||
        !("σ²" ∈ string.(keys(blr.Σs))) ||
        !("intercept" ∈ string.(keys(blr.coefficients))) ||
-       !("intercept" ∈ string.(keys(blr.coefficient_names)))
+       !("intercept" ∈ string.(keys(blr.coefficient_names))) ||
+       !((ncol(blr.diagnostics) == 4) || (ncol(blr.diagnostics) == 0))
         return false
     end
     true
