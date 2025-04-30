@@ -1,7 +1,8 @@
 """
     inflatediagonals!(X::Matrix{Float64}; max_iter::Int64=1_000, verbose::Bool=false)::Nothing
 
-Ensure matrix invertibility by iteratively inflating diagonal elements until the determinant is nonzero.
+Ensure matrix invertibility by iteratively inflating diagonal elements until both the determinant is nonzero
+and the matrix is positive definite.
 
 # Arguments
 - `X::Matrix{Float64}`: Input square symmetric matrix to be modified in-place
@@ -10,9 +11,11 @@ Ensure matrix invertibility by iteratively inflating diagonal elements until the
 
 # Details
 The function adds progressively larger values to the diagonal elements until the matrix
-becomes invertible (det(X) > eps(Float64)) or the maximum number of iterations is reached.
-The initial inflation value ϵ is set to the maximum absolute value in the matrix and
-increases slightly in each iteration.
+becomes invertible (det(X) > eps(Float64)) and positive definite, or the maximum number 
+of iterations is reached. The initial inflation value ϵ is set to the maximum absolute 
+value in the matrix and increases slightly in each iteration by a factor of (1 + eps(Float64)).
+
+The function returns early if the matrix is already positive definite and has a nonzero determinant.
 
 # Throws
 - `ArgumentError`: If the input matrix is not symmetric
@@ -43,7 +46,7 @@ function inflatediagonals!(X::Matrix{Float64}; max_iter::Int64 = 1_000, verbose:
     if size(X, 1) != size(X, 2)
         throw(ArgumentError("The input matrix is not square."))
     end
-    if det(X) > eps(Float64)
+    if (det(X) > eps(Float64)) && isposdef(X)
         return nothing
     end
     if sum(isnan.(X)) > 0
@@ -55,7 +58,7 @@ function inflatediagonals!(X::Matrix{Float64}; max_iter::Int64 = 1_000, verbose:
     iter = 0
     ϵ = maximum(abs.(X))
     ϵ_total = 0.0
-    while (det(X) < eps(Float64)) && (iter < max_iter)
+    while ((det(X) < eps(Float64)) || !isposdef(X)) && (iter < max_iter)
         iter += 1
         X[diagind(X)] .+= ϵ
         ϵ_total += ϵ

@@ -20,44 +20,68 @@ A tuple of two BLR structs:
 2. BLR struct for full model (including base levels)
 
 Each BLR struct contains:
-- `entries`: Vector of entry identifiers
+- `entries`: Vector of entry identifiers 
 - `y`: Response variable vector
-- `ŷ`: Predicted values 
-- `ϵ`: Residuals
+- `ŷ`: Predicted values
+- `ϵ`: Residuals 
 - `Xs`: Dict mapping factors to design matrices
 - `Σs`: Dict mapping factors to covariance matrices
 - `coefficients`: Dict mapping factors to coefficient vectors
 - `coefficient_names`: Dict mapping factors to coefficient names
+- `diagnostics`: DataFrames with MCMC diagnostics (added after sampling)
 
-# Details
-Creates design matrices for factorial experiments using both standard and one-hot encoding approaches.
-The function processes main effects and interaction terms, handling categorical factors and
-continuous covariates differently. Other implementation notes:
+# Model Details
+Creates design matrices for hierarchical factorial experiments with main effects and interactions:
 
-- Converts all factors to strings for categorical treatment 
-- Uses FullDummyCoding for contrast encoding
-- Validates numeric nature of trait and covariates
-- Processes either pre-defined interaction terms or all possible interactions (if saturated_model=true)
-- Handles both categorical factors (as Boolean matrices) and continuous covariates (as Float64 matrices)
-- Creates separate design matrices with and without base levels
+1. Genotypic effects:
+- `entries` if present
 
-Pre-defined interaction terms (when saturated_model=false) include:
-- Stage-2 effects (GxE effects after spatial corrections per year-season-site-harvest combination):
-    + entries
-    + sites
-    + seasons
-    + years
-    + seasons:sites
-    + years:sites
-    + entries:seasons:sites
-- Stage-1 effects (spatial effects per year-season-site-harvest combination):
-    + rows
-    + cols
-    + rows:cols
+2. Environmental main effects:
+- `sites` if present
+- `seasons` if present
+- `years` if present 
+
+3. Environmental interactions:
+With all 3 environment factors:
+- `years:sites`
+- `seasons:sites`  
+- `entries:seasons:sites`
+
+With 2 environment factors:
+- `years:seasons` + `entries:seasons` (no sites)
+- `years:sites` + `entries:sites` (no seasons)
+- `seasons:sites` + `entries:seasons:sites` (no years)
+
+With 1 environment factor:
+- `entries:years`
+- `entries:seasons`
+- `entries:sites`
+
+4. Spatial effects:
+With rows and columns regardless of whether blocks are present:
+- `rows` + `cols` + `rows:cols`
+
+With blocks and one spatial factor:
+- `blocks` + `rows` + `blocks:rows`
+- `blocks` + `cols` + `blocks:cols` 
+
+With single spatial factor:
+- `blocks`
+- `rows`
+- `cols`
+
+# Implementation Notes
+- Uses FullDummyCoding for factors
+- Converts factors to strings
+- Validates numeric traits/covariates
+- Creates design matrices with/without base levels
+- Handles continuous covariates as Float64 
+- Uses memory efficient boolean matrices for factors
+- Assigns identity matrices as initial covariance structures
 
 # Throws
-- `ArgumentError`: If trait/covariates not found or not numeric
-- `ErrorException`: If design matrix extraction or BLR construction fails
+- `ArgumentError`: For missing/invalid inputs
+- `ErrorException`: For matrix extraction failures
 
 # Example
 ```jldoctest; setup = :(using GenomicBreedingCore)
@@ -126,20 +150,106 @@ function instantiateblr(;
         end
     end
     # Main effects and interaction terms we are most interested in fitting
-    focal_terms = [
-        # Stage-2 effects
-        "entries",
-        "sites",
-        "seasons",
-        "years",
-        "seasons:sites",
-        "years:sites",
-        "entries:seasons:sites",
-        # Spatial effects per harvest (i.e. stage-1 effects per year-site-season-harvest combination)
-        "rows",
-        "cols",
-        "rows:cols",
-    ]
+    focal_terms = vcat(
+        [
+            "entries",
+            "sites",
+            "seasons",
+            "years",
+        ],
+        # ExE and GxE effects
+        if ("years" ∈ factors) && ("seasons" ∈ factors) && ("sites" ∈ factors)
+            # Excludes other interaction effects with years for parsimony
+            [
+                "years:sites",
+                "seasons:sites",
+                "entries:seasons:sites",
+            ]
+        elseif ("years" ∈ factors) && ("seasons" ∈ factors) && !("sites" ∈ factors)
+            [
+                "years:seasons",
+                "entries:seasons",
+            ]
+        elseif ("years" ∈ factors) && !("seasons" ∈ factors) && ("sites" ∈ factors)
+            [
+                "years:sites",
+                "entries:sites",
+            ]
+        elseif !("years" ∈ factors) && ("seasons" ∈ factors) && ("sites" ∈ factors)
+            [
+                "seasons:sites",
+                "entries:seasons:sites",
+            ]
+        elseif ("years" ∈ factors) && !("seasons" ∈ factors) && !("sites" ∈ factors)
+            # Only years-by-entries interaction effects
+            [
+                "entries:years",
+            ]
+        elseif !("years" ∈ factors) && ("seasons" ∈ factors) && !("sites" ∈ factors)
+            # Only seasons-by-entries interaction effects
+            [
+                "entries:seasons",
+            ]
+        elseif !("years" ∈ factors) && !("seasons" ∈ factors) && ("sites" ∈ factors)
+            # Only sites-by-entries interaction effects
+            [
+                "entries:sites",
+            ]
+        else
+            nothing
+        end,
+        # Site-specific spatial effects per harvest (i.e. stage-1 effects per year-site-season-harvest combination)
+        if ("rows" ∈ factors) && ("cols" ∈ factors)
+            # Regardless of whether or not the blocks are present, use only the rows and columns for parsimony
+            [
+                "rows",
+                "cols",
+                "rows:cols",
+            ]
+        elseif ("blocks" ∈ factors) && ("rows" ∈ factors) && !("cols" ∈ factors)
+            # Check if the blocks and rows are unique, use the non-fixed one if not, else use both plus their interaction
+            br = unique(string(df.blocks, "\t", df.rows))
+            b = unique(string(df.blocks))
+            r = unique(string(df.rows))
+            if length(br) == length(b)
+                ["blocks"]
+            elseif length(br) == length(r)
+                ["rows"]
+            else
+                [
+                    "blocks",
+                    "rows",
+                    "blocks:rows",
+                ]
+            end
+        elseif ("blocks" ∈ factors) && !("rows" ∈ factors) && ("cols" ∈ factors)
+            # Check if the blocks and cols are unique, use the non-fixed one if not, else use both plus their interaction
+            bc = unique(string(df.blocks, "\t", df.cols))
+            b = unique(string(df.blocks))
+            c = unique(string(df.cols))
+            if length(bc) == length(b)
+                ["blocks"]
+            elseif length(bc) == length(c)
+                ["cols"]
+            else
+                [
+                    "blocks",
+                    "cols",
+                    "blocks:cols",
+                ]
+            end
+        elseif ("blocks" ∈ factors) && !("rows" ∈ factors) && !("cols" ∈ factors)
+            ["blocks"]
+        elseif !("blocks" ∈ factors) && ("rows" ∈ factors) && !("cols" ∈ factors)
+            ["rows"]
+        elseif !("blocks" ∈ factors) && !("rows" ∈ factors) && ("cols" ∈ factors)
+            ["cols"]
+        else
+            nothing
+        end
+    )
+    # Remove Nothing from the focal 
+    focal_terms = filter(x -> !isnothing(x), focal_terms)
     # Define the coefficients excluding possible additional continuous covariates
     coefficients_base = if !saturated_model
         vector_of_terms = []
@@ -359,7 +469,7 @@ end
 """
     extractmodelinputs(blr_and_blr_ALL::Tuple{BLR,BLR}; multiple_σs::Union{Nothing, Dict{String, Bool}}=nothing)::Dict
 
-Extract model inputs from BLR objects for Bayesian modeling.
+Extract model inputs from BLR objects for Bayesian modelling.
 
 # Arguments
 - `blr_and_blr_ALL::Tuple{BLR,BLR}`: A tuple containing two BLR (Bayesian Linear Regression) objects
@@ -554,10 +664,10 @@ function turingblrmcmc!(
     turing_model::Function = turingblr,
     n_iter::Int64 = 10_000,
     n_burnin::Int64 = 1_000,
-    δ::Float64 = 0.65, #  Target acceptance rate for dual averaging
-    max_depth::Int64 = 5, # Maximum doubling tree depth
-    Δ_max::Float64 = 1000.0, # Maximum divergence during doubling tree
-    init_ϵ::Float64 = 0.2, # Initial step size; 0 means automatically searching using a heuristic procedure
+    δ::Float64 = 0.65,
+    max_depth::Int64 = 5,
+    Δ_max::Float64 = 1000.0,
+    init_ϵ::Float64 = 0.2,
     adtype::AutoReverseDiff = AutoReverseDiff(compile = true),
     seed::Int64 = 1234,
     verbose::Bool = true,
@@ -634,8 +744,8 @@ function turingblrmcmc!(
     if verbose
         if ((p - n_rhat_converged) > 0) || ((p - n_ess_converged) > 0)
             @warn "Convergence rates:\n" *
-                  "\t‣ $(round(n_rhat_converged*100 / p))%: $(p - n_rhat_converged) parameters which may not have converged based on R̂ (>= 1.01) and,\n" *
-                  "\t‣ $(round(n_ess_converged*100 / p))%: $(p - n_ess_converged) parameters which may not have converged based on effective sample size (< 100).\n" *
+                  "\t‣ $(round(n_rhat_converged*100 / p))%: $(p - n_rhat_converged) out of $p parameter/s did not converge based on R̂ (>= 1.01) and,\n" *
+                  "\t‣ $(round(n_ess_converged*100 / p))%: $(p - n_ess_converged) out of $p parameter/s did not converge based on effective sample size (< 100).\n" *
                   "Please consider increasing the number of iterations which is currently at $n_iter."
         else
             println("All parameters have converged.")
@@ -646,7 +756,6 @@ function turingblrmcmc!(
     β0 = mean(params.intercept)
     βs = [mean(params.βs[i]) for i in eachindex(params.βs)]
     σ² = mean(params.σ²)
-    # TODO: parse the σ²s properly when there are vectors
     σ²s = [mean(params.σ²s[i]) for i in eachindex(params.σ²s)]
     # Extract coefficients
     if verbose
@@ -671,9 +780,12 @@ function turingblrmcmc!(
         blr_and_blr_ALL[1].coefficients[v] = βs[ini:fin]
         blr_and_blr_ALL[1].Σs[v] =
             if isa(model_inputs["vector_of_Δs"][i], UniformScaling{Float64}) && (fin_σ - ini_σ == 0)
+                # Single variance component multiplier
                 σ²s[ini_σ] * model_inputs["vector_of_Δs"][i]
             else
-                σ² = repeat(σ²s[ini_σ:fin_σ], 1 + length(blr_and_blr_ALL[1].coefficients[v]) - length(σ²s[ini_σ:fin_σ]))
+                # Multiple variance component multipliers
+                # σ² = repeat(σ²s[ini_σ:fin_σ], 1 + length(blr_and_blr_ALL[1].coefficients[v]) - length(σ²s[ini_σ:fin_σ]))
+                σ² = σ²s[ini_σ:fin_σ]
                 Matrix(Diagonal(σ²) * model_inputs["vector_of_Δs"][i] * Diagonal(σ²))
             end
         # Full model
@@ -969,6 +1081,110 @@ function removespatialeffects!(
 end
 
 
+"""
+    analyse(trials::Trials, traits::Vector{String}; kwargs...)::Tuple{TEBV,Dict{String,DataFrame}}
+
+Perform Bayesian linear mixed model analysis on trial data for genetic evaluation.
+
+# Arguments
+- `trials::Trials`: A Trials struct containing the experimental data
+- `traits::Vector{String}`: Vector of trait names to analyze. If empty, all traits in trials will be analyzed
+- `grm::Union{GRM,Nothing}=nothing`: Optional genomic relationship matrix
+- `other_covariates::Union{Vector{String},Nothing}=nothing`: Additional covariates to include in the model
+- `multiple_σs_threshols::Int64=500`: Threshold for determining multiple variance components
+- `n_iter::Int64=10_000`: Number of MCMC iterations
+- `n_burnin::Int64=1_000`: Number of burn-in iterations
+- `seed::Int64=1234`: Random seed for reproducibility
+- `verbose::Bool=false`: Whether to print progress information
+
+# Returns
+A tuple containing:
+- `TEBV`: Total estimated breeding values struct with model results. Note that:
+    + only the variance-covariance components represent the p-1 factor levels; while,
+    + the rest have the full number of levels, i.e. using the one-hot encoding vectors and matrices).
+    + This means that the `Σs` have less rows and columns than the number of elements in `coefficient_names`.
+- `Dict{String,DataFrame}`: Spatial diagnostics information
+
+# Details
+Performs a two-stage analysis:
+
+1. Stage-1: Spatial analysis per harvest-site-year combination
+- Corrects for spatial effects:
+    + With rows and columns regardless of whether blocks are present:
+        - `rows` + `cols` + `rows:cols`
+    + With blocks and one spatial factor:
+        - `blocks` + `rows` + `blocks:rows`
+        - `blocks` + `cols` + `blocks:cols` 
+    + With single spatial factor:
+        - `blocks`
+        - `rows`
+        - `cols`
+- Removes effects of continuous covariates
+- Returns spatially adjusted traits with "SPATADJ-" prefix
+
+2. Stage-2: GxE modeling excluding spatial effects and continuous covariates
+    2.a. Genotypic effects:
+        - `entries` (required)
+    2.b. Environmental main effects:
+        - `sites` if present
+        - `seasons` if present
+        - `years` if present 
+    2.c Environmental interactions:
+        - With all 3 environment factors:
+            + `years:sites`
+            + `seasons:sites`  
+            + `entries:seasons:sites`
+        - With 2 environment factors:
+            + `years:seasons` + `entries:seasons` (no sites)
+            + `years:sites` + `entries:sites` (no seasons)
+            + `seasons:sites` + `entries:seasons:sites` (no years)
+        - With 1 environment factor:
+            + `entries:years`
+            + `entries:seasons`
+            + `entries:sites`
+
+The analysis includes:
+- Genomic relationship matrix (GRM) integration if provided:
+  + GRM replaces identity matrices for entry-related effects
+  + Diagonals are inflated if resulting matrices not positive definite
+  + Inflation repeated up to 10 times to ensure stability
+- Variance component estimation:
+  + Single vs multiple variance scalers determined by threshold
+  + Separate parameters for complex interaction terms
+- MCMC-based Bayesian inference with:
+  + Burn-in period for chain convergence
+  + Diagnostic checks for convergence and mixing
+
+# Notes
+- Automatically handles memory management for large design matrices
+- Supports both identity and genomic relationship matrices for genetic effects
+- Performs automatic model diagnostics and variance component scaling
+- Excludes continuous covariates from Stage-2 as they are handled in Stage-1
+
+# Examples
+```jldoctest; setup = :(using GenomicBreedingCore, StatsBase, DataFrames)
+julia> genomes = simulategenomes(n=5, l=1_000);
+
+julia> grm = grmploidyaware(genomes, ploidy = 2, max_iter = 10);
+
+julia> trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_harvests=1, n_sites=3, n_replications=3);
+
+julia> tebv_1, spatial_diagnostics_1 = analyse(trials, ["trait_1"], n_iter = 1_000, n_burnin = 100);
+
+julia> tebv_2, spatial_diagnostics_2 = analyse(trials, ["trait_1", "trait_2"], other_covariates = ["trait_3"], n_iter = 1_000, n_burnin = 100);
+
+julia> tebv_3, spatial_diagnostics_3 = analyse(trials, ["trait_3"], grm = grm, n_iter = 1_000, n_burnin = 100);
+
+julia> (length(tebv_1.phenomes[1].entries) == 5) && (length(tebv_1.phenomes[2].entries) == 30) && (length(spatial_diagnostics_1) == 6)
+true
+
+julia> (length(tebv_2.phenomes[1].entries) == 5) && (length(tebv_2.phenomes[2].entries) == 30) && (length(spatial_diagnostics_2) == 12)
+true
+
+julia> (length(tebv_3.phenomes[1].entries) == 5) && (length(tebv_3.phenomes[2].entries) == 30) && (length(spatial_diagnostics_3) == 6)
+true
+```
+"""
 function analyse(
     trials::Trials,
     traits::Vector{String};
@@ -1026,10 +1242,6 @@ function analyse(
             push!(factors, f)
         end
     end
-    # If both blocks and rows are present, then we remove blocks as they are expected to be redundant
-    if ("blocks" ∈ factors) && ("rows" ∈ factors)
-        factors = filter(x -> x != "blocks", factors)
-    end
     # Check for potential out-of-memory error
     D = dimensions(trials)
     total_parameters = 1
@@ -1085,34 +1297,49 @@ function analyse(
         blr_and_blr_ALL =
             instantiateblr(trait = trait, factors = factors, other_covariates = nothing, df = df, verbose = verbose)
         # Prepare the variance-covariance matrix for the entries effects, i.e. using I or a GRM
-
-        # TODO TODO TODO TODO TODO TODO TODO TODO
-        # TODO: Test GRM!
-        # TODO TODO TODO TODO TODO TODO TODO TODO
         if !isnothing(grm)
             for idx = 1:2
-                # idx = 2
+                # idx = 1
                 # Replace the variance-covariance matrix for the factors involving entries with the GRM
                 factors_with_entries = begin
                     x = string.(keys(blr_and_blr_ALL[idx].coefficient_names))
                     x[.!isnothing.(match.(Regex("entries"), x))]
                 end
                 for fentries in factors_with_entries
-                    # fentries = factors_with_entries[1]
+                    # fentries = factors_with_entries[end]
                     n = length(blr_and_blr_ALL[idx].coefficient_names[fentries])
                     blr_and_blr_ALL[idx].Σs[fentries] = zeros(n, n)
                     for (i, name_1) in enumerate(blr_and_blr_ALL[idx].coefficient_names[fentries])
                         for (j, name_2) in enumerate(blr_and_blr_ALL[idx].coefficient_names[fentries])
                             # i = 1; name_1 = blr_and_blr_ALL[idx].coefficient_names[fentries][i]
                             # j = 1; name_2 = blr_and_blr_ALL[idx].coefficient_names[fentries][j]
-                            entry_1 = split(name_1, " ")
-                            entry_1 = entry_1[.!isnothing.(match.(Regex("entry_"), entry_1))][end]
-                            entry_2 = split(name_2, " ")
-                            entry_2 = entry_2[.!isnothing.(match.(Regex("entry_"), entry_2))][end]
+                            split_1 = split(name_1, " ")
+                            split_2 = split(name_2, " ")
+                            if sum(split_1 .== split_2) < (length(split_1) -1)
+                                continue
+                            end
+                            entry_1 = split_1[.!isnothing.(match.(Regex("entry_"), split_1))][end]
+                            entry_2 = split_2[.!isnothing.(match.(Regex("entry_"), split_2))][end]
                             k = findall(grm.entries .== entry_1)[end]
                             l = findall(grm.entries .== entry_2)[end]
                             blr_and_blr_ALL[idx].Σs[fentries][i, j] = grm.genomic_relationship_matrix[k, l]
                         end
+                    end
+                    # Inflate the diagonals if not positive definite
+                    counter = 0
+                    while !isposdef(blr_and_blr_ALL[idx].Σs[fentries])
+                        if counter > 10
+                            break
+                        end
+                        inflatediagonals!(blr_and_blr_ALL[idx].Σs[fentries], verbose=verbose)
+                        counter += 1
+                    end
+                    if !isposdef(blr_and_blr_ALL[idx].Σs[fentries])
+                        throw(
+                            ErrorException(
+                                "The variance-covariance matrix for the entries: $fentries remains non-positive definite after 10 inflation attempts.",
+                            ),
+                        )
                     end
                 end
             end
@@ -1179,7 +1406,7 @@ function analyse(
     # Output
     df_empty::Vector{DataFrame} = []
     (
-        TEBV(traits = traits, formulae = formulae, models = models, df_BLUEs = df_empty, df_BLUPs = df_empty, phenomes = phenomes),
+        TEBV(traits = convert.(String, traits), formulae = formulae, models = models, df_BLUEs = df_empty, df_BLUPs = df_empty, phenomes = phenomes),
         spatial_diagnostics,
     )
 end
