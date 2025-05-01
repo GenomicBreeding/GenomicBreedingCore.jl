@@ -270,7 +270,7 @@ julia> blr_2 = instantiateblr(trait = trials.traits[1], factors = ["years", "sea
 julia> length(blr_1.Xs) == 4
 true
 
-julia> size(blr_1.Xs["rows"]) == (15, 5)
+julia> size(blr_1.Xs["rows"]) == (15, 3)
 true
 
 julia> length(blr_2.Xs) == 9
