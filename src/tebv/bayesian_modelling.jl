@@ -1,121 +1,60 @@
 """
-    instantiateblr(; trait::String, factors::Vector{String}, df::DataFrame, 
-                  other_covariates::Union{Vector{String}, Nothing}=nothing,
-                  saturated_model::Bool=false,
-                  verbose::Bool=false)::Tuple{BLR,BLR}
+    checkandfocalterms(trait::String, factors::Vector{String}, df::DataFrame, other_covariates::Union{Vector{String},Nothing} = nothing)::Vector{String}
 
-Extract design matrices and response variable for Bayesian modelling of factorial experiments.
+Validate input data and generate model terms for Bayesian analysis of field trials.
 
 # Arguments
-- `trait::String`: Name of the response variable (dependent variable) in the DataFrame
-- `factors::Vector{String}`: Vector of factor names (independent variables) to be included in the model 
-- `df::DataFrame`: DataFrame containing the data
-- `other_covariates::Union{Vector{String}, Nothing}=nothing`: Additional numeric covariates to include in the model
-- `saturated_model::Bool=false`: If true, includes all possible interactions between factors
-- `verbose::Bool=false`: If true, prints additional information during execution
+- `trait::String`: Name of the response variable (trait) column in the DataFrame
+- `factors::Vector{String}`: Vector of factor names (categorical variables) to include in the model
+- `df::DataFrame`: DataFrame containing the trial data
+- `other_covariates::Union{Vector{String},Nothing}`: Optional vector of numeric covariate column names
 
 # Returns
-A tuple of two BLR structs:
-1. BLR struct for model fitting (excluding base levels)
-2. BLR struct for full model (including base levels)
+- `Vector{String}`: A vector of model terms including main effects, GxE interaction effects, and spatial effects
 
-Each BLR struct contains:
-- `entries`: Vector of entry identifiers 
-- `y`: Response variable vector
-- `ŷ`: Predicted values
-- `ϵ`: Residuals 
-- `Xs`: Dict mapping factors to design matrices
-- `Σs`: Dict mapping factors to covariance matrices
-- `coefficients`: Dict mapping factors to coefficient vectors
-- `coefficient_names`: Dict mapping factors to coefficient names
-- `diagnostics`: DataFrames with MCMC diagnostics (added after sampling)
-
-# Model Details
-Creates design matrices for hierarchical factorial experiments with main effects and interactions:
-
-1. Genotypic effects:
-- `entries` if present
-
-2. Environmental main effects:
-- `sites` if present
-- `seasons` if present
-- `years` if present 
-
-3. Environmental interactions:
-With all 3 environment factors:
-- `years:sites`
-- `seasons:sites`  
-- `entries:seasons:sites`
-
-With 2 environment factors:
-- `years:seasons` + `entries:seasons` (no sites)
-- `years:sites` + `entries:sites` (no seasons)
-- `seasons:sites` + `entries:seasons:sites` (no years)
-
-With 1 environment factor:
-- `entries:years`
-- `entries:seasons`
-- `entries:sites`
-
-4. Spatial effects:
-With rows and columns regardless of whether blocks are present:
-- `rows` + `cols` + `rows:cols`
-
-With blocks and one spatial factor:
-- `blocks` + `rows` + `blocks:rows`
-- `blocks` + `cols` + `blocks:cols` 
-
-With single spatial factor:
-- `blocks`
-- `rows`
-- `cols`
-
-# Implementation Notes
-- Uses FullDummyCoding for factors
-- Converts factors to strings
-- Validates numeric traits/covariates
-- Creates design matrices with/without base levels
-- Handles continuous covariates as Float64 
-- Uses memory efficient boolean matrices for factors
-- Assigns identity matrices as initial covariance structures
+# Details
+The function performs several tasks:
+1. Validates that all specified columns exist in the DataFrame
+2. Ensures trait and covariates are numeric
+3. Converts factors to strings
+4. Generates appropriate model terms based on available factors:
+   - Main effects (entries, sites, seasons, years)
+   - GxE interaction effects (various combinations of entries × environmental factors)
+   - Spatial effects (blocks, rows, columns and their interactions)
 
 # Throws
-- `ArgumentError`: For missing/invalid inputs
-- `ErrorException`: For matrix extraction failures
+- `ArgumentError`: If trait or factors are not found in DataFrame
+- `ArgumentError`: If trait or covariates are non-numeric or contain missing values
 
 # Example
-```jldoctest; setup = :(using GenomicBreedingCore)
-julia> genomes = simulategenomes(n=500, l=1_000, verbose=false); 
+```jldoctest; setup = :(using GenomicBreedingCore, StatsBase, DataFrames)
+julia> genomes = simulategenomes(n=5, l=1_000, verbose=false);
 
 julia> trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=3, verbose=false);
 
 julia> df = tabularise(trials);
 
-julia> blr, blr_ALL = instantiateblr(trait = trials.traits[1], factors = ["rows", "cols"], df = df, other_covariates = nothing, verbose = false);
+julia> focal_terms_1 = checkandfocalterms(trait = trials.traits[1], factors = ["rows", "cols"], df = df, other_covariates = trials.traits[2:end])
+3-element Vector{String}:
+ "rows"
+ "cols"
+ "rows:cols"
 
-julia> blr2, blr_ALL2 = instantiateblr(trait = trials.traits[1], factors = ["rows", "cols"], df = df, other_covariates = [trials.traits[2]], verbose = false);
-
-julia> sum([length(x) for (_, x) in blr.coefficients]) < sum([length(x) for (_, x) in blr_ALL.coefficients])
-true
-
-julia> sum([length(x) for (_, x) in blr2.coefficients]) < sum([length(x) for (_, x) in blr_ALL2.coefficients])
-true
-
-julia> sum([length(x) for (_, x) in blr.coefficients]) ==  sum([length(x) for (_, x) in blr2.coefficients]) - 1
-true
-
-julia> sum([length(x) for (_, x) in blr_ALL.coefficients]) == sum([length(x) for (_, x) in blr_ALL2.coefficients]) - 1
-true
+julia> focal_terms_2 = checkandfocalterms(trait = trials.traits[1], factors = ["years", "seasons", "sites"], df = df)
+5-element Vector{String}:
+ "sites"
+ "seasons"
+ "years"
+ "years:sites"
+ "seasons:sites"
 ```
 """
-function instantiateblr(;
+function checkandfocalterms(;
     trait::String,
     factors::Vector{String},
     df::DataFrame,
     other_covariates::Union{Vector{String},Nothing} = nothing,
-    saturated_model::Bool = false,
-    verbose::Bool = false,
-)::Tuple{BLR,BLR}
+)::Vector{String}
     # genomes = simulategenomes(n=500, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_harvests=1, n_sites=2, n_replications=3);
     # trait = "trait_1"; factors = ["rows", "cols"]; df = tabularise(trials); other_covariates::Union{Vector{String}, Nothing} = ["trait_2", "trait_3"]; saturated_model = false; verbose = true;
     # Check arguments
@@ -150,106 +89,209 @@ function instantiateblr(;
         end
     end
     # Main effects and interaction terms we are most interested in fitting
-    focal_terms = vcat(
+    main_effects = [
+        "entries",
+        "sites",
+        "seasons",
+        "years",
+    ]
+    # Interaction effects between environmental components and the entries
+    exe_gxe_effects = if ("years" ∈ factors) && ("seasons" ∈ factors) && ("sites" ∈ factors)
+        # Excludes other interaction effects with years for parsimony
         [
-            "entries",
-            "sites",
-            "seasons",
-            "years",
-        ],
-        # ExE and GxE effects
-        if ("years" ∈ factors) && ("seasons" ∈ factors) && ("sites" ∈ factors)
-            # Excludes other interaction effects with years for parsimony
-            [
-                "years:sites",
-                "seasons:sites",
-                "entries:seasons:sites",
-            ]
-        elseif ("years" ∈ factors) && ("seasons" ∈ factors) && !("sites" ∈ factors)
-            [
-                "years:seasons",
-                "entries:seasons",
-            ]
-        elseif ("years" ∈ factors) && !("seasons" ∈ factors) && ("sites" ∈ factors)
-            [
-                "years:sites",
-                "entries:sites",
-            ]
-        elseif !("years" ∈ factors) && ("seasons" ∈ factors) && ("sites" ∈ factors)
-            [
-                "seasons:sites",
-                "entries:seasons:sites",
-            ]
-        elseif ("years" ∈ factors) && !("seasons" ∈ factors) && !("sites" ∈ factors)
-            # Only years-by-entries interaction effects
-            [
-                "entries:years",
-            ]
-        elseif !("years" ∈ factors) && ("seasons" ∈ factors) && !("sites" ∈ factors)
-            # Only seasons-by-entries interaction effects
-            [
-                "entries:seasons",
-            ]
-        elseif !("years" ∈ factors) && !("seasons" ∈ factors) && ("sites" ∈ factors)
-            # Only sites-by-entries interaction effects
-            [
-                "entries:sites",
-            ]
-        else
-            nothing
-        end,
-        # Site-specific spatial effects per harvest (i.e. stage-1 effects per year-site-season-harvest combination)
-        if ("rows" ∈ factors) && ("cols" ∈ factors)
-            # Regardless of whether or not the blocks are present, use only the rows and columns for parsimony
-            [
-                "rows",
-                "cols",
-                "rows:cols",
-            ]
-        elseif ("blocks" ∈ factors) && ("rows" ∈ factors) && !("cols" ∈ factors)
-            # Check if the blocks and rows are unique, use the non-fixed one if not, else use both plus their interaction
-            br = unique(string(df.blocks, "\t", df.rows))
-            b = unique(string(df.blocks))
-            r = unique(string(df.rows))
-            if length(br) == length(b)
-                ["blocks"]
-            elseif length(br) == length(r)
-                ["rows"]
-            else
-                [
-                    "blocks",
-                    "rows",
-                    "blocks:rows",
-                ]
-            end
-        elseif ("blocks" ∈ factors) && !("rows" ∈ factors) && ("cols" ∈ factors)
-            # Check if the blocks and cols are unique, use the non-fixed one if not, else use both plus their interaction
-            bc = unique(string(df.blocks, "\t", df.cols))
-            b = unique(string(df.blocks))
-            c = unique(string(df.cols))
-            if length(bc) == length(b)
-                ["blocks"]
-            elseif length(bc) == length(c)
-                ["cols"]
-            else
-                [
-                    "blocks",
-                    "cols",
-                    "blocks:cols",
-                ]
-            end
-        elseif ("blocks" ∈ factors) && !("rows" ∈ factors) && !("cols" ∈ factors)
+            "years:sites",
+            "seasons:sites",
+            "entries:seasons:sites",
+        ]
+    elseif ("years" ∈ factors) && ("seasons" ∈ factors) && !("sites" ∈ factors)
+        [
+            "years:seasons",
+            "entries:seasons",
+        ]
+    elseif ("years" ∈ factors) && !("seasons" ∈ factors) && ("sites" ∈ factors)
+        [
+            "years:sites",
+            "entries:sites",
+        ]
+    elseif !("years" ∈ factors) && ("seasons" ∈ factors) && ("sites" ∈ factors)
+        [
+            "seasons:sites",
+            "entries:seasons:sites",
+        ]
+    elseif ("years" ∈ factors) && !("seasons" ∈ factors) && !("sites" ∈ factors)
+        # Only years-by-entries interaction effects
+        [
+            "entries:years",
+        ]
+    elseif !("years" ∈ factors) && ("seasons" ∈ factors) && !("sites" ∈ factors)
+        # Only seasons-by-entries interaction effects
+        [
+            "entries:seasons",
+        ]
+    elseif !("years" ∈ factors) && !("seasons" ∈ factors) && ("sites" ∈ factors)
+        # Only sites-by-entries interaction effects
+        [
+            "entries:sites",
+        ]
+    else
+        nothing
+    end
+    # Site-specific spatial effects per harvest (i.e. stage-1 effects per year-site-season-harvest combination)
+    spatial_effects = if ("rows" ∈ factors) && ("cols" ∈ factors)
+        # Regardless of whether or not the blocks are present, use only the rows and columns for parsimony
+        [
+            "rows",
+            "cols",
+            "rows:cols",
+        ]
+    elseif ("blocks" ∈ factors) && ("rows" ∈ factors) && !("cols" ∈ factors)
+        # Check if the blocks and rows are unique, use the non-fixed one if not, else use both plus their interaction
+        br = unique(string(df.blocks, "\t", df.rows))
+        b = unique(string(df.blocks))
+        r = unique(string(df.rows))
+        if length(br) == length(b)
             ["blocks"]
-        elseif !("blocks" ∈ factors) && ("rows" ∈ factors) && !("cols" ∈ factors)
+        elseif length(br) == length(r)
             ["rows"]
-        elseif !("blocks" ∈ factors) && !("rows" ∈ factors) && ("cols" ∈ factors)
+        else
+            [
+                "blocks",
+                "rows",
+                "blocks:rows",
+            ]
+        end
+    elseif ("blocks" ∈ factors) && !("rows" ∈ factors) && ("cols" ∈ factors)
+        # Check if the blocks and cols are unique, use the non-fixed one if not, else use both plus their interaction
+        bc = unique(string(df.blocks, "\t", df.cols))
+        b = unique(string(df.blocks))
+        c = unique(string(df.cols))
+        if length(bc) == length(b)
+            ["blocks"]
+        elseif length(bc) == length(c)
             ["cols"]
         else
-            nothing
+            [
+                "blocks",
+                "cols",
+                "blocks:cols",
+            ]
         end
-    )
-    # Remove Nothing from the focal 
-    focal_terms = filter(x -> !isnothing(x), focal_terms)
+    elseif ("blocks" ∈ factors) && !("rows" ∈ factors) && !("cols" ∈ factors)
+        ["blocks"]
+    elseif !("blocks" ∈ factors) && ("rows" ∈ factors) && !("cols" ∈ factors)
+        ["rows"]
+    elseif !("blocks" ∈ factors) && !("rows" ∈ factors) && ("cols" ∈ factors)
+        ["cols"]
+    else
+        nothing
+    end
+    # Filter the focal terms
+    focal_terms = []
+    for t in vcat(main_effects, exe_gxe_effects, spatial_effects)
+        if isnothing(t)
+            continue
+        end
+        ts = split(t, ":")
+        if length(intersect(ts, factors)) == length(ts)
+            push!(focal_terms, t)
+        end
+    end
+    # Output
+    focal_terms
+end
+
+
+"""
+    instantiateblr(; trait::String, factors::Vector{String}, df::DataFrame, 
+                  other_covariates::Union{Vector{String}, Nothing}=nothing,
+                  saturated_model::Bool=false,
+                  verbose::Bool=false)::BLR
+
+Extract design matrices and response variable for Bayesian modelling of factorial experiments.
+
+# Arguments
+- `trait::String`: Name of the response variable (dependent variable) in the DataFrame
+- `factors::Vector{String}`: Vector of factor names (independent variables) to be included in the model 
+- `df::DataFrame`: DataFrame containing the data
+- `other_covariates::Union{Vector{String}, Nothing}=nothing`: Additional numeric covariates to include in the model
+- `saturated_model::Bool=false`: If true, includes all possible interactions between factors
+- `verbose::Bool=false`: If true, prints additional information during execution
+
+# Returns
+A BLR struct containing:
+- `entries`: Vector of entry identifiers 
+- `y`: Response variable vector
+- `ŷ`: Predicted values vector
+- `ϵ`: Residuals vector
+- `Xs`: Dict mapping factors to design matrices 
+- `Σs`: Dict mapping factors to covariance matrices
+- `coefficients`: Dict mapping factors to coefficient vectors
+- `coefficient_names`: Dict mapping factors to coefficient names
+- `diagnostics`: DataFrame with MCMC diagnostics (added after sampling)
+
+# Model Details
+Creates design matrices for hierarchical factorial experiments with:
+
+1. Main effects:
+- Genetic effects: `entries`
+- Environmental effects: `sites`, `seasons`, `years`
+- Spatial effects: `blocks`, `rows`, `cols`
+
+2. Interaction effects:
+- GxE interactions (entries × environment)
+- Environmental interactions (between environment factors) 
+- Spatial interactions (between spatial factors)
+
+# Implementation Notes
+- Uses FullDummyCoding for categorical factors
+- Converts factors to strings
+- Validates numeric traits/covariates
+- Creates design matrices with full levels
+- Handles continuous covariates as Float64
+- Uses memory efficient boolean matrices for factors
+- Assigns identity matrices as initial covariance structures
+
+# Throws
+- `ArgumentError`: For missing/invalid inputs
+- `ErrorException`: For matrix extraction failures
+
+# Example
+```jldoctest; setup = :(using GenomicBreedingCore)
+julia> genomes = simulategenomes(n=5, l=1_000, verbose=false);
+
+julia> trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=3, verbose=false);
+
+julia> df = tabularise(trials);
+
+julia> blr_1 = instantiateblr(trait = trials.traits[1], factors = ["rows", "cols"], df = df, other_covariates = nothing, verbose = false);
+
+julia> blr_2 = instantiateblr(trait = trials.traits[1], factors = ["years", "seasons", "sites", "entries"], df = df, other_covariates = [trials.traits[2]], verbose = false);
+
+julia> length(blr_1.Xs) == 4
+true
+
+julia> size(blr_1.Xs["rows"]) == (1500, 30)
+true
+
+julia> length(blr_2.Xs) == 9
+true
+
+julia> size(blr_2.Xs["entries & seasons & sites"]) == (1500, 500)
+true
+```
+"""
+function instantiateblr(;
+    trait::String,
+    factors::Vector{String},
+    df::DataFrame,
+    other_covariates::Union{Vector{String},Nothing} = nothing,
+    saturated_model::Bool = false,
+    verbose::Bool = false,
+)::BLR
+    # genomes = simulategenomes(n=500, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_harvests=1, n_sites=2, n_replications=3);
+    # trait = "trait_1"; factors = ["rows", "cols"]; df = tabularise(trials); other_covariates::Union{Vector{String}, Nothing} = ["trait_2", "trait_3"]; saturated_model = false; verbose = true;
+    # Check arguments and extract focal terms
+    focal_terms = checkandfocalterms(trait = trait, factors = factors, df = df, other_covariates = other_covariates)
     # Define the coefficients excluding possible additional continuous covariates
     coefficients_base = if !saturated_model
         vector_of_terms = []
@@ -278,20 +320,11 @@ function instantiateblr(;
             coefficients_base + foldl(+, [concrete_term(term(c), df[!, c], ContinuousTerm) for c in other_covariates])
         (concrete_term(term(trait), df[!, trait], ContinuousTerm) ~ term(1) + coefficients), coefficients
     end
-    # Extract the names of the coefficients and the design matrix (n x F(p-1); excludes the base level/s) to used for the regression
-    if verbose
-        println("Extracting the design matrix of the model: `$formula_struct`.")
-    end
-    _, coefficient_names = coefnames(apply_schema(formula_struct, schema(formula_struct, df)))
-    y, X = modelcols(apply_schema(formula_struct, schema(formula_struct, df)), df)
     # Extract the names of all the coefficients including the base level/s and the full design matrix (n x F(p)).
-    # This is not used for regression, rather it is used for the extraction of coefficients of all factor levels including the base level/s.
-    # But first, define the contrast for one-hot encoding, i.e. including the intercept, i.e. p instead of the p-1
     if verbose
-        println(
-            "Extracting the design matrix of the one-hot encoding model, i.e. including all the base levels.\nThis will not be used in model fitting; but used in coefficient extraction.",
-        )
+        println("Extracting the design matrices for the model to be fit...")
     end
+    # Define the contrast for one-hot encoding, i.e. including the intercept, i.e. p instead of the p-1
     contrasts::Dict{Symbol,StatsModels.FullDummyCoding} = Dict()
     explain_var_names::Vector{String} = [string(x) for x in coefficients]
     for f in explain_var_names
@@ -299,25 +332,10 @@ function instantiateblr(;
         contrasts[Symbol(f)] = StatsModels.FullDummyCoding()
     end
     mf = ModelFrame(formula_struct, df, contrasts = contrasts)
-    _, coefficient_names_ALL = coefnames(apply_schema(formula_struct, mf.schema))
-    y_ALL, X_ALL = modelcols(apply_schema(formula_struct, mf.schema), df)
-    # Make sure the extract ys and Xs are as expected
-    if size(y) != size(y_ALL)
-        throw(
-            ErrorException(
-                "The extracted response variable is not the same for the model to be fit and the full model.",
-            ),
-        )
-    end
-    if !(size(X) < size(X_ALL))
-        throw(
-            ErrorException(
-                "The one-hot encoding explanatory matrix does not have more columns than the model matrix to be fit.",
-            ),
-        )
-    end
+    _, coefficient_names = coefnames(apply_schema(formula_struct, mf.schema))
+    y, X = modelcols(apply_schema(formula_struct, mf.schema), df)
     # Initialise the BLR struct
-    blr, blr_ALL = begin
+    blr = begin
         n, p = size(X)
         blr = BLR(n = n, p = p)
         blr.entries = df.entries
@@ -328,35 +346,28 @@ function instantiateblr(;
         blr.y = y
         blr.ŷ = zeros(n)
         blr.ϵ = zeros(n)
-        blr, clone(blr)
+        blr
     end
     # Separate each explanatory variable from one another
     for v in explain_var_names
-        # v = explain_var_names[end]
+        # v = explain_var_names[3]
         v_split = filter(x -> x != "&", split(v, " "))
         # Main design matrices (bool) full design matrices (bool_ALL)
         bool = fill(true, length(coefficient_names))
-        bool_ALL = fill(true, length(coefficient_names_ALL))
         for x in v_split
-            bool = bool .&& .!isnothing.(match.(Regex(x), coefficient_names))
-            bool_ALL = bool_ALL .&& .!isnothing.(match.(Regex(x), coefficient_names_ALL))
+            bool .*= .!isnothing.(match.(Regex(x), coefficient_names))
         end
-        # Make sure we are extract the correct coefficients
+        # B = sum(hcat([.!isnothing.(match.(Regex(x), coefficient_names)) for x in v_split]...), dims=2)[:, 1] .== 2
+        # bool == B
+        # Make sure we are extracting the correct coefficients, i.e. exclude unintended interaction terms
         if length(v_split) == 1
-            bool = bool .&& isnothing.(match.(Regex("&"), coefficient_names))
-            bool_ALL = bool_ALL .&& isnothing.(match.(Regex("&"), coefficient_names_ALL))
+            bool .*= isnothing.(match.(Regex("&"), coefficient_names))
         else
             m = length(v_split) - 1
-            bool =
-                bool .&& [
-                    !isnothing(x) ? sum(.!isnothing.(match.(Regex("&"), split(coefficient_names[i], " ")))) == m :
-                    false for (i, x) in enumerate(match.(Regex("&"), coefficient_names))
-                ]
-            bool_ALL =
-                bool_ALL .&& [
-                    !isnothing(x) ? sum(.!isnothing.(match.(Regex("&"), split(coefficient_names_ALL[i], " ")))) == m :
-                    false for (i, x) in enumerate(match.(Regex("&"), coefficient_names_ALL))
-                ]
+            bool .*= [
+                !isnothing(x) ? sum(.!isnothing.(match.(Regex("&"), split(coefficient_names[i], " ")))) == m :
+                false for (i, x) in enumerate(match.(Regex("&"), coefficient_names))
+            ]
         end
         v = if !isnothing(other_covariates) && (v ∈ other_covariates)
             # For the continuous numeric other covariates --> Float64 matrix
@@ -367,56 +378,29 @@ function instantiateblr(;
             catch
                 X[:, bool]
             end
-            blr_ALL.Xs[v] = try
-                hcat(blr_ALL.Xs[v], X_ALL[:, bool_ALL])
-            catch
-                X_ALL[:, bool_ALL]
-            end
             v
         else
             # For categorical variables --> boolean matrix for memory-efficiency
             blr.Xs[v] = Bool.(X[:, bool])
-            blr_ALL.Xs[v] = Bool.(X_ALL[:, bool_ALL])
             v
         end
         blr.Σs[v] = 1.0 * I
-        blr_ALL.Σs[v] = 1.0 * I
         blr.coefficients[v] = try
             vcat(blr.coefficients[v], zeros(sum(bool)))
         catch
             zeros(sum(bool))
-        end
-        blr_ALL.coefficients[v] = try
-            vcat(blr_ALL.coefficients[v], zeros(sum(bool_ALL)))
-        catch
-            zeros(sum(bool_ALL))
         end
         blr.coefficient_names[v] = try
             vcat(blr.coefficient_names[v], coefficient_names[bool])
         catch
             coefficient_names[bool]
         end
-        blr_ALL.coefficient_names[v] = try
-            vcat(blr_ALL.coefficient_names[v], coefficient_names_ALL[bool_ALL])
-        catch
-            coefficient_names_ALL[bool_ALL]
-        end
     end
     # Output
     if !checkdims(blr)
         throw(ErrorException("The resulting BLR struct for the model to be fit is corrupted ☹."))
     end
-    if !checkdims(blr_ALL)
-        throw(ErrorException("The resulting BLR struct for the full model is corrupted ☹."))
-    end
-    if blr == blr_ALL
-        throw(
-            ErrorException(
-                "The BLR structs for the model to be fit and full model should not be the same but they are.",
-            ),
-        )
-    end
-    (blr, blr_ALL)
+    blr
 end
 
 """
@@ -467,46 +451,46 @@ Turing.@model function turingblr(
 end
 
 """
-    extractmodelinputs(blr_and_blr_ALL::Tuple{BLR,BLR}; multiple_σs::Union{Nothing, Dict{String, Bool}}=nothing)::Dict
+    extractmodelinputs(blr::BLR; multiple_σs::Union{Nothing, Dict{String, Bool}}=nothing)::Dict
 
-Extract model inputs from BLR objects for Bayesian modelling.
+Extract model inputs from BLR object for Bayesian modelling.
 
 # Arguments
-- `blr_and_blr_ALL::Tuple{BLR,BLR}`: A tuple containing two BLR (Bayesian Linear Regression) objects
+- `blr::BLR`: A Bayesian Linear Regression model object 
 - `multiple_σs::Union{Nothing, Dict{String, Bool}}=nothing`: Optional dictionary specifying whether each variance component should use single (false) or multiple (true) variance scalers. If nothing, defaults to single scaler for all components.
 
 # Returns
 A dictionary containing:
 - `"y"`: Response variable vector
 - `"vector_of_Xs_noint"`: Vector of design matrices for each variance component
-- `"vector_of_Δs"`: Vector of variance-covariance matrices or uniform scaling factors
+- `"vector_of_Δs"`: Vector of variance-covariance matrices or uniform scaling factors 
 - `"length_of_σs"`: Vector specifying number of variance components for each term
 - `"variance_components"`: Vector of variance component names
 - `"vector_coefficient_names"`: Vector of coefficient names for all variance components
 
 # Notes
-- Excludes intercept from variance components 
+- Excludes intercept from variance components
 - For each variance component:
-  - If multiple_σs[component] = false: Uses single variance scaler
+  - If multiple_σs[component] = false: Uses single variance scaler 
   - If multiple_σs[component] = true: Uses separate variance scaler per coefficient
-- Processes design matrices, variance-covariance structures, and coefficient names from the BLR objects
+- Processes design matrices, variance-covariance structures, and coefficient names from the BLR object
 
 # Throws
 - `ErrorException`: If a variance component is not specified in the multiple_σs dictionary
 
 # Example
 ```jldoctest; setup = :(using GenomicBreedingCore, StatsBase)
-julia> genomes = simulategenomes(n=500, l=1_000, verbose=false); 
+julia> genomes = simulategenomes(n=5, l=1_000, verbose=false);
 
 julia> trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=3, verbose=false);
 
 julia> df = tabularise(trials);
 
-julia> blr_and_blr_ALL = instantiateblr(trait = trials.traits[1], factors = ["rows", "cols"], df = df, other_covariates = trials.traits[2:end], verbose = false);
+julia> blr = instantiateblr(trait = trials.traits[1], factors = ["rows", "cols"], df = df, other_covariates = trials.traits[2:end], verbose = false);
 
-julia> model_inputs_1 = extractmodelinputs(blr_and_blr_ALL, multiple_σs = nothing);
+julia> model_inputs_1 = extractmodelinputs(blr, multiple_σs = nothing);
 
-julia> model_inputs_2 = extractmodelinputs(blr_and_blr_ALL, multiple_σs = Dict("rows" => true, "cols" => true, "rows & cols" => false, "other_covariates" => true));
+julia> model_inputs_2 = extractmodelinputs(blr, multiple_σs = Dict("rows" => true, "cols" => true, "rows & cols" => false, "other_covariates" => true));
 
 julia> (model_inputs_1["y"] == model_inputs_2["y"]) && (model_inputs_1["vector_of_Xs_noint"] == model_inputs_2["vector_of_Xs_noint"]) && (model_inputs_1["vector_of_Δs"] == model_inputs_2["vector_of_Δs"]) && (model_inputs_1["vector_coefficient_names"] == model_inputs_2["vector_coefficient_names"])
 true
@@ -516,7 +500,7 @@ true
 ```
 """
 function extractmodelinputs(
-    blr_and_blr_ALL::Tuple{BLR,BLR};
+    blr::BLR;
     multiple_σs::Union{Nothing,Dict{String,Bool}} = nothing,
 )::Dict{
     String,
@@ -529,12 +513,12 @@ function extractmodelinputs(
     },
 }
     # Extract the response variable, y, and the vectors of Xs, and Σs for model fitting, as well as the coefficient names for each variance component
-    y::Vector{Float64} = blr_and_blr_ALL[1].y
+    y::Vector{Float64} = blr.y
     vector_of_Xs_noint::Vector{Matrix{Union{Bool,Float64}}} = []
     vector_of_Δs::Vector{Union{Matrix{Float64},UniformScaling{Float64}}} = []
     length_of_σs::Vector{Int64} = []
     vector_coefficient_names::Vector{String} = []
-    variance_components::Vector{String} = filter(x -> x != "intercept", string.(keys(blr_and_blr_ALL[1].Xs)))
+    variance_components::Vector{String} = filter(x -> x != "intercept", string.(keys(blr.Xs)))
     multiple_σs = if isnothing(multiple_σs)
         multiple_σs = Dict()
         for v in variance_components
@@ -555,18 +539,18 @@ function extractmodelinputs(
     end
     for v in variance_components
         # v = variance_components[1]
-        push!(vector_of_Xs_noint, blr_and_blr_ALL[1].Xs[v])
-        push!(vector_of_Δs, blr_and_blr_ALL[1].Σs[v])
-        # if isa(blr_and_blr_ALL[1].Σs[v], UniformScaling{Float64})
+        push!(vector_of_Xs_noint, blr.Xs[v])
+        push!(vector_of_Δs, blr.Σs[v])
+        # if isa(blr.Σs[v], UniformScaling{Float64})
         if !multiple_σs[v]
             # If only 1 variance component is requested, i.e. common/spherical variance
             push!(length_of_σs, 1)
         else
             # Otherwise, define separate variance scaler per coefficient
-            push!(length_of_σs, size(blr_and_blr_ALL[1].Xs[v], 2))
+            push!(length_of_σs, size(blr.Xs[v], 2))
         end
         push!(length_of_σs)
-        vector_coefficient_names = vcat(vector_coefficient_names, blr_and_blr_ALL[1].coefficient_names[v])
+        vector_coefficient_names = vcat(vector_coefficient_names, blr.coefficient_names[v])
     end
     Dict(
         "y" => y,
@@ -580,7 +564,7 @@ end
 
 """
     turingblrmcmc!(
-        blr_and_blr_ALL::Tuple{BLR,BLR};
+        blr::BLR;
         multiple_σs::Union{Nothing, Dict{String, Bool}} = nothing,
         turing_model::Function = turingblr,
         n_iter::Int64 = 10_000,
@@ -594,10 +578,10 @@ end
         verbose::Bool = true
     )::Nothing
 
-Perform MCMC sampling for Bayesian Linear Regression on a tuple of BLR models using NUTS sampler.
+Perform MCMC sampling for Bayesian Linear Regression on a BLR model using NUTS sampler.
 
 # Arguments
-- `blr_and_blr_ALL::Tuple{BLR,BLR}`: Tuple containing two BLR models - first for fitting, second for inferring
+- `blr::BLR`: The BLR model to fit
 - `multiple_σs::Union{Nothing, Dict{String, Bool}}`: Optional dictionary specifying multiple (true) or single (false) variance scalers per component
 - `turing_model::Function`: The Turing model function to use (default: turingblr)
 - `n_iter::Int64`: Number of MCMC iterations (default: 10,000)
@@ -611,7 +595,7 @@ Perform MCMC sampling for Bayesian Linear Regression on a tuple of BLR models us
 - `verbose::Bool`: Whether to show progress during sampling (default: true)
 
 # Returns
-- `Nothing`: The function mutates the input BLR structs in-place, updating their:
+- `Nothing`: The function mutates the input BLR struct in-place, updating its:
     + coefficients, 
     + variance components, 
     + predicted values, 
@@ -621,45 +605,40 @@ Perform MCMC sampling for Bayesian Linear Regression on a tuple of BLR models us
 # Notes
 - Performs model validation checks before fitting
 - Uses NUTS (No-U-Turn Sampler) with specified AD type
-- Computes convergence diagnostics using improved Gelman-Rubin statistics (R̂; https://doi.org/10.1214/20-BA1221)
+- Computes convergence diagnostics by splitting the chain into 5 sub-chains to calculate:
+    + improved Gelman-Rubin statistics (R̂; https://doi.org/10.1214/20-BA1221), and
+    + effective population size (ESS).
 - Warns if parameters haven't converged based on R̂ (≥ 1.01) or effective sample size (< 100)
-- Updates both models with estimated coefficients, variance components, predicted values, and residuals
-- Ensures consistency between fitted and full models
-- Mutates the input BLR models in-place
+- Updates the model with estimated coefficients, variance components, predicted values, and residuals
+- Mutates the input BLR model in-place
 
 # Example
 ```jldoctest; setup = :(using GenomicBreedingCore, StatsBase, DataFrames)
-julia> genomes = simulategenomes(n=500, l=1_000, verbose=false); 
+julia> genomes = simulategenomes(n=5, l=1_000, verbose=false);
 
 julia> trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=3, verbose=false);
 
 julia> df = tabularise(trials);
 
-julia> blr_and_blr_ALL = instantiateblr(trait = trials.traits[1], factors = ["rows", "cols"], df = df, other_covariates = trials.traits[2:end], verbose = false);
+julia> blr = instantiateblr(trait = trials.traits[1], factors = ["rows", "cols"], df = df, other_covariates = trials.traits[2:end], verbose = false);
 
-julia> turingblrmcmc!(blr_and_blr_ALL, n_iter=1_000, n_burnin=200, seed=123, verbose=false);
+julia> turingblrmcmc!(blr, n_iter=1_000, n_burnin=200, seed=123, verbose=false);
 
-julia> mean([mean(x) for (_, x) in blr_and_blr_ALL[1].coefficients]) != 0.0
+julia> mean([mean(x) for (_, x) in blr.coefficients]) != 0.0
 true
 
-julia> mean([mean(x) for (_, x) in blr_and_blr_ALL[2].coefficients]) != 0.0
+julia> cor(blr.y, blr.ŷ) > 0.0
 true
 
-julia> cor(blr_and_blr_ALL[1].y, blr_and_blr_ALL[1].ŷ) > 0.0
+julia> (sum(blr.diagnostics.rhat .< 1.01) < nrow(blr.diagnostics))
 true
 
-julia> cor(blr_and_blr_ALL[1].ŷ, blr_and_blr_ALL[2].ŷ) > 0.99
-true
-
-julia> (sum(blr_and_blr_ALL[1].diagnostics.rhat .< 1.01) < nrow(blr_and_blr_ALL[1].diagnostics))
-true
-
-julia> (sum(blr_and_blr_ALL[1].diagnostics.ess .>= 100) < nrow(blr_and_blr_ALL[1].diagnostics))
+julia> (sum(blr.diagnostics.ess .>= 100) < nrow(blr.diagnostics))
 true
 ```
 """
 function turingblrmcmc!(
-    blr_and_blr_ALL::Tuple{BLR,BLR};
+    blr::BLR;
     multiple_σs::Union{Nothing,Dict{String,Bool}} = nothing,
     turing_model::Function = turingblr,
     n_iter::Int64 = 10_000,
@@ -675,7 +654,7 @@ function turingblrmcmc!(
     # genomes = simulategenomes(n=500, l=1_000, verbose=false); 
     # trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=3, verbose=false);
     # df = tabularise(trials);
-    # blr_and_blr_ALL = instantiateblr(trait = trials.traits[1], factors = ["rows", "cols"], df = df, other_covariates = trials.traits[2:end], verbose = false);
+    # blr = instantiateblr(trait = trials.traits[1], factors = ["rows", "cols"], df = df, other_covariates = trials.traits[2:end], verbose = false);
     # # multiple_σs::Union{Nothing, Dict{String, Bool}} = nothing
     # multiple_σs::Union{Nothing, Dict{String, Bool}} = Dict("rows" => true, "cols" => true, "rows & cols" => false, "other_covariates" => true)
     # turing_model = turingblr 
@@ -689,17 +668,8 @@ function turingblrmcmc!(
     # seed = 1234
     # verbose = true
     # Check arguments
-    if !checkdims(blr_and_blr_ALL[1])
+    if !checkdims(blr)
         throw(ArgumentError("The BLR struct to be fit is corrupted ☹."))
-    end
-    if !checkdims(blr_and_blr_ALL[2])
-        throw(ArgumentError("The BLR struct of the full model is corrupted ☹."))
-    end
-    if blr_and_blr_ALL[1].entries != blr_and_blr_ALL[2].entries
-        throw(ArgumentError("The BLR structs have incompatible entries."))
-    end
-    if keys(blr_and_blr_ALL[1].coefficient_names) != keys(blr_and_blr_ALL[2].coefficient_names)
-        throw(ArgumentError("The BLR structs have incompatible variance components."))
     end
     if n_iter < 100
         throw(
@@ -708,15 +678,8 @@ function turingblrmcmc!(
             ),
         )
     end
-    if n_burnin > n_iter
-        throw(
-            ArgumentError(
-                "The number of burn-in stepes (`n_burnin=$n_burnin`) is greater than or equal to the number of MCMC iterations (`n_iter=$n_iter`).",
-            ),
-        )
-    end
-    # # Extract the response variable, y, and the vectors of Xs, and Σs for model fitting, as well as the coefficient names for each variance component
-    model_inputs = extractmodelinputs(blr_and_blr_ALL, multiple_σs = multiple_σs)
+    # Extract the response variable, y, and the vectors of Xs, and Σs for model fitting, as well as the coefficient names for each variance component
+    model_inputs = extractmodelinputs(blr, multiple_σs = multiple_σs)
     # Instantiate the RNG, model, and sampling function
     rng::TaskLocalRNG = Random.seed!(seed)
     model = turing_model(
@@ -725,23 +688,26 @@ function turingblrmcmc!(
         model_inputs["length_of_σs"],
         model_inputs["y"],
     )
-    sampling_function = NUTS(n_burnin, δ, max_depth = max_depth, Δ_max = Δ_max, init_ϵ = init_ϵ; adtype = adtype)
+    # sampling_function = NUTS(n_burnin, δ, max_depth = max_depth, Δ_max = Δ_max, init_ϵ = init_ϵ; adtype = adtype)
+    sampling_function = NUTS(δ, max_depth = max_depth, Δ_max = Δ_max, init_ϵ = init_ϵ; adtype = adtype)
     # MCMC
     if verbose
         println(
-            "Single chain MCMC sampling for $n_iter total iterations where the first $n_burnin iteractions are omitted.",
+            "Single chain MCMC sampling for $n_iter iterations (excluding the first $n_burnin adaptation or warm-up iterations).",
         )
     end
-    chain = Turing.sample(rng, model, sampling_function, n_iter, discard_initial = n_burnin, progress = verbose)
+    chain = Turing.sample(rng, model, sampling_function, n_iter, discard_initial = n_burnin, progress = verbose);
     # Diagnostics
     if verbose
-        println("Diagnosing the MCMC chain for convergence by dividing the chain into 5 and finding the maximum R̂.")
+        println("Diagnosing the MCMC chain for convergence by dividing the chain into 5 and finding the maximum R̂ and estimating the effective sample size.")
     end
     diagnostics = DataFrame(MCMCDiagnosticTools.ess_rhat(chain, split_chains = 5)) # new R̂: maximum R̂ of :bulk and :tail
     p = size(diagnostics, 1)
     n_rhat_converged = sum(diagnostics.rhat .< 1.01)
     n_ess_converged = sum(diagnostics.ess .>= 100)
     if verbose
+        display(UnicodePlots.histogram(diagnostics.rhat, title = "R̂", xlabel = "", ylabel = ""))
+        display(UnicodePlots.histogram(diagnostics.ess, title = "ESS", xlabel = "", ylabel = ""))
         if ((p - n_rhat_converged) > 0) || ((p - n_ess_converged) > 0)
             @warn "Convergence rates:\n" *
                   "\t‣ $(round(n_rhat_converged*100 / p))%: $(p - n_rhat_converged) out of $p parameter/s did not converge based on R̂ (>= 1.01) and,\n" *
@@ -751,8 +717,18 @@ function turingblrmcmc!(
             println("All parameters have converged.")
         end
     end
+    # Check the chain size
+    # Chain size is: 
+    #   - n_iter iterations
+    #   - p parameters + 13 internal variables, i.e. [:lp, :n_steps, :is_accept, :acceptance_rate, :log_density, :hamiltonian_energy, :hamiltonian_energy_error, :max_hamiltonian_energy_error, :tree_depth, :numerical_error, :step_size, :nom_step_size]
+    #   - 1 chain
+    p = sum([length(v) for (k, v) in blr.coefficient_names]) + sum(model_inputs["length_of_σs"])
+    if size(chain) != (n_iter, p+13, 1) 
+        throw(ErrorException("The MCMC chain is not of the expected size."))
+    end
+    # Extract the posterior distributions of the parameters
     # Use the mean parameter values which excludes the first n_burnin iterations
-    params = Turing.get_params(chain[:, :, :])
+    params = Turing.get_params(chain)
     β0 = mean(params.intercept)
     βs = [mean(params.βs[i]) for i in eachindex(params.βs)]
     σ² = mean(params.σ²)
@@ -761,8 +737,8 @@ function turingblrmcmc!(
     if verbose
         println("Extracting MCMC-derived coefficients")
     end
-    blr_and_blr_ALL[1].coefficients["intercept"] = blr_and_blr_ALL[2].coefficients["intercept"] = [β0]
-    blr_and_blr_ALL[1].Σs["σ²"] = blr_and_blr_ALL[2].Σs["σ²"] = σ² * blr_and_blr_ALL[1].Σs["σ²"]
+    blr.coefficients["intercept"] = [β0]
+    blr.Σs["σ²"] =  σ² * blr.Σs["σ²"]
     ini = 0
     ini_σ = 0
     fin = 0
@@ -774,45 +750,32 @@ function turingblrmcmc!(
         ini_σ = fin_σ + 1
         fin_σ = (ini_σ - 1) + model_inputs["length_of_σs"][i]
         # Model fit
-        if blr_and_blr_ALL[1].coefficient_names[v] != model_inputs["vector_coefficient_names"][ini:fin]
+        if blr.coefficient_names[v] != model_inputs["vector_coefficient_names"][ini:fin]
             throw(ErrorException("The expected coefficient names do not match for the variance component: $v."))
         end
-        blr_and_blr_ALL[1].coefficients[v] = βs[ini:fin]
-        blr_and_blr_ALL[1].Σs[v] =
-            if isa(model_inputs["vector_of_Δs"][i], UniformScaling{Float64}) && (fin_σ - ini_σ == 0)
-                # Single variance component multiplier
-                σ²s[ini_σ] * model_inputs["vector_of_Δs"][i]
-            else
-                # Multiple variance component multipliers
-                # σ² = repeat(σ²s[ini_σ:fin_σ], 1 + length(blr_and_blr_ALL[1].coefficients[v]) - length(σ²s[ini_σ:fin_σ]))
-                σ² = σ²s[ini_σ:fin_σ]
-                Matrix(Diagonal(σ²) * model_inputs["vector_of_Δs"][i] * Diagonal(σ²))
-            end
-        # Full model
-        for (j, c) in enumerate(blr_and_blr_ALL[1].coefficient_names[v])
-            # j = 29; c = blr_and_blr_ALL[1].coefficient_names[v][j]
-            idx = findall(blr_and_blr_ALL[2].coefficient_names[v] .== c)[1]
-            blr_and_blr_ALL[2].coefficients[v][idx] = blr_and_blr_ALL[1].coefficients[v][j]
+        blr.coefficients[v] = βs[ini:fin]
+        blr.Σs[v] = if (
+            isa(model_inputs["vector_of_Δs"][i], UniformScaling{Float64}) && 
+            (fin_σ - ini_σ == 0)
+        )
+            # Single variance component multiplier
+            σ²s[ini_σ] * model_inputs["vector_of_Δs"][i]
+        else
+            # Multiple variance component multipliers
+            # σ² = repeat(σ²s[ini_σ:fin_σ], 1 + length(blr.coefficients[v]) - length(σ²s[ini_σ:fin_σ]))
+            σ² = σ²s[ini_σ:fin_σ]
+            Matrix(Diagonal(σ²) * model_inputs["vector_of_Δs"][i] * Diagonal(σ²))
         end
-        blr_and_blr_ALL[2].Σs[v] = blr_and_blr_ALL[1].Σs[v]
     end
     # Define the predicted ys and residuals
-    X, b, _b_labels = extractXb(blr_and_blr_ALL[1])
-    blr_and_blr_ALL[1].ŷ = X * b
-    blr_and_blr_ALL[1].ϵ = blr_and_blr_ALL[1].y .- blr_and_blr_ALL[1].ŷ
-    X, b, _b_labels = extractXb(blr_and_blr_ALL[2])
-    blr_and_blr_ALL[2].ŷ = X * b
-    blr_and_blr_ALL[2].ϵ = blr_and_blr_ALL[2].y .- blr_and_blr_ALL[2].ŷ
-    # Insert the diagnostics into the BLR structs
-    blr_and_blr_ALL[1].diagnostics = diagnostics
-    blr_and_blr_ALL[2].diagnostics = diagnostics
-    # Output checks
-    if !checkdims(blr_and_blr_ALL[1]) || !checkdims(blr_and_blr_ALL[2])
-        throw(ErrorException("Error updating the BLR structs after MCMC."))
-    end
-    if (mean(abs.(blr_and_blr_ALL[1].ŷ - blr_and_blr_ALL[2].ŷ)) > 1e-7) ||
-       (mean(abs.(blr_and_blr_ALL[1].ϵ - blr_and_blr_ALL[2].ϵ)) > 1e-7)
-        throw(ErrorException("The BLR struts do not yield the same ŷ and ϵ. After fitting and updating the fields."))
+    X, b, _b_labels = extractXb(blr)
+    blr.ŷ = X * b
+    blr.ϵ = blr.y .- blr.ŷ
+    # Insert the diagnostics into the BLR struct
+    blr.diagnostics = diagnostics
+    # Output
+    if !checkdims(blr)
+        throw(ErrorException("Error updating the BLR struct after MCMC."))
     end
     return nothing
 end
@@ -875,7 +838,7 @@ Variance component scalers are specified as follows:
 
 # Example
 ```jldoctest; setup = :(using GenomicBreedingCore, StatsBase, DataFrames)
-julia> genomes = simulategenomes(n=10, l=1_000, verbose=false);
+julia> genomes = simulategenomes(n=5, l=1_000, verbose=false);
 
 julia> trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=3, verbose=false);
 
@@ -989,7 +952,7 @@ function removespatialeffects!(
                 rename!(df, "__new_spatially_adjusted_trait__" => new_spat_adj_trait_name)
             end
             # Instantiate the BLR struct for spatial analysis to remove the spatial effects as well as the effects of the other covariates
-            blr_and_blr_ALL = instantiateblr(
+            blr = instantiateblr(
                 trait = trait,
                 factors = spatial_factors,
                 other_covariates = other_covariates,
@@ -1002,7 +965,7 @@ function removespatialeffects!(
             if autoregressive_Σ
                 for varcomp in string.(keys(ρs))
                     # varcomp = string.(keys(ρs))[1]
-                    idx = sortperm(blr_and_blr_ALL[1].coefficient_names[varcomp])
+                    idx = sortperm(blr.coefficient_names[varcomp])
                     p = length(idx)
                     AR1 = Matrix(Diagonal(ones(p)))
                     for i in idx
@@ -1017,14 +980,14 @@ function removespatialeffects!(
                     end
                     inflatediagonals!(AR1)
                     det(AR1)
-                    blr_and_blr_ALL[1].Σs[varcomp] = AR1
+                    blr.Σs[varcomp] = AR1
                 end
             end
             # Set-up variance component multipliers/scalers such that row, columns and other covariates have unique multipliers;
             # while the row-by-col interaction only has 1, i.e. spherical variance-covariance matrix for model tractability
             multiple_σs::Union{Nothing,Dict{String,Bool}} = Dict()
-            for varcomp in string.(keys(blr_and_blr_ALL[1].Σs))
-                # varcomp = string.(keys(blr_and_blr_ALL[1].Σs))[1]
+            for varcomp in string.(keys(blr.Σs))
+                # varcomp = string.(keys(blr.Σs))[1]
                 if varcomp == "σ²"
                     continue
                 end
@@ -1036,7 +999,7 @@ function removespatialeffects!(
             end
             # Spatial analysis via Bayesian linear regression
             turingblrmcmc!(
-                blr_and_blr_ALL,
+                blr,
                 multiple_σs = multiple_σs,
                 n_iter = n_iter,
                 n_burnin = n_burnin,
@@ -1044,10 +1007,10 @@ function removespatialeffects!(
                 verbose = verbose,
             )
             # Update the spatially adjusted trait with the intercept + residuals of the spatial model above
-            # cor(df[idx_rows, new_spat_adj_trait_name], blr_and_blr_ALL[1].coefficients["intercept"] .+ blr_and_blr_ALL[1].ϵ)
-            df[idx_rows, new_spat_adj_trait_name] = blr_and_blr_ALL[1].coefficients["intercept"] .+ blr_and_blr_ALL[1].ϵ
+            # cor(df[idx_rows, new_spat_adj_trait_name], blr.coefficients["intercept"] .+ blr.ϵ)
+            df[idx_rows, new_spat_adj_trait_name] = blr.coefficients["intercept"] .+ blr.ϵ
             # Update the spatial_diagnostics
-            spatial_diagnostics[string(harvest, "|", new_spat_adj_trait_name)] = blr_and_blr_ALL[1].diagnostics
+            spatial_diagnostics[string(harvest, "|", new_spat_adj_trait_name)] = blr.diagnostics
         end
     end
     # Is the entries the only factor remaining?
@@ -1163,11 +1126,11 @@ The analysis includes:
 
 # Examples
 ```jldoctest; setup = :(using GenomicBreedingCore, StatsBase, DataFrames)
-julia> genomes = simulategenomes(n=5, l=1_000);
+julia> genomes = simulategenomes(n=5, l=1_000, verbose=false);
 
-julia> grm = grmploidyaware(genomes, ploidy = 2, max_iter = 10);
+julia> grm = grmploidyaware(genomes, ploidy=2, max_iter=10);
 
-julia> trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_harvests=1, n_sites=3, n_replications=3);
+julia> trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_harvests=1, n_sites=3, n_replications=3, verbose=false);
 
 julia> tebv_1, spatial_diagnostics_1 = analyse(trials, ["trait_1"], n_iter = 1_000, n_burnin = 100);
 
@@ -1294,67 +1257,60 @@ function analyse(
         #     + seasons:sites
         #     + years:sites
         #     + entries:seasons:sites
-        blr_and_blr_ALL =
-            instantiateblr(trait = trait, factors = factors, other_covariates = nothing, df = df, verbose = verbose)
+        blr = instantiateblr(trait = trait, factors = factors, other_covariates = nothing, df = df, verbose = verbose)
         # Prepare the variance-covariance matrix for the entries effects, i.e. using I or a GRM
         if !isnothing(grm)
-            for idx = 1:2
-                # idx = 1
-                # Replace the variance-covariance matrix for the factors involving entries with the GRM
-                factors_with_entries = begin
-                    x = string.(keys(blr_and_blr_ALL[idx].coefficient_names))
-                    x[.!isnothing.(match.(Regex("entries"), x))]
+            # Replace the variance-covariance matrix for the factors involving entries with the GRM
+            factors_with_entries = begin
+                x = string.(keys(blr.coefficient_names))
+                x[.!isnothing.(match.(Regex("entries"), x))]
+            end
+            for fentries in factors_with_entries
+                # fentries = factors_with_entries[end]
+                n = length(blr.coefficient_names[fentries])
+                blr.Σs[fentries] = zeros(n, n)
+                for (i, name_1) in enumerate(blr.coefficient_names[fentries])
+                    for (j, name_2) in enumerate(blr.coefficient_names[fentries])
+                        # i = 1; name_1 = blr.coefficient_names[fentries][i]
+                        # j = 1; name_2 = blr.coefficient_names[fentries][j]
+                        split_1 = split(name_1, " ")
+                        split_2 = split(name_2, " ")
+                        if sum(split_1 .== split_2) < (length(split_1) -1)
+                            continue
+                        end
+                        entry_1 = split_1[.!isnothing.(match.(Regex("entry_"), split_1))][end]
+                        entry_2 = split_2[.!isnothing.(match.(Regex("entry_"), split_2))][end]
+                        k = findall(grm.entries .== entry_1)[end]
+                        l = findall(grm.entries .== entry_2)[end]
+                        blr.Σs[fentries][i, j] = grm.genomic_relationship_matrix[k, l]
+                    end
                 end
-                for fentries in factors_with_entries
-                    # fentries = factors_with_entries[end]
-                    n = length(blr_and_blr_ALL[idx].coefficient_names[fentries])
-                    blr_and_blr_ALL[idx].Σs[fentries] = zeros(n, n)
-                    for (i, name_1) in enumerate(blr_and_blr_ALL[idx].coefficient_names[fentries])
-                        for (j, name_2) in enumerate(blr_and_blr_ALL[idx].coefficient_names[fentries])
-                            # i = 1; name_1 = blr_and_blr_ALL[idx].coefficient_names[fentries][i]
-                            # j = 1; name_2 = blr_and_blr_ALL[idx].coefficient_names[fentries][j]
-                            split_1 = split(name_1, " ")
-                            split_2 = split(name_2, " ")
-                            if sum(split_1 .== split_2) < (length(split_1) -1)
-                                continue
-                            end
-                            entry_1 = split_1[.!isnothing.(match.(Regex("entry_"), split_1))][end]
-                            entry_2 = split_2[.!isnothing.(match.(Regex("entry_"), split_2))][end]
-                            k = findall(grm.entries .== entry_1)[end]
-                            l = findall(grm.entries .== entry_2)[end]
-                            blr_and_blr_ALL[idx].Σs[fentries][i, j] = grm.genomic_relationship_matrix[k, l]
-                        end
+                # Inflate the diagonals if not positive definite
+                counter = 0
+                while !isposdef(blr.Σs[fentries])
+                    if counter > 10
+                        break
                     end
-                    # Inflate the diagonals if not positive definite
-                    counter = 0
-                    while !isposdef(blr_and_blr_ALL[idx].Σs[fentries])
-                        if counter > 10
-                            break
-                        end
-                        inflatediagonals!(blr_and_blr_ALL[idx].Σs[fentries], verbose=verbose)
-                        counter += 1
-                    end
-                    if !isposdef(blr_and_blr_ALL[idx].Σs[fentries])
-                        throw(
-                            ErrorException(
-                                "The variance-covariance matrix for the entries: $fentries remains non-positive definite after 10 inflation attempts.",
-                            ),
-                        )
-                    end
+                    inflatediagonals!(blr.Σs[fentries], verbose=verbose)
+                    counter += 1
+                end
+                if !isposdef(blr.Σs[fentries])
+                    throw(
+                        ErrorException(
+                            "The variance-covariance matrix for the entries: $fentries remains non-positive definite after 10 inflation attempts.",
+                        ),
+                    )
                 end
             end
-        else
-            # Keep the identity matrix for the entries variance-covariance matrix
-            nothing
         end
         # Set-up variance component multipliers/scalers, for now it's just based on a maximumnumber of coefficients thresholds
         multiple_σs::Union{Nothing,Dict{String,Bool}} = Dict()
-        for v in string.(keys(blr_and_blr_ALL[1].coefficient_names))
-            # v = string.(keys(blr_and_blr_ALL[1].coefficient_names))[2]
+        for v in string.(keys(blr.coefficient_names))
+            # v = string.(keys(blr.coefficient_names))[2]
             if v == "intercept"
                 continue
             end
-            multiple_σs[v] = if size(blr_and_blr_ALL[1].Xs[v], 2) > multiple_σs_threshols
+            multiple_σs[v] = if size(blr.Xs[v], 2) > multiple_σs_threshols
                 false
             else
                 true
@@ -1362,7 +1318,7 @@ function analyse(
         end
         # GxE analysis via Bayesian linear regression
         turingblrmcmc!(
-            blr_and_blr_ALL,
+            blr,
             multiple_σs = multiple_σs,
             n_iter = n_iter,
             n_burnin = n_burnin,
@@ -1370,7 +1326,7 @@ function analyse(
             verbose = verbose,
         )
         # Add the fitted BLR struct to the dictionary of BLRs
-        BLRs[trait] = blr_and_blr_ALL[2]
+        BLRs[trait] = blr
     end
     # Instantiate and populate the TEBV struct
     traits = []
