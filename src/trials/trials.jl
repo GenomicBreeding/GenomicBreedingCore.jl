@@ -418,9 +418,14 @@ Aggregate harvest data from a `Trials` struct by specified grouping variables.
 ```jldoctest; setup = :(using GenomicBreedingCore)
 julia> trials, _ = simulatetrials(genomes = simulategenomes(n=5, l=1000, verbose=false), verbose=false);
 
-julia> trials_agg, df_n_harvests = aggregateharvests(trials);
+julia> trials_agg_1, df_n_harvests_1 = aggregateharvests(trials);
 
-julia> length(trials.entries) > length(trials_agg.entries)
+julia> length(trials.entries) > length(trials_agg_1.entries)
+true
+
+julia> trials_agg_2, df_n_harvests_2 = aggregateharvests(trials, traits=["trait_1"]);
+
+julia> length(trials.traits) > length(trials_agg_2.traits)
 true
 ```
 """
@@ -470,7 +475,7 @@ function aggregateharvests(
     end
     trials_agg = begin
         trials_agg = Trials(n = size(df_agg, 1), t = length(traits))
-        trials_agg.traits = trials.traits
+        trials_agg.traits = traits
         trials_agg.entries = df_agg.entries
         trials_agg.populations = df_agg.populations
         trials_agg.years = df_agg.years
