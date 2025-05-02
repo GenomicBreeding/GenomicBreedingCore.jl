@@ -304,7 +304,7 @@ function dimensions(blr::BLR)::Dict{String,Any}
 end
 
 """
-    extracteffects(blr::BLR, verbose::Bool = false)::Dict{String, DataFrame}
+    extracteffects(blr::BLR; verbose::Bool = false)::Dict{String, DataFrame}
 
 Extract and organize effects from a Bayesian Linear Regression (BLR) model.
 
@@ -352,7 +352,7 @@ julia> [size(v) for (k, v) in dfs]
  (30, 2)
 ```
 """
-function extracteffects(blr::BLR, verbose::Bool = false)::Dict{String,DataFrame}
+function extracteffects(blr::BLR; verbose::Bool = false)::Dict{String,DataFrame}
     # genomes = simulategenomes(n=5, l=1_000, verbose=false);
     # trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_harvests=1, n_sites=3, n_replications=3, verbose=false);
     # tebv, spatial_diagnostics = analyse(trials, ["trait_1"], n_iter = 1_000, n_burnin = 100);
