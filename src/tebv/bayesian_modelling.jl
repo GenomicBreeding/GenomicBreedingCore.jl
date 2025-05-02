@@ -1306,16 +1306,8 @@ function analyse(
             # fentries = factors_with_entries[2]
             trait = string(k, "|", fentries)
             push!(traits, trait)
-            if fentries == factors_with_entries[1]
-                push!(formulae, string(trait, "~", join(string.(keys(v.coefficients)), "+")))
-                push!(models, v)
-            else
-                # Avoid redundant formulae and models
-                empty_blr = BLR(n = 1, p = 100)
-                empty_blr.coefficients["dummy"] = rand(100)
-                push!(formulae, string(trait, "~ ..."))
-                push!(models, empty_blr)
-            end
+            push!(formulae, string(trait, "~", join(string.(keys(v.coefficients)), "+")))
+            push!(models, v)
             n = length(v.coefficient_names[fentries])
             ϕ = begin
                 ϕ = Phenomes(n = n, t = 1)
