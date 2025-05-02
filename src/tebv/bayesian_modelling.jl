@@ -89,61 +89,33 @@ function checkandfocalterms(;
         end
     end
     # Main effects and interaction terms we are most interested in fitting
-    main_effects = [
-        "entries",
-        "sites",
-        "seasons",
-        "years",
-    ]
+    main_effects = ["entries", "sites", "seasons", "years"]
     # Interaction effects between environmental components and the entries
     exe_gxe_effects = if ("years" ∈ factors) && ("seasons" ∈ factors) && ("sites" ∈ factors)
         # Excludes other interaction effects with years for parsimony
-        [
-            "years:sites",
-            "seasons:sites",
-            "entries:seasons:sites",
-        ]
+        ["years:sites", "seasons:sites", "entries:seasons:sites"]
     elseif ("years" ∈ factors) && ("seasons" ∈ factors) && !("sites" ∈ factors)
-        [
-            "years:seasons",
-            "entries:seasons",
-        ]
+        ["years:seasons", "entries:seasons"]
     elseif ("years" ∈ factors) && !("seasons" ∈ factors) && ("sites" ∈ factors)
-        [
-            "years:sites",
-            "entries:sites",
-        ]
+        ["years:sites", "entries:sites"]
     elseif !("years" ∈ factors) && ("seasons" ∈ factors) && ("sites" ∈ factors)
-        [
-            "seasons:sites",
-            "entries:seasons:sites",
-        ]
+        ["seasons:sites", "entries:seasons:sites"]
     elseif ("years" ∈ factors) && !("seasons" ∈ factors) && !("sites" ∈ factors)
         # Only years-by-entries interaction effects
-        [
-            "entries:years",
-        ]
+        ["entries:years"]
     elseif !("years" ∈ factors) && ("seasons" ∈ factors) && !("sites" ∈ factors)
         # Only seasons-by-entries interaction effects
-        [
-            "entries:seasons",
-        ]
+        ["entries:seasons"]
     elseif !("years" ∈ factors) && !("seasons" ∈ factors) && ("sites" ∈ factors)
         # Only sites-by-entries interaction effects
-        [
-            "entries:sites",
-        ]
+        ["entries:sites"]
     else
         nothing
     end
     # Site-specific spatial effects per harvest (i.e. stage-1 effects per year-site-season-harvest combination)
     spatial_effects = if ("rows" ∈ factors) && ("cols" ∈ factors)
         # Regardless of whether or not the blocks are present, use only the rows and columns for parsimony
-        [
-            "rows",
-            "cols",
-            "rows:cols",
-        ]
+        ["rows", "cols", "rows:cols"]
     elseif ("blocks" ∈ factors) && ("rows" ∈ factors) && !("cols" ∈ factors)
         # Check if the blocks and rows are unique, use the non-fixed one if not, else use both plus their interaction
         br = unique(string(df.blocks, "\t", df.rows))
@@ -154,11 +126,7 @@ function checkandfocalterms(;
         elseif length(br) == length(r)
             ["rows"]
         else
-            [
-                "blocks",
-                "rows",
-                "blocks:rows",
-            ]
+            ["blocks", "rows", "blocks:rows"]
         end
     elseif ("blocks" ∈ factors) && !("rows" ∈ factors) && ("cols" ∈ factors)
         # Check if the blocks and cols are unique, use the non-fixed one if not, else use both plus their interaction
@@ -170,11 +138,7 @@ function checkandfocalterms(;
         elseif length(bc) == length(c)
             ["cols"]
         else
-            [
-                "blocks",
-                "cols",
-                "blocks:cols",
-            ]
+            ["blocks", "cols", "blocks:cols"]
         end
     elseif ("blocks" ∈ factors) && !("rows" ∈ factors) && !("cols" ∈ factors)
         ["blocks"]
@@ -365,8 +329,7 @@ function instantiateblr(;
         else
             m = length(v_split) - 1
             bool .*= [
-                !isnothing(x) ? sum(.!isnothing.(match.(Regex("&"), split(coefficient_names[i], " ")))) == m :
-                false for (i, x) in enumerate(match.(Regex("&"), coefficient_names))
+                !isnothing(x) ? sum(.!isnothing.(match.(Regex("&"), split(coefficient_names[i], " ")))) == m : false for (i, x) in enumerate(match.(Regex("&"), coefficient_names))
             ]
         end
         v = if !isnothing(other_covariates) && (v ∈ other_covariates)
@@ -696,10 +659,12 @@ function turingblrmcmc!(
             "Single chain MCMC sampling for $n_iter iterations (excluding the first $n_burnin adaptation or warm-up iterations).",
         )
     end
-    chain = Turing.sample(rng, model, sampling_function, n_iter, discard_initial = n_burnin, progress = verbose);
+    chain = Turing.sample(rng, model, sampling_function, n_iter, discard_initial = n_burnin, progress = verbose)
     # Diagnostics
     if verbose
-        println("Diagnosing the MCMC chain for convergence by dividing the chain into 5 and finding the maximum R̂ and estimating the effective sample size.")
+        println(
+            "Diagnosing the MCMC chain for convergence by dividing the chain into 5 and finding the maximum R̂ and estimating the effective sample size.",
+        )
     end
     diagnostics = DataFrame(MCMCDiagnosticTools.ess_rhat(chain, split_chains = 5)) # new R̂: maximum R̂ of :bulk and :tail
     p = size(diagnostics, 1)
@@ -723,7 +688,7 @@ function turingblrmcmc!(
     #   - p parameters + 13 internal variables, i.e. [:lp, :n_steps, :is_accept, :acceptance_rate, :log_density, :hamiltonian_energy, :hamiltonian_energy_error, :max_hamiltonian_energy_error, :tree_depth, :numerical_error, :step_size, :nom_step_size]
     #   - 1 chain
     p = sum([length(v) for (k, v) in blr.coefficient_names]) + sum(model_inputs["length_of_σs"])
-    if size(chain) != (n_iter, p+13, 1) 
+    if size(chain) != (n_iter, p + 13, 1)
         throw(ErrorException("The MCMC chain is not of the expected size."))
     end
     # Extract the posterior distributions of the parameters
@@ -738,7 +703,7 @@ function turingblrmcmc!(
         println("Extracting MCMC-derived coefficients")
     end
     blr.coefficients["intercept"] = [β0]
-    blr.Σs["σ²"] =  σ² * blr.Σs["σ²"]
+    blr.Σs["σ²"] = σ² * blr.Σs["σ²"]
     ini = 0
     ini_σ = 0
     fin = 0
@@ -754,10 +719,7 @@ function turingblrmcmc!(
             throw(ErrorException("The expected coefficient names do not match for the variance component: $v."))
         end
         blr.coefficients[v] = βs[ini:fin]
-        blr.Σs[v] = if (
-            isa(model_inputs["vector_of_Δs"][i], UniformScaling{Float64}) && 
-            (fin_σ - ini_σ == 0)
-        )
+        blr.Σs[v] = if (isa(model_inputs["vector_of_Δs"][i], UniformScaling{Float64}) && (fin_σ - ini_σ == 0))
             # Single variance component multiplier
             σ²s[ini_σ] * model_inputs["vector_of_Δs"][i]
         else
@@ -1159,7 +1121,7 @@ function analyse(
     seed::Int64 = 1234,
     verbose::Bool = false,
 )::Tuple{TEBV,Dict{String,DataFrame}}
-    # genomes = simulategenomes(n=100, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_harvests=1, n_sites=3, n_replications=3); grm::Union{GRM, Nothing} = grmploidyaware(genomes; ploidy = 2, max_iter = 10, verbose = true); traits::Vector{String} = ["trait_1"]; other_covariates::Union{Vector{String}, Nothing} = ["trait_2"]; multiple_σs_threshols = 500; n_iter::Int64 = 1_000; n_burnin::Int64 = 100; seed::Int64 = 1234; verbose::Bool = true;
+    # genomes = simulategenomes(n=5, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_harvests=1, n_sites=3, n_replications=3); grm::Union{GRM, Nothing} = grmploidyaware(genomes; ploidy = 2, max_iter = 10, verbose = true); traits::Vector{String} = ["trait_1"]; other_covariates::Union{Vector{String}, Nothing} = ["trait_2"]; multiple_σs_threshols = 500; n_iter::Int64 = 1_000; n_burnin::Int64 = 100; seed::Int64 = 1234; verbose::Bool = true;
     # Check arguments
     if !checkdims(trials)
         error("The Trials struct is corrupted ☹.")
@@ -1275,7 +1237,7 @@ function analyse(
                         # j = 1; name_2 = blr.coefficient_names[fentries][j]
                         split_1 = split(name_1, " ")
                         split_2 = split(name_2, " ")
-                        if sum(split_1 .== split_2) < (length(split_1) -1)
+                        if sum(split_1 .== split_2) < (length(split_1) - 1)
                             continue
                         end
                         entry_1 = split_1[.!isnothing.(match.(Regex("entry_"), split_1))][end]
@@ -1291,7 +1253,7 @@ function analyse(
                     if counter > 10
                         break
                     end
-                    inflatediagonals!(blr.Σs[fentries], verbose=verbose)
+                    inflatediagonals!(blr.Σs[fentries], verbose = verbose)
                     counter += 1
                 end
                 if !isposdef(blr.Σs[fentries])
@@ -1341,10 +1303,19 @@ function analyse(
         end
         for fentries in factors_with_entries
             # fentries = factors_with_entries[1]
+            # fentries = factors_with_entries[2]
             trait = string(k, "|", fentries)
             push!(traits, trait)
-            push!(formulae, string(trait, "~", join(string.(keys(v.coefficients)), "+")))
-            push!(models, v)
+            if fentries == factors_with_entries[1]
+                push!(formulae, string(trait, "~", join(string.(keys(v.coefficients)), "+")))
+                push!(models, v)
+            else
+                # Avoid redundant formulae and models
+                empty_blr = BLR(n = 1, p = 100)
+                empty_blr.coefficients["dummy"] = rand(100)
+                push!(formulae, string(trait, "~ ..."))
+                push!(models, empty_blr)
+            end
             n = length(v.coefficient_names[fentries])
             ϕ = begin
                 ϕ = Phenomes(n = n, t = 1)
@@ -1360,9 +1331,16 @@ function analyse(
     end
     # tabularise(phenomes[2])
     # Output
-    df_empty::Vector{DataFrame} = []
-    (
-        TEBV(traits = convert.(String, traits), formulae = formulae, models = models, df_BLUEs = df_empty, df_BLUPs = df_empty, phenomes = phenomes),
-        spatial_diagnostics,
+    tebv = TEBV(
+        traits = convert.(String, traits),
+        formulae = formulae,
+        models = models,
+        df_BLUEs = repeat([DataFrame()], length(traits)),
+        df_BLUPs = repeat([DataFrame()], length(traits)),
+        phenomes = phenomes,
     )
+    if !checkdims(tebv)
+        throw(ErrorException("Error corrupted TEBV struct after BLR."))
+    end
+    (tebv, spatial_diagnostics)
 end

@@ -139,6 +139,7 @@ The function checks if the following fields have the same length as `traits`:
 - unique phenomes
 
 # Examples
+```jldoctest; setup = :(using GenomicBreedingCore, MixedModels, DataFrames)`
 julia> tebv = TEBV(traits=[""], formulae=[""], models=[MixedModel(@formula(y~1+(1|x)), DataFrame(y=1, x=1))], df_BLUEs=[DataFrame(x=1)], df_BLUPs=[DataFrame(x=1)], phenomes=[Phenomes(n=1,t=1)]);
 
 julia> checkdims(tebv)
@@ -148,9 +149,9 @@ true
 function checkdims(tebv::TEBV)::Bool
     t = length(tebv.traits)
     if (t != length(tebv.formulae)) ||
-       (t != length(unique(tebv.models))) ||
-       (t != length(unique(tebv.df_BLUEs))) ||
-       (t != length(unique(tebv.df_BLUPs))) ||
+       (t != length(tebv.models)) ||
+       (t != length(tebv.df_BLUEs)) ||
+       (t != length(tebv.df_BLUPs)) ||
        (t != length(unique(tebv.phenomes)))
         return false
     end
@@ -279,27 +280,40 @@ function extractphenomes(tebv::TEBV)::Phenomes
     for i in eachindex(tebv.phenomes)
         # i = 2
         phenomes_i = clone(tebv.phenomes[i])
-        # Add intercept effects if present
-        bool_intercept = .!isnothing.(match.(Regex("(Intercept)"), phenomes_i.traits))
-        n = length(phenomes_i.entries)
-        t = length(phenomes_i.traits)
-        if sum(bool_intercept) == 1
-            idx_intercept = findall(bool_intercept)[1]
-            idx_ϕ = findall(.!bool_intercept)
-            traits = repeat([""], t - 1)
-            ϕ::Matrix{Union{Missing,Float64}} = fill(0.0, n, t - 1)
-            μ::Matrix{Bool} = fill(true, n, t - 1)
-            for (i, j) in enumerate(idx_ϕ)
-                traits[i] = phenomes_i.traits[j]
-                ϕ[:, i] = phenomes_i.phenotypes[:, idx_intercept] + phenomes_i.phenotypes[:, j]
-                μ[:, i] = phenomes_i.mask[:, j]
+        if isa(tebv.models[i], MixedModel)
+            ###################
+            ### Mixed model ###
+            ###################
+            # Add intercept effects if present
+            bool_intercept = .!isnothing.(match.(Regex("(Intercept)"), phenomes_i.traits))
+            n = length(phenomes_i.entries)
+            t = length(phenomes_i.traits)
+            if sum(bool_intercept) == 1
+                idx_intercept = findall(bool_intercept)[1]
+                idx_ϕ = findall(.!bool_intercept)
+                traits = repeat([""], t - 1)
+                ϕ::Matrix{Union{Missing,Float64}} = fill(0.0, n, t - 1)
+                μ::Matrix{Bool} = fill(true, n, t - 1)
+                for (i, j) in enumerate(idx_ϕ)
+                    traits[i] = phenomes_i.traits[j]
+                    ϕ[:, i] = phenomes_i.phenotypes[:, idx_intercept] + phenomes_i.phenotypes[:, j]
+                    μ[:, i] = phenomes_i.mask[:, j]
+                end
+                phenomes_i.traits = traits
+                phenomes_i.phenotypes = ϕ
+                phenomes_i.mask = μ
+            else
+                phenomes_i.traits = phenomes_i.traits
+                phenomes_i.phenotypes = phenomes_i.phenotypes
+                phenomes_i.mask = phenomes_i.mask
             end
-            phenomes_i.traits = traits
-            phenomes_i.phenotypes = ϕ
-            phenomes_i.mask = μ
         else
+            #################
+            ### BLR model ###
+            #################
+            β₀ = tebv.models[i].coefficients["intercept"][1]
             phenomes_i.traits = phenomes_i.traits
-            phenomes_i.phenotypes = phenomes_i.phenotypes
+            phenomes_i.phenotypes = β₀ .+ phenomes_i.phenotypes
             phenomes_i.mask = phenomes_i.mask
         end
         if i == 1
