@@ -394,6 +394,107 @@ function extractphenomes(trials::Trials)::Phenomes
 end
 
 """
+    aggregateharvests(
+        trials::Trials; 
+        traits::Union{Vector{String}, Nothing} = nothing,
+        grouping::Vector{String} = ["years", "seasons", "sites", "replications", "blocks", "rows", "cols", "entries", "populations"],
+        f::Function=x -> sum(skipmissing(x))
+    )::Tuple{Trials, DataFrame}
+
+Aggregate harvest data from a `Trials` struct by specified grouping variables.
+
+# Arguments
+- `trials::Trials`: Input trials struct containing harvest data
+- `traits::Union{Vector{String}, Nothing}`: Vector of trait names to aggregate (default: all traits)
+- `grouping::Vector{String}`: Vector of column names to group by (default: ["years", "seasons", "sites", "replications", "blocks", "rows", "cols", "entries", "populations"])
+- `f::Function`: Aggregation function to apply (default: sum of non-missing values)
+
+# Returns
+- `Tuple{Trials, DataFrame}`: A tuple containing:
+  - Aggregated trials struct with combined harvest data
+  - DataFrame with harvest counts per year, season, and site
+
+# Examples
+```jldoctest; setup = :(using GenomicBreedingCore)
+julia> trials, _ = simulatetrials(genomes = simulategenomes(n=5, l=1000, verbose=false), verbose=false);
+
+julia> trials_agg, df_n_harvests = aggregateharvests(trials);
+
+julia> length(trials.entries) > length(trials_agg.entries)
+true
+```
+"""
+function aggregateharvests(
+    trials::Trials;
+    traits::Union{Vector{String},Nothing} = nothing,
+    grouping::Vector{String} = [
+        "years",
+        "seasons",
+        "sites",
+        "replications",
+        "blocks",
+        "rows",
+        "cols",
+        "entries",
+        "populations",
+    ],
+    f::Function = x -> sum(skipmissing(x)),
+)::Tuple{Trials,DataFrame}
+    if !checkdims(trials)
+        throw(ArgumentError("Trials struct is corrupted ☹."))
+    end
+    traits = if isnothing(traits)
+        trials.traits
+    else
+        for trait in traits
+            # trait = traits[1]
+            if !(trait ∈ trials.traits)
+                throw(ArgumentError("Trait: `$trait` not found in trials."))
+            end
+        end
+        traits
+    end
+    # Aggregate
+    df = tabularise(trials)
+    df_n_harvests = begin
+        df_counts = combine(groupby(df, grouping), nrow => "n_harvests")
+        combine(groupby(df_counts, [:years, :seasons, :sites]), :n_harvests => maximum => "n_harvests")
+    end
+    df_agg = combine(groupby(df, grouping), Symbol(traits[1]) => f => traits[1])
+    if length(traits) > 1
+        for i = 2:length(traits)
+            # i = 2
+            df_agg =
+                outerjoin(df_agg, combine(groupby(df, grouping), Symbol(traits[i]) => f => traits[i]), on = grouping)
+        end
+    end
+    trials_agg = begin
+        trials_agg = Trials(n = size(df_agg, 1), t = length(traits))
+        trials_agg.traits = trials.traits
+        trials_agg.entries = df_agg.entries
+        trials_agg.populations = df_agg.populations
+        trials_agg.years = df_agg.years
+        trials_agg.seasons = df_agg.seasons
+        # trials_agg.harvests .= ""
+        trials_agg.sites = df_agg.sites
+        trials_agg.replications = df_agg.replications
+        trials_agg.blocks = df_agg.blocks
+        trials_agg.rows = df_agg.rows
+        trials_agg.cols = df_agg.cols
+        trials_agg.phenotypes = Matrix(df_agg[:, 10:end])
+        # D = tabularise(trials_agg)
+        # df_agg == D[:, vcat(2:3, 5:ncol(D))]
+        trials_agg
+    end
+    # Output
+    if !checkdims(trials_agg)
+        throw(ErrorException("Error aggregating the trials."))
+    end
+    (trials_agg, df_n_harvests)
+end
+
+
+"""
     addcompositetrait(trials::Trials; composite_trait_name::String, formula_string::String)::Trials
 
 Create a new composite trait by combining existing traits using a mathematical formula.

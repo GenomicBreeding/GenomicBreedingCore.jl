@@ -302,3 +302,142 @@ function dimensions(blr::BLR)::Dict{String,Any}
         "varex_per_varcomp" => varex_per_varcomp,
     )
 end
+
+"""
+    extracteffects(blr::BLR, verbose::Bool = false)::Dict{String, DataFrame}
+
+Extract and organize effects from a Bayesian Linear Regression (BLR) model.
+
+This function processes both main effects and interaction effects from a fitted BLR model,
+organizing them into separate DataFrames within a dictionary.
+
+# Arguments
+- `blr::BLR`: A fitted Bayesian Linear Regression model structure
+- `verbose::Bool=false`: If true, prints intermediate results during processing
+
+# Returns
+- `Dict{String, DataFrame}`: A dictionary where:
+    - Keys are effect names (main effects or interaction effects)
+    - Values are DataFrames containing:
+        - `name`: Labels for the effects
+        - `value`: Corresponding effect values
+
+# Details
+- Extracts design matrix (X), effects (b), and their labels from the BLR model
+- Processes main effects (single factors) and interaction effects (combined factors) separately
+- Removes redundant rows based on hashing
+- Combines effects with their corresponding design matrix elements
+
+# Throws
+- `ArgumentError`: If the BLR struct dimensions are invalid
+
+# Example
+```jldoctest; setup = :(using GenomicBreedingCore, DataFrames)
+julia> genomes = simulategenomes(n=5, l=1_000, verbose=false);
+
+julia> trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_harvests=1, n_sites=3, n_replications=3, verbose=false);
+
+julia> tebv, spatial_diagnostics = analyse(trials, ["trait_1"], n_iter = 1_000, n_burnin = 100);
+
+julia> blr = tebv.models[1];
+
+julia> dfs = extracteffects(blr);
+
+julia> [size(v) for (k, v) in dfs]
+5-element Vector{Tuple{Int64, Int64}}:
+ (2, 2)
+ (3, 2)
+ (6, 2)
+ (5, 2)
+ (30, 2)
+```
+"""
+function extracteffects(blr::BLR, verbose::Bool = false)::Dict{String,DataFrame}
+    # genomes = simulategenomes(n=5, l=1_000, verbose=false);
+    # trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_harvests=1, n_sites=3, n_replications=3, verbose=false);
+    # tebv, spatial_diagnostics = analyse(trials, ["trait_1"], n_iter = 1_000, n_burnin = 100);
+    # blr = tebv.models[1]
+    # Check argument
+    if !checkdims(blr)
+        throw(ArgumentError("BLR struct is corrupted ☹."))
+    end
+    # Extract X, b, and b_labels
+    X, b, b_labels = extractXb(blr)
+    hashes = [hash(x) for x in eachrow(X)]
+    idx = [findall(hashes .== h)[1] for h in unique(hashes)]
+    X = X[idx, :]
+    # Instantiate output dictionary of dataframes
+    dfs::Dict{String,DataFrame} = Dict()
+    # Main effects
+    main_effect_names = filter(x -> (x != "intercept") && isnothing(match(Regex(" & "), x)), string.(keys(blr.Xs)))
+    for name in main_effect_names
+        # name = main_effect_names[1]
+        levels = filter(x -> !isnothing(match(Regex(name), x)) && (isnothing(match(Regex(" & "), x))), b_labels)
+        idx_col = vcat(1, findall([x ∈ levels for x in b_labels]))
+        X_sub = X[:, idx_col]
+        b_sub = b[idx_col]
+        hashes = [hash(x) for x in eachrow(X_sub)]
+        idx_row = [findall(hashes .== h)[1] for h in unique(hashes)]
+        X_sub = X_sub[idx_row, :]
+        ϕ::Vector{Float64} = X_sub * b_sub
+        ϕ_labels::Vector{String} = []
+        for i = 1:size(X_sub, 1)
+            # i = 1
+            lab = filter(
+                x -> x != "intercept",
+                unique([
+                    split(x)[end] for x in vcat([split(x, " & ") for x in b_labels[idx_col][Bool.(X_sub[i, :])]]...)
+                ]),
+            )
+            push!(ϕ_labels, join(lab, " & "))
+        end
+        dfs[name] = DataFrame(name = ϕ_labels, value = ϕ)
+    end
+    # Interaction effects
+    interaction_effect_names =
+        filter(x -> (x != "intercept") && !isnothing(match(Regex(" & "), x)), string.(keys(blr.Xs)))
+    for name in interaction_effect_names
+        # name = interaction_effect_names[1]
+        levels = []
+        name_split = split(name, " & ")
+        for lab in b_labels
+            # lab = b_labels[40]
+            lab_split = split(lab, " & ")
+            if length(name_split) < length(lab_split)
+                continue
+            end
+            # Include main and interaction components
+            bool = [sum(.!isnothing.(match.(Regex(x), lab_split))) > 0 for x in name_split]
+            if (sum(bool) > 0) && (sum(bool) <= length(name_split))
+                push!(levels, lab)
+            end
+        end
+        idx_col = vcat(1, findall([x ∈ levels for x in b_labels]))
+        X_sub = X[:, idx_col]
+        b_sub = b[idx_col]
+        hashes = [hash(x) for x in eachrow(X_sub)]
+        idx_row = [findall(hashes .== h)[1] for h in unique(hashes)]
+        X_sub = X_sub[idx_row, :]
+        ϕ::Vector{Float64} = X_sub * b_sub
+        ϕ_labels::Vector{String} = []
+        for i = 1:size(X_sub, 1)
+            # i = 1
+            lab = filter(
+                x -> x != "intercept",
+                unique([
+                    split(x)[end] for x in vcat([split(x, " & ") for x in b_labels[idx_col][Bool.(X_sub[i, :])]]...)
+                ]),
+            )
+            push!(ϕ_labels, join(lab, " & "))
+        end
+        dfs[name] = DataFrame(name = ϕ_labels, value = ϕ)
+    end
+    if verbose
+        for (k, v) in dfs
+            @show k
+            @show v
+        end
+    end
+    # Output
+    dfs
+end
