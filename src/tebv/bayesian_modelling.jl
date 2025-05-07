@@ -666,17 +666,30 @@ function turingblrmcmc!(
             "Diagnosing the MCMC chain for convergence by dividing the chain into 5 and finding the maximum R̂ and estimating the effective sample size.",
         )
     end
-    diagnostics = DataFrame(MCMCDiagnosticTools.ess_rhat(chain, split_chains = 5)) # new R̂: maximum R̂ of :bulk and :tail
+    diagnostics = disallowmissing(
+        leftjoin(
+            leftjoin(
+                DataFrame(Turing.summarystats(chain))[:, 1:3], # parameter names, mean and std only
+                DataFrame(MCMCDiagnosticTools.ess_rhat(chain, split_chains = 5)), # new R̂: maximum R̂ of :bulk and :tail
+                on = :parameters
+            ),
+            DataFrame(MCMCDiagnosticTools.mcse(chain, split_chains = 5)),
+            on = :parameters
+        )
+    )
     p = size(diagnostics, 1)
-    n_rhat_converged = sum(diagnostics.rhat .< 1.01)
+    n_mcse_converged = sum(diagnostics.mcse ./ diagnostics.std .< 0.05)
     n_ess_converged = sum(diagnostics.ess .>= 100)
+    n_rhat_converged = sum(diagnostics.rhat .< 1.01)
     if verbose
-        display(UnicodePlots.histogram(diagnostics.rhat, title = "R̂", xlabel = "", ylabel = ""))
+        display(UnicodePlots.histogram(diagnostics.mcse, title = "MCSE", xlabel = "", ylabel = ""))
         display(UnicodePlots.histogram(diagnostics.ess, title = "ESS", xlabel = "", ylabel = ""))
-        if ((p - n_rhat_converged) > 0) || ((p - n_ess_converged) > 0)
+        display(UnicodePlots.histogram(diagnostics.rhat, title = "R̂", xlabel = "", ylabel = ""))
+        if ((p - n_rhat_converged) > 0) || ((p - n_ess_converged) > 0) || ((p - n_mcse_converged) > 0)
             @warn "Convergence rates:\n" *
-                  "\t‣ $(round(n_rhat_converged*100 / p))%: $(p - n_rhat_converged) out of $p parameter/s did not converge based on R̂ (>= 1.01) and,\n" *
-                  "\t‣ $(round(n_ess_converged*100 / p))%: $(p - n_ess_converged) out of $p parameter/s did not converge based on effective sample size (< 100).\n" *
+                  "\t‣ $(round(n_mcse_converged*100 / p))% ($(p - n_mcse_converged) out of $p parameter/s did not converge based on Monte Carlo standard error-to-posterior distribution standard deviatin ration (< 5%))\n" *
+                  "\t‣ $(round(n_ess_converged*100 / p))% ($(p - n_ess_converged) out of $p parameter/s did not converge based on effective sample size (< 100))\n" *
+                  "\t‣ $(round(n_rhat_converged*100 / p))% ($(p - n_rhat_converged) out of $p parameter/s did not converge based on R̂ (>= 1.01))\n" *
                   "Please consider increasing the number of iterations which is currently at $n_iter."
         else
             println("All parameters have converged.")
