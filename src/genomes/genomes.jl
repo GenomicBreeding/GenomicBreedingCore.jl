@@ -515,7 +515,9 @@ function distances(
                 ix = idx_loci_alleles[i]
                 y1 = genomes.allele_frequencies[:, ix]
                 bool1 = .!ismissing.(y1) .&& .!isnan.(y1) .&& .!isinf.(y1)
-                for (j, jx) in enumerate(idx_loci_alleles)
+                # for (j, jx) in enumerate(idx_loci_alleles)
+                for j in i:length(idx_loci_alleles)
+                    jx = idx_loci_alleles[j]
                     # i = 1; j = 3; ix = idx_loci_alleles[i]; jx = idx_loci_alleles[j]
                     # println(j)
                     # Make sure we have no missing, NaN or infinite values
@@ -530,7 +532,7 @@ function distances(
                         counts[i, j] = length(idx)
                     end
                     # Estimate the distance/correlation
-                    D[i, j] = if metric == "euclidean"
+                    D[i, j] = D[j, i] = if metric == "euclidean"
                         sqrt(sum((y1[idx] - y2[idx]) .^ 2))
                     elseif metric == "correlation"
                         (var(y1[idx]) < 1e-7) || (var(y2[idx]) < 1e-7) ? continue : nothing
