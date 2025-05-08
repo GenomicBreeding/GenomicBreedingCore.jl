@@ -164,7 +164,7 @@ function checkdims(blr::BLR)::Bool
        !("σ²" ∈ string.(keys(blr.Σs))) ||
        !("intercept" ∈ string.(keys(blr.coefficients))) ||
        !("intercept" ∈ string.(keys(blr.coefficient_names))) ||
-       !((ncol(blr.diagnostics) == 4) || (ncol(blr.diagnostics) == 0))
+       !((ncol(blr.diagnostics) == 7) || (ncol(blr.diagnostics) == 0))
         return false
     end
     true
