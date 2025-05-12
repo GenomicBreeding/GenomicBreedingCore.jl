@@ -516,7 +516,7 @@ function distances(
                 y1 = genomes.allele_frequencies[:, ix]
                 bool1 = .!ismissing.(y1) .&& .!isnan.(y1) .&& .!isinf.(y1)
                 # for (j, jx) in enumerate(idx_loci_alleles)
-                for j in i:length(idx_loci_alleles)
+                for j = i:length(idx_loci_alleles)
                     jx = idx_loci_alleles[j]
                     # i = 1; j = 3; ix = idx_loci_alleles[i]; jx = idx_loci_alleles[j]
                     # println(j)
@@ -532,24 +532,25 @@ function distances(
                         counts[i, j] = length(idx)
                     end
                     # Estimate the distance/correlation
-                    D[i, j] = D[j, i] = if metric == "euclidean"
-                        sqrt(sum((y1[idx] - y2[idx]) .^ 2))
-                    elseif metric == "correlation"
-                        (var(y1[idx]) < 1e-7) || (var(y2[idx]) < 1e-7) ? continue : nothing
-                        cor(y1[idx], y2[idx])
-                    elseif metric == "mad"
-                        mean(abs.(y1[idx] - y2[idx]))
-                    elseif metric == "rmsd"
-                        sqrt(mean((y1[idx] - y2[idx]) .^ 2))
-                    elseif metric == "χ²"
-                        sum((y1[idx] - y2[idx]) .^ 2 ./ (y2[idx] .+ eps(Float64)))
-                    else
-                        throw(
-                            ErrorException(
-                                "This should not happen as we checked for the validity of the distance_metrics above.",
-                            ),
-                        )
-                    end
+                    D[i, j] =
+                        D[j, i] = if metric == "euclidean"
+                            sqrt(sum((y1[idx] - y2[idx]) .^ 2))
+                        elseif metric == "correlation"
+                            (var(y1[idx]) < 1e-7) || (var(y2[idx]) < 1e-7) ? continue : nothing
+                            cor(y1[idx], y2[idx])
+                        elseif metric == "mad"
+                            mean(abs.(y1[idx] - y2[idx]))
+                        elseif metric == "rmsd"
+                            sqrt(mean((y1[idx] - y2[idx]) .^ 2))
+                        elseif metric == "χ²"
+                            sum((y1[idx] - y2[idx]) .^ 2 ./ (y2[idx] .+ eps(Float64)))
+                        else
+                            throw(
+                                ErrorException(
+                                    "This should not happen as we checked for the validity of the distance_metrics above.",
+                                ),
+                            )
+                        end
                 end
                 if verbose
                     ProgressMeter.next!(pb)

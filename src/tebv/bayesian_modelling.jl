@@ -537,6 +537,9 @@ end
         Δ_max::Float64 = 1000.0,
         init_ϵ::Float64 = 0.2,
         adtype::AutoReverseDiff = AutoReverseDiff(compile = true),
+        diagnostics_threshold_std_lt::Float64 = 0.05,
+        diagnostics_threshold_ess_ge::Int64 = 100, 
+        diagnostics_threshold_rhat_lt::Float64 = 1.01,
         seed::Int64 = 1234,
         verbose::Bool = true
     )::Nothing
@@ -554,6 +557,9 @@ Perform MCMC sampling for Bayesian Linear Regression on a BLR model using NUTS s
 - `Δ_max::Float64`: Maximum divergence during doubling tree (default: 1000.0)
 - `init_ϵ::Float64`: Initial step size; 0 means auto-search using heuristics (default: 0.2)
 - `adtype::AutoReverseDiff`: Automatic differentiation type (default: AutoReverseDiff(compile = true))
+- `diagnostics_threshold_std_lt::Float64`: Threshold for MCSE/std ratio convergence (default: 0.05)  
+- `diagnostics_threshold_ess_ge::Int64`: Minimum effective sample size for convergence (default: 100)
+- `diagnostics_threshold_rhat_lt::Float64`: Maximum R-hat for convergence (default: 1.01)
 - `seed::Int64`: Random seed for reproducibility (default: 1234)
 - `verbose::Bool`: Whether to show progress during sampling (default: true)
 
@@ -569,13 +575,16 @@ Perform MCMC sampling for Bayesian Linear Regression on a BLR model using NUTS s
 - Performs model validation checks before fitting
 - Uses NUTS (No-U-Turn Sampler) with specified AD type
 - Computes convergence diagnostics by splitting the chain into 5 sub-chains to calculate:
-    + improved Gelman-Rubin statistics (R̂; https://doi.org/10.1214/20-BA1221), and
-    + effective population size (ESS).
-- Warns if parameters haven't converged based on R̂ (≥ 1.01) or effective sample size (< 100)
+    + improved Gelman-Rubin statistics (R̂; https://doi.org/10.1214/20-BA1221),
+    + effective sample size (ESS), and
+    + Monte Carlo standard error (MCSE)
+- Warns if parameters haven't converged based on:
+    + R̂ >= diagnostics_threshold_rhat_lt
+    + ESS < diagnostics_threshold_ess_ge  
+    + MCSE/std ratio >= diagnostics_threshold_std_lt
 - Updates the model with estimated coefficients, variance components, predicted values, and residuals
 - Mutates the input BLR model in-place
 
-# Example
 ```jldoctest; setup = :(using GenomicBreedingCore, StatsBase, DataFrames)
 julia> genomes = simulategenomes(n=5, l=1_000, verbose=false);
 
@@ -611,6 +620,9 @@ function turingblrmcmc!(
     Δ_max::Float64 = 1000.0,
     init_ϵ::Float64 = 0.2,
     adtype::AutoReverseDiff = AutoReverseDiff(compile = true),
+    diagnostics_threshold_std_lt = 0.05,
+    diagnostics_threshold_ess_ge = 100,
+    diagnostics_threshold_rhat_lt = 1.01,
     seed::Int64 = 1234,
     verbose::Bool = true,
 )::Nothing
@@ -671,16 +683,16 @@ function turingblrmcmc!(
             leftjoin(
                 DataFrame(Turing.summarystats(chain))[:, 1:3], # parameter names, mean and std only
                 DataFrame(MCMCDiagnosticTools.ess_rhat(chain, split_chains = 5)), # new R̂: maximum R̂ of :bulk and :tail
-                on = :parameters
+                on = :parameters,
             ),
             DataFrame(MCMCDiagnosticTools.mcse(chain, split_chains = 5)),
-            on = :parameters
-        )
+            on = :parameters,
+        ),
     )
     p = size(diagnostics, 1)
-    n_mcse_converged = sum(diagnostics.mcse ./ diagnostics.std .< 0.05)
-    n_ess_converged = sum(diagnostics.ess .>= 100)
-    n_rhat_converged = sum(diagnostics.rhat .< 1.01)
+    n_mcse_converged = sum(diagnostics.mcse ./ diagnostics.std .< diagnostics_threshold_std_lt)
+    n_ess_converged = sum(diagnostics.ess .>= diagnostics_threshold_ess_ge)
+    n_rhat_converged = sum(diagnostics.rhat .< diagnostics_threshold_rhat_lt)
     if verbose
         display(UnicodePlots.histogram(diagnostics.mcse, title = "MCSE", xlabel = "", ylabel = ""))
         display(UnicodePlots.histogram(diagnostics.ess, title = "ESS", xlabel = "", ylabel = ""))
@@ -986,6 +998,9 @@ function removespatialeffects!(
             df[idx_rows, new_spat_adj_trait_name] = blr.coefficients["intercept"] .+ blr.ϵ
             # Update the spatial_diagnostics
             spatial_diagnostics[string(harvest, "|", new_spat_adj_trait_name)] = blr.diagnostics
+            # Clean-up
+            blr = nothing
+            Base.GC.gc()
         end
     end
     # Is the entries the only factor remaining?
@@ -1020,7 +1035,17 @@ end
 
 
 """
-    analyse(trials::Trials, traits::Vector{String}; kwargs...)::Tuple{TEBV,Dict{String,DataFrame}}
+    analyse(
+        trials::Trials,
+        traits::Vector{String};
+        grm::Union{GRM,Nothing} = nothing,
+        other_covariates::Union{Vector{String},Nothing} = nothing,
+        multiple_σs_threshols::Int64 = 500,
+        n_iter::Int64 = 10_000,
+        n_burnin::Int64 = 1_000,
+        seed::Int64 = 1234,
+        verbose::Bool = false,
+    )::Tuple{TEBV,Dict{String,DataFrame}}
 
 Perform Bayesian linear mixed model analysis on trial data for genetic evaluation.
 
@@ -1047,6 +1072,7 @@ A tuple containing:
 Performs a two-stage analysis:
 
 1. Stage-1: Spatial analysis per harvest-site-year combination
+- Creates temporary JLD2 file with spatially adjusted data to manage memory
 - Corrects for spatial effects:
     + With rows and columns regardless of whether blocks are present:
         - `rows` + `cols` + `rows:cols`
@@ -1095,6 +1121,8 @@ The analysis includes:
 
 # Notes
 - Automatically handles memory management for large design matrices
+- Creates temporary JLD2 file "TEMP-df_spat_adj-[hash].jld2" to store spatially adjusted data
+- Automatically removes temporary JLD2 file after analysis is complete
 - Supports both identity and genomic relationship matrices for genetic effects
 - Performs automatic model diagnostics and variance component scaling
 - Excludes continuous covariates from Stage-2 as they are handled in Stage-1
@@ -1208,6 +1236,9 @@ function analyse(
         seed = seed,
         verbose = verbose,
     )
+    # Save the spatially adjusted data into a temporary JLD2 file
+    fname_df_spat_adj_tmp_jl2 = joinpath(pwd(), string("TEMP-df_spat_adj-", hash(df), ".jld2"))
+    JLD2.save(fname_df_spat_adj_tmp_jl2, Dict("df" => df))
     # GxE modelling excluding the effects of spatial factors and continuous covariates
     BLRs::Dict{String,BLR} = Dict()
     traits = filter(x -> !isnothing(match(Regex("^SPATADJ-"), x)), names(df)) # includes only the spatially adjusted traits
@@ -1347,5 +1378,7 @@ function analyse(
     if !checkdims(tebv)
         throw(ErrorException("Error corrupted TEBV struct after BLR."))
     end
+    # Clean-up and emit output
+    rm(fname_df_spat_adj_tmp_jl2)
     (tebv, spatial_diagnostics)
 end
