@@ -1309,7 +1309,7 @@ function analyse(
                 end
             end
         end
-        # Set-up variance component multipliers/scalers, for now it's just based on a maximumnumber of coefficients thresholds
+        # Set-up variance component multipliers/scalers, for now it's just based on a maximum number of coefficients thresholds
         multiple_σs::Union{Nothing,Dict{String,Bool}} = Dict()
         for v in string.(keys(blr.coefficient_names))
             # v = string.(keys(blr.coefficient_names))[2]
