@@ -115,7 +115,7 @@ function checkandfocalterms(;
     # Site-specific spatial effects per harvest (i.e. stage-1 effects per year-site-season-harvest combination)
     spatial_effects = if ("rows" ∈ factors) && ("cols" ∈ factors)
         # Regardless of whether or not the blocks are present, use only the rows and columns for parsimony
-        ["rows", "cols", "rows:cols"]
+        ["rows", "cols"]
     elseif ("blocks" ∈ factors) && ("rows" ∈ factors) && !("cols" ∈ factors)
         # Check if the blocks and rows are unique, use the non-fixed one if not, else use both plus their interaction
         br = unique(string(df.blocks, "\t", df.rows))
@@ -126,7 +126,7 @@ function checkandfocalterms(;
         elseif length(br) == length(r)
             ["rows"]
         else
-            ["blocks", "rows", "blocks:rows"]
+            ["blocks", "rows"]
         end
     elseif ("blocks" ∈ factors) && !("rows" ∈ factors) && ("cols" ∈ factors)
         # Check if the blocks and cols are unique, use the non-fixed one if not, else use both plus their interaction
@@ -138,7 +138,7 @@ function checkandfocalterms(;
         elseif length(bc) == length(c)
             ["cols"]
         else
-            ["blocks", "cols", "blocks:cols"]
+            ["blocks", "cols"]
         end
     elseif ("blocks" ∈ factors) && !("rows" ∈ factors) && !("cols" ∈ factors)
         ["blocks"]
