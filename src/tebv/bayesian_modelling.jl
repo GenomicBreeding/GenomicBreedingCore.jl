@@ -35,7 +35,7 @@ julia> trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, 
 julia> df = tabularise(trials);
 
 julia> focal_terms_1 = checkandfocalterms(trait = trials.traits[1], factors = ["rows", "cols"], df = df, other_covariates = trials.traits[2:end])
-3-element Vector{String}:
+2-element Vector{String}:
  "rows"
  "cols"
 
