@@ -38,7 +38,6 @@ julia> focal_terms_1 = checkandfocalterms(trait = trials.traits[1], factors = ["
 3-element Vector{String}:
  "rows"
  "cols"
- "rows:cols"
 
 julia> focal_terms_2 = checkandfocalterms(trait = trials.traits[1], factors = ["years", "seasons", "sites"], df = df)
 5-element Vector{String}:
@@ -231,7 +230,7 @@ julia> blr_1 = instantiateblr(trait = trials.traits[1], factors = ["rows", "cols
 
 julia> blr_2 = instantiateblr(trait = trials.traits[1], factors = ["years", "seasons", "sites", "entries"], df = df, other_covariates = [trials.traits[2]], verbose = false);
 
-julia> length(blr_1.Xs) == 4
+julia> length(blr_1.Xs) == 3
 true
 
 julia> size(blr_1.Xs["rows"]) == (15, 3)
