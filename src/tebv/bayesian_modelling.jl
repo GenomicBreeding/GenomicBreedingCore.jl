@@ -769,7 +769,7 @@ end
 """
     removespatialeffects!(df::DataFrame; factors::Vector{String}, traits::Vector{String}, 
                          other_covariates::Union{Vector{String},Nothing} = nothing,
-                         autoregressive_Σ::Bool = true,
+                         Σ_type::Symbol = :empirical,
                          ρs::Dict{String, Float64} = Dict("rows" => 0.5, "cols" => 0.5),
                          n_iter::Int64 = 10_000, n_burnin::Int64 = 1_000, 
                          seed::Int64 = 1234, verbose::Bool = false)::Tuple{Vector{String}, Dict{String, DataFrame}}
@@ -781,7 +781,7 @@ Remove spatial effects from trait measurements in field trials using Bayesian li
 - `factors::Vector{String}`: Vector of factor names to be considered in the model 
 - `traits::Vector{String}`: Vector of trait names to be spatially adjusted
 - `other_covariates::Union{Vector{String},Nothing}`: Optional vector of additional covariates
-- `autoregressive_Σ::Bool`: Whether to use autoregressive covariance structure for spatial factors (default: true)
+- `Σ_type::Symbol`: Type of covariance structure to use (:empirical, :autoregressive, or :spherical) (default: :empirical)
 - `ρs::Dict{String, Float64}`: Correlation parameters for autoregressive structure, keys are factor names (default: rows=0.5, cols=0.5)
 - `n_iter::Int64`: Number of MCMC iterations (default: 10_000)
 - `n_burnin::Int64`: Number of burn-in iterations (default: 1_000) 
@@ -800,7 +800,10 @@ This function performs spatial adjustment for traits measured in field trials by
 1. Identifying spatial factors (blocks, rows, columns) and creating design matrices
 2. Fitting Bayesian linear model per harvest to account for:
    - Spatial effects (blocks, rows, columns and interactions) 
-   - Autoregressive covariance structure for spatial dependence if enabled
+   - Choice of covariance structure:
+     + Empirical: Estimated using linear shrinkage with unequal variances
+     + Autoregressive: AR(1) structure with specified correlation parameters
+     + Spherical: Identity matrix scaled by variance component
    - Additional numeric covariates if specified
 3. Creating spatially adjusted traits by adding intercept and residuals
 4. Removing redundant factors and retaining only unique design matrices
@@ -819,7 +822,7 @@ Variance component scalers are specified as follows:
 - Creates new columns with "SPATADJ-" prefix for adjusted traits
 - Returns original DataFrame if no spatial factors present
 - Automatically detects spatial factors via regex pattern "blocks|rows|cols"
-- Supports autoregressive correlation structure for ordered spatial factors
+- Supports empirical, autoregressive or spherical covariance structures
 - Modifies the input DataFrame in-place
 
 # Example
@@ -844,7 +847,7 @@ function removespatialeffects!(
     factors::Vector{String},
     traits::Vector{String},
     other_covariates::Union{Vector{String},Nothing} = nothing,
-    autoregressive_Σ::Bool = true,
+    Σ_type::Symbol = [:empirical, :autoregressive, :spherical][1],
     ρs::Dict{String,Float64} = Dict("rows" => 0.5, "cols" => 0.5),
     n_iter::Int64 = 10_000,
     n_burnin::Int64 = 1_000,
@@ -854,7 +857,7 @@ function removespatialeffects!(
     # genomes = simulategenomes(n=500, l=1_000, verbose=false); 
     # trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=3, verbose=false);
     # df = tabularise(trials);
-    # factors = ["rows", "cols"]; traits = ["trait_1", "trait_2"]; other_covariates=["trait_3"]; autoregressive_Σ::Bool = true; ρs::Dict{String, Float64} = Dict("rows" => 0.5, "cols" => 0.5); n_iter=1_000; n_burnin=200; seed=123;  verbose = false;
+    # factors = ["rows", "cols"]; traits = ["trait_1", "trait_2"]; other_covariates=["trait_3"]; Σ_type::Symbol = [:empirical, :autoregressive][1]; ρs::Dict{String, Float64} = Dict("rows" => 0.5, "cols" => 0.5); n_iter=1_000; n_burnin=200; seed=123;  verbose = true;
     # Check arguments
     if !(("blocks" ∈ factors) || ("rows" ∈ factors) || ("cols" ∈ factors))
         # No spatial adjustment possible/required
@@ -892,7 +895,14 @@ function removespatialeffects!(
             df[!, c] = co
         end
     end
-    if autoregressive_Σ
+    if !(Σ_type ∈ [:empirical, :autoregressive, :spherical])
+        throw(
+            ArgumentError(
+                "The covariance structure type must be one of [:empirical, :autoregressive, :spherical]. You provided: :$Σ_type",
+            ),
+        )
+    end
+    if Σ_type != :spherical
         for (k, _) in ρs
             if !(k ∈ names(df))
                 throw(ArgumentError("The input data frame does not include the factor: `$k`."))
@@ -945,28 +955,82 @@ function removespatialeffects!(
                 df = df_sub,
                 verbose = verbose,
             )
-            # Define autoregressive variance-covariance matrix for the spatial factors
-            # We assume that the coefficient names of the factor which will have an autoregressive variance-covariance matrix
-            # can be sorted sensibly, e.g. names like "rows_01", "rows_02", "rows_03" to "row_99" can be sorted to get the order.
-            if autoregressive_Σ
-                for varcomp in string.(keys(ρs))
-                    # varcomp = string.(keys(ρs))[1]
-                    idx = sortperm(blr.coefficient_names[varcomp])
-                    p = length(idx)
-                    AR1 = Matrix(Diagonal(ones(p)))
-                    for i in idx
-                        for j in idx
-                            # i = idx[1]; j = idx[2];
-                            if i == j
-                                continue
+            # #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+            # # Empirical variance-covariance matrix estimation using CovarianceEstimation.jl
+            # using CovarianceEstimation
+            # X = blr.y .*blr.Xs["rows"]; n, p = size(X)
+            # targets = [
+            #     DiagonalUnitVariance(), 
+            #     DiagonalCommonVariance(), 
+            #     DiagonalUnequalVariance(),
+            #     CommonCovariance(),
+            #     PerfectPositiveCorrelation(),
+            #     ConstantCorrelation(),
+            # ]
+            # shrinkages = [
+            #     :lw, # Ledoit-Wolf optimal shrinkage (http://www.ledoit.net/honey.pdf)
+            #     :ss, # Schaffer & Strimmer's variant (https://strimmerlab.github.io/publications/journals/shrinkcov2005.pdf)
+            #     :rblw, # Rao-Blackwellised estimator | NOTE: only applicabile to target = DiagonalCommonVariance() (https://arxiv.org/pdf/0907.4698.pdf)
+            #     :oas, # Oracle-Approximating one | NOTE: only applicabile to target = DiagonalCommonVariance() (also https://arxiv.org/pdf/0907.4698.pdf)
+            # ]
+            # K_simple = cov(SimpleCovariance(corrected=true), X)
+            # K_linear_unit_var = cov(LinearShrinkage(DiagonalUnitVariance(), :ss), X)
+            # K_linear_uneq_var = cov(LinearShrinkage(DiagonalUnequalVariance(), :ss), X)
+            # K_linear_perf_cor = cov(LinearShrinkage(PerfectPositiveCorrelation(), :ss), X)
+            # K_linear_cons_cor = cov(LinearShrinkage(ConstantCorrelation(), :ss), X)
+            # K_nonlinear_bwmid = cov(BiweightMidcovariance(c=0.9, modify_sample_size=true), X)
+            # sum(K_nonlinear_bwmid .!= 0.0)
+            # Distances.euclidean(K_simple, K_linear_unit_var)
+            # Distances.euclidean(K_simple, K_linear_uneq_var)
+            # Distances.euclidean(K_simple, K_linear_perf_cor)
+            # Distances.euclidean(K_simple, K_linear_cons_cor)
+            # # Based on [these stats](https://mateuszbaran.github.io/CovarianceEstimation.jl/stable/man/msecomp/) I can sensibly stick to:
+            # K_linear_uneq_var = cov(LinearShrinkage(DiagonalUnequalVariance(), :ss), X)
+            # det(K_linear_uneq_var)
+            # ishermitian(K_linear_uneq_var)
+            # isposdef(K_linear_uneq_var)
+            # inv(K_linear_uneq_var)
+            # # Test
+            # for varcomp in string.(keys(ρs))
+            #     # varcomp = string.(keys(ρs))[1]
+            #     X = blr.y .*blr.Xs[varcomp]
+            #     K = Matrix(cov(LinearShrinkage(DiagonalUnequalVariance(), :ss), X))
+            #     blr.Σs[varcomp] = K
+            # end
+            # # TODO: Note --> anecdotal finding based on 1 test set: using the empirical variance-covariance matrix above give more sensible estimates than AR1.
+            # #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+            # Define variance-covariance matrix for the spatial factors
+            if Σ_type != :spherical
+                if Σ_type == :autoregressive
+                    # Autoregressive (degree=1) variance-covariance matrix
+                    # We assume that the coefficient names of the factor which will have an autoregressive variance-covariance matrix
+                    # can be sorted sensibly, e.g. names like "rows_01", "rows_02", "rows_03" to "row_99" can be sorted to get the order.
+                    for varcomp in string.(keys(ρs))
+                        # varcomp = string.(keys(ρs))[1]
+                        idx = sortperm(blr.coefficient_names[varcomp])
+                        p = length(idx)
+                        AR1 = Matrix(Diagonal(ones(p)))
+                        for i in idx
+                            for j in idx
+                                # i = idx[1]; j = idx[2];
+                                if i == j
+                                    continue
+                                end
+                                # Farther factor levels less correlated
+                                AR1[i, j] = ρs[varcomp]^abs(i - j)
                             end
-                            # Farther factor levels less correlated
-                            AR1[i, j] = ρs[varcomp]^abs(i - j)
                         end
+                        inflatediagonals!(AR1)
+                        blr.Σs[varcomp] = AR1
                     end
-                    inflatediagonals!(AR1)
-                    det(AR1)
-                    blr.Σs[varcomp] = AR1
+                else
+                    # Empirical variance-covariance matrix
+                    for varcomp in string.(keys(ρs))
+                        # varcomp = string.(keys(ρs))[1]
+                        X = blr.y .* blr.Xs[varcomp]
+                        K = Matrix(cov(LinearShrinkage(DiagonalUnequalVariance(), :ss), X))
+                        blr.Σs[varcomp] = K
+                    end
                 end
             end
             # Set-up variance component multipliers/scalers such that row, columns and other covariates have unique multipliers;

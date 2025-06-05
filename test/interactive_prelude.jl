@@ -14,6 +14,7 @@ using Distributions, SparseArrays, PDMats
 using StatsModels, MixedModels
 using Turing, MCMCDiagnosticTools, Zygote, ReverseDiff
 using MultivariateStats
+using Distances, CovarianceEstimation
 using UnicodePlots
 using ProgressMeter
 using Suppressor
