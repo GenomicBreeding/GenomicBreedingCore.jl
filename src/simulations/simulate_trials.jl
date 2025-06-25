@@ -73,6 +73,14 @@ The field layout is optimized to have:
 - Blocks divided along columns
 - Even distribution of entries and replications
 
+The function uses various covariance structures to simulate environmental and spatial effects:
+1. **Autocorrelated Covariance**: Used for effects such as years, seasons, and blocks. This structure assumes that neighboring elements are more correlated than distant ones.
+2. **Random Covariance**: Used for site effects, where the covariance matrix is generated randomly.
+3. **Spherical Covariance**: Used for replication effects, assuming uniform correlation across all elements.
+4. **Diagonal Covariance**: Used for allele-by-environment interaction effects, where only diagonal elements are non-zero, representing independent effects.
+5. **Custom Covariance**: Specific covariance structures can be passed as arguments to simulate effects with tailored correlation patterns.
+
+
 # Examples
 ```jldoctest; setup = :(using GenomicBreedingCore; using StatsBase)
 julia> genomes::Genomes = simulategenomes(n=100, l=2_000, n_alleles=3, verbose=false);
@@ -324,6 +332,7 @@ function simulatetrials(;
     seeds_outer::Matrix{Int64} = rand(rng, Int, (n_traits, 7))
     seeds_inner::Array{Int64,6} = rand(rng, Int, (n_traits, n_years, n_seasons, n_harvests, n_sites, 7))
     for idx_trait = 1:n_traits
+        # idx_trait = 1
         # Trait name
         trials.traits[idx_trait] = string("trait_", idx_trait)
         # Proportion of variances of the effects
@@ -347,16 +356,40 @@ function simulatetrials(;
             seed = seeds_outer[idx_trait, 1],
         )
         # Additive environmental effects
-        θ_years::Matrix{Float64} = simulateeffects(; p = n_years, seed = seeds_outer[idx_trait, 2])
-        θ_seasons::Matrix{Float64} = simulateeffects(; p = n_seasons, seed = seeds_outer[idx_trait, 3])
-        θ_sites::Matrix{Float64} = simulateeffects(; p = n_sites, seed = seeds_outer[idx_trait, 4])
+        θ_years::Matrix{Float64} = simulateeffects(;
+            p = n_years,
+            covar_details = (simulatecovarianceautocorrelated, 0.8),
+            seed = seeds_outer[idx_trait, 2],
+        )
+        θ_seasons::Matrix{Float64} = simulateeffects(;
+            p = n_seasons,
+            covar_details = (simulatecovarianceautocorrelated, 0.8),
+            seed = seeds_outer[idx_trait, 3],
+        )
+        θ_sites::Matrix{Float64} = simulateeffects(;
+            p = n_sites,
+            covar_details = (simulatecovariancerandom, seeds_outer[idx_trait, 4]),
+            seed = seeds_outer[idx_trait, 4],
+        )
         # Environmental interaction effects
-        θ_seasons_x_year::Matrix{Float64} =
-            simulateeffects(; p = n_seasons, q = n_years, seed = seeds_outer[idx_trait, 5])
-        θ_harvests_x_season_x_year::Matrix{Float64} =
-            simulateeffects(; p = n_harvests, q = n_years * n_seasons, seed = seeds_outer[idx_trait, 6])
-        θ_sites_x_harvest_x_season_x_year::Matrix{Float64} =
-            simulateeffects(; p = n_sites, q = n_years * n_seasons * n_harvests, seed = seeds_outer[idx_trait, 7])
+        θ_seasons_x_year::Matrix{Float64} = simulateeffects(;
+            p = n_seasons,
+            q = n_years,
+            covar_details = (simulatecovarianceautocorrelated, 0.8),
+            seed = seeds_outer[idx_trait, 5],
+        )
+        θ_harvests_x_season_x_year::Matrix{Float64} = simulateeffects(;
+            p = n_harvests,
+            q = n_years * n_seasons,
+            covar_details = (simulatecovarianceautocorrelated, 0.8),
+            seed = seeds_outer[idx_trait, 6],
+        )
+        θ_sites_x_harvest_x_season_x_year::Matrix{Float64} = simulateeffects(;
+            p = n_sites,
+            q = n_years * n_seasons * n_harvests,
+            covar_details = (simulatecovarianceautocorrelated, 0.8),
+            seed = seeds_outer[idx_trait, 7],
+        )
         ### Spatial effects (instantiate here then simulate iteratively below for computational efficiency because the covariance matrices of these are usually big)
         θ_replications_x_site_x_harvest_x_season_x_year::Matrix{Float64} = fill(0.0, (n_replications, 1)) # replication nested within year, season, harvest, and site
         θ_blocks_x_site_x_harvest_x_season_x_year::Matrix{Float64} = fill(0.0, (n_blocks, 1)) # block nested within year, season, harvest, and site but across replications
@@ -395,33 +428,40 @@ function simulatetrials(;
                     for idx_site = 1:n_sites
                         θ_replications_x_site_x_harvest_x_season_x_year = simulateeffects(;
                             p = n_replications,
+                            covar_details = (simulatecovariancespherical, 1.0),
                             seed = seeds_inner[idx_trait, idx_year, idx_season, idx_harvest, idx_site, 1],
                         )
                         θ_blocks_x_site_x_harvest_x_season_x_year = simulateeffects(;
                             p = n_blocks,
+                            covar_details = (simulatecovarianceautocorrelated, 0.8),
                             seed = seeds_inner[idx_trait, idx_year, idx_season, idx_harvest, idx_site, 2],
                         )
                         θ_rows_x_site_x_harvest_x_season_x_year = simulateeffects(;
                             p = n_rows,
+                            covar_details = (simulatecovarianceautocorrelated, 0.9),
                             seed = seeds_inner[idx_trait, idx_year, idx_season, idx_harvest, idx_site, 3],
                         )
                         θ_cols_x_site_x_harvest_x_season_x_year = simulateeffects(;
                             p = n_cols,
+                            covar_details = (simulatecovarianceautocorrelated, 0.5),
                             seed = seeds_inner[idx_trait, idx_year, idx_season, idx_harvest, idx_site, 4],
                         )
                         θ_additive_allele_x_site_x_harvest_x_season_x_year =
                             genomes.allele_frequencies[:, idx_additve] * simulateeffects(;
                                 p = length(idx_additve),
+                                covar_details = (simulatecovariancediagonal, rand(length(idx_additve))),
                                 seed = seeds_inner[idx_trait, idx_year, idx_season, idx_harvest, idx_site, 5],
                             )
                         θ_dominance_allele_x_site_x_harvest_x_season_x_year =
                             genomes.allele_frequencies[:, idx_dominance] * simulateeffects(;
                                 p = length(idx_dominance),
+                                covar_details = (simulatecovariancediagonal, rand(length(idx_dominance))),
                                 seed = seeds_inner[idx_trait, idx_year, idx_season, idx_harvest, idx_site, 6],
                             )
                         θ_epistasis_allele_x_site_x_harvest_x_season_x_year =
                             genomes.allele_frequencies[:, idx_epistasis] * simulateeffects(;
                                 p = length(idx_epistasis),
+                                covar_details = (simulatecovariancediagonal, rand(length(idx_epistasis))),
                                 seed = seeds_inner[idx_trait, idx_year, idx_season, idx_harvest, idx_site, 7],
                             )
                         for idx_replication = 1:n_replications
@@ -445,34 +485,35 @@ function simulatetrials(;
                             effects.season = θ_seasons[idx_season] * σ²_season
                             effects.site = θ_sites[idx_site] * σ²_site
                             effects.seasons_x_year =
-                                θ_seasons_x_year[idx_season, idx_year] * σ²_environmental_interactions
+                                θ_seasons_x_year[idx_season, idx_year] * (σ²_environmental_interactions / 3)
                             effects.harvests_x_season_x_year =
-                                θ_harvests_x_season_x_year[idx_harvest, idx_ys] * σ²_environmental_interactions
+                                θ_harvests_x_season_x_year[idx_harvest, idx_ys] * (σ²_environmental_interactions / 3)
                             effects.sites_x_harvest_x_season_x_year =
-                                θ_sites_x_harvest_x_season_x_year[idx_site, idx_ysh] * σ²_environmental_interactions
+                                θ_sites_x_harvest_x_season_x_year[idx_site, idx_ysh] *
+                                (σ²_environmental_interactions / 3)
                             # Note that the layout of the entries remain constant across traits because we have defined field_layout outside these nested for-loops
                             effects.field_layout = field_layout
                             effects.replications_x_site_x_harvest_x_season_x_year =
                                 θ_replications_x_site_x_harvest_x_season_x_year[field_layout[idx_field_layout, 1][idx_randomised_entries]] *
-                                σ²_spatial_interactions
+                                (σ²_spatial_interactions / 4)
                             effects.blocks_x_site_x_harvest_x_season_x_year =
                                 θ_blocks_x_site_x_harvest_x_season_x_year[field_layout[idx_field_layout, 2][idx_randomised_entries]] .*
-                                σ²_spatial_interactions
+                                (σ²_spatial_interactions / 4)
                             effects.rows_x_site_x_harvest_x_season_x_year =
                                 θ_rows_x_site_x_harvest_x_season_x_year[field_layout[idx_field_layout, 3][idx_randomised_entries]] .*
-                                σ²_spatial_interactions
+                                (σ²_spatial_interactions / 4)
                             effects.cols_x_site_x_harvest_x_season_x_year =
                                 θ_cols_x_site_x_harvest_x_season_x_year[field_layout[idx_field_layout, 4][idx_randomised_entries]] .*
-                                σ²_spatial_interactions
+                                (σ²_spatial_interactions / 4)
                             effects.additive_genetic = G[:, 1] * σ²_additive
                             effects.dominance_genetic = G[:, 2] * σ²_dominance
                             effects.epistasis_genetic = G[:, 3] * σ²_epistasis
                             effects.additive_allele_x_site_x_harvest_x_season_x_year =
-                                θ_additive_allele_x_site_x_harvest_x_season_x_year[:, 1] .* σ²_GxE_interactions
+                                θ_additive_allele_x_site_x_harvest_x_season_x_year[:, 1] .* (σ²_GxE_interactions / 3)
                             effects.dominance_allele_x_site_x_harvest_x_season_x_year =
-                                θ_dominance_allele_x_site_x_harvest_x_season_x_year[:, 1] .* σ²_GxE_interactions
+                                θ_dominance_allele_x_site_x_harvest_x_season_x_year[:, 1] .* (σ²_GxE_interactions / 3)
                             effects.epistasis_allele_x_site_x_harvest_x_season_x_year =
-                                θ_epistasis_allele_x_site_x_harvest_x_season_x_year[:, 1] .* σ²_GxE_interactions
+                                θ_epistasis_allele_x_site_x_harvest_x_season_x_year[:, 1] .* (σ²_GxE_interactions / 3)
                             if !checkdims(effects)
                                 throw(ErrorException("Error simulating effects."))
                             end

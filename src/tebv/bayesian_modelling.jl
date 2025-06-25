@@ -955,52 +955,11 @@ function removespatialeffects!(
                 df = df_sub,
                 verbose = verbose,
             )
-            # #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-            # # Empirical variance-covariance matrix estimation using CovarianceEstimation.jl
-            # using CovarianceEstimation
-            # X = blr.y .*blr.Xs["rows"]; n, p = size(X)
-            # targets = [
-            #     DiagonalUnitVariance(), 
-            #     DiagonalCommonVariance(), 
-            #     DiagonalUnequalVariance(),
-            #     CommonCovariance(),
-            #     PerfectPositiveCorrelation(),
-            #     ConstantCorrelation(),
-            # ]
-            # shrinkages = [
-            #     :lw, # Ledoit-Wolf optimal shrinkage (http://www.ledoit.net/honey.pdf)
-            #     :ss, # Schaffer & Strimmer's variant (https://strimmerlab.github.io/publications/journals/shrinkcov2005.pdf)
-            #     :rblw, # Rao-Blackwellised estimator | NOTE: only applicabile to target = DiagonalCommonVariance() (https://arxiv.org/pdf/0907.4698.pdf)
-            #     :oas, # Oracle-Approximating one | NOTE: only applicabile to target = DiagonalCommonVariance() (also https://arxiv.org/pdf/0907.4698.pdf)
-            # ]
-            # K_simple = cov(SimpleCovariance(corrected=true), X)
-            # K_linear_unit_var = cov(LinearShrinkage(DiagonalUnitVariance(), :ss), X)
-            # K_linear_uneq_var = cov(LinearShrinkage(DiagonalUnequalVariance(), :ss), X)
-            # K_linear_perf_cor = cov(LinearShrinkage(PerfectPositiveCorrelation(), :ss), X)
-            # K_linear_cons_cor = cov(LinearShrinkage(ConstantCorrelation(), :ss), X)
-            # K_nonlinear_bwmid = cov(BiweightMidcovariance(c=0.9, modify_sample_size=true), X)
-            # sum(K_nonlinear_bwmid .!= 0.0)
-            # Distances.euclidean(K_simple, K_linear_unit_var)
-            # Distances.euclidean(K_simple, K_linear_uneq_var)
-            # Distances.euclidean(K_simple, K_linear_perf_cor)
-            # Distances.euclidean(K_simple, K_linear_cons_cor)
-            # # Based on [these stats](https://mateuszbaran.github.io/CovarianceEstimation.jl/stable/man/msecomp/) I can sensibly stick to:
-            # K_linear_uneq_var = cov(LinearShrinkage(DiagonalUnequalVariance(), :ss), X)
-            # det(K_linear_uneq_var)
-            # ishermitian(K_linear_uneq_var)
-            # isposdef(K_linear_uneq_var)
-            # inv(K_linear_uneq_var)
-            # # Test
-            # for varcomp in string.(keys(ρs))
-            #     # varcomp = string.(keys(ρs))[1]
-            #     X = blr.y .*blr.Xs[varcomp]
-            #     K = Matrix(cov(LinearShrinkage(DiagonalUnequalVariance(), :ss), X))
-            #     blr.Σs[varcomp] = K
-            # end
-            # # TODO: Note --> anecdotal finding based on 1 test set: using the empirical variance-covariance matrix above give more sensible estimates than AR1.
-            # #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
             # Define variance-covariance matrix for the spatial factors
-            if Σ_type != :spherical
+            if Σ_type == :spherical
+                # Spherical variance-covariance matrix
+                # Default in instantiateblr() is to use the identity matrix scaled by the variance component
+            else
                 if Σ_type == :autoregressive
                     # Autoregressive (degree=1) variance-covariance matrix
                     # We assume that the coefficient names of the factor which will have an autoregressive variance-covariance matrix
@@ -1103,7 +1062,8 @@ end
         traits::Vector{String};
         grm::Union{GRM,Nothing} = nothing,
         other_covariates::Union{Vector{String},Nothing} = nothing,
-        multiple_σs_threshols::Int64 = 500,
+        empirical_Σs::Bool = true,
+        multiple_σs_threshold::Int64 = 500,
         n_iter::Int64 = 10_000,
         n_burnin::Int64 = 1_000,
         seed::Int64 = 1234,
@@ -1117,7 +1077,7 @@ Perform Bayesian linear mixed model analysis on trial data for genetic evaluatio
 - `traits::Vector{String}`: Vector of trait names to analyze. If empty, all traits in trials will be analyzed
 - `grm::Union{GRM,Nothing}=nothing`: Optional genomic relationship matrix
 - `other_covariates::Union{Vector{String},Nothing}=nothing`: Additional covariates to include in the model
-- `multiple_σs_threshols::Int64=500`: Threshold for determining multiple variance components
+- `multiple_σs_threshold::Int64=500`: Threshold for determining multiple variance components
 - `n_iter::Int64=10_000`: Number of MCMC iterations
 - `n_burnin::Int64=1_000`: Number of burn-in iterations
 - `seed::Int64=1234`: Random seed for reproducibility
@@ -1219,13 +1179,14 @@ function analyse(
     traits::Vector{String};
     grm::Union{GRM,Nothing} = nothing,
     other_covariates::Union{Vector{String},Nothing} = nothing,
-    multiple_σs_threshols::Int64 = 500,
+    empirical_Σs::Bool = true,
+    multiple_σs_threshold::Int64 = 500,
     n_iter::Int64 = 10_000,
     n_burnin::Int64 = 1_000,
     seed::Int64 = 1234,
     verbose::Bool = false,
 )::Tuple{TEBV,Dict{String,DataFrame}}
-    # genomes = simulategenomes(n=5, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_harvests=1, n_sites=3, n_replications=3); grm::Union{GRM, Nothing} = grmploidyaware(genomes; ploidy = 2, max_iter = 10, verbose = true); traits::Vector{String} = ["trait_1"]; other_covariates::Union{Vector{String}, Nothing} = ["trait_2"]; multiple_σs_threshols = 500; n_iter::Int64 = 1_000; n_burnin::Int64 = 100; seed::Int64 = 1234; verbose::Bool = true;
+    # genomes = simulategenomes(n=5, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_harvests=1, n_sites=3, n_replications=3); grm::Union{GRM, Nothing} = grmploidyaware(genomes; ploidy = 2, max_iter = 10, verbose = true); traits::Vector{String} = ["trait_1"]; other_covariates::Union{Vector{String}, Nothing} = ["trait_2"]; empirical_Σs::Bool = true; multiple_σs_threshold = 500; n_iter::Int64 = 1_000; n_burnin::Int64 = 100; seed::Int64 = 1234; verbose::Bool = true;
     # Check arguments
     if !checkdims(trials)
         error("The Trials struct is corrupted ☹.")
@@ -1372,6 +1333,18 @@ function analyse(
                 end
             end
         end
+        # Set-up the variance-covariance matrix for the other factors if empirical_Σs = true
+        if empirical_Σs
+            for varcomp in string.(keys(blr.Σs))
+                # varcomp = string.(keys(blr.Σs))[1]
+                if varcomp == "σ²"
+                    continue
+                end
+                X = blr.y .* blr.Xs[varcomp]
+                K = Matrix(cov(LinearShrinkage(DiagonalUnequalVariance(), :ss), X))
+                blr.Σs[varcomp] = K
+            end
+        end
         # Set-up variance component multipliers/scalers, for now it's just based on a maximum number of coefficients thresholds
         multiple_σs::Union{Nothing,Dict{String,Bool}} = Dict()
         for v in string.(keys(blr.coefficient_names))
@@ -1379,7 +1352,7 @@ function analyse(
             if v == "intercept"
                 continue
             end
-            multiple_σs[v] = if size(blr.Xs[v], 2) > multiple_σs_threshols
+            multiple_σs[v] = if size(blr.Xs[v], 2) > multiple_σs_threshold
                 false
             else
                 true

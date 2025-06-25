@@ -54,7 +54,15 @@ export checkdims, dimensions, loci_alleles, loci, distances, plot, tabularise, s
 export slice, sparsities, filter, filterbysparsity, filterbymaf, filterbypca, filterbysnplist, extracteffects
 export simulatechromstruct,
     simulateposandalleles, simulatepopgroups, simulateldblocks, simulateperpopμΣ, simulateallelefreqs!
-export simulategenomes, simulateeffects, simulategenomiceffects, simulatetrials
+export simulategenomes,
+    simulatecovariancespherical,
+    simulatecovariancediagonal,
+    simulatecovariancerandom,
+    simulatecovarianceautocorrelated,
+    simulatecovariancekinship,
+    simulateeffects,
+    simulategenomiceffects,
+    simulatetrials
 export histallelefreqs, simulatemating
 export countlevels, @string2formula, trialsmodelsfomulae!, analyse, extractphenomes
 export extractXb,
