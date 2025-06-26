@@ -1456,10 +1456,10 @@ function analyseviaBayesNet(
     # Bayesian network is a directed acyclic graph (DAG) representing probabilistic relationships between variables.
     # We therefore want to create a Bayesian network structure that captures the relationships between the one or more traits traits, entries, and other covariates.
     # using BayesNet, Discretizers
-    parameters = K2GraphSearch(
-        [:Species, :SepalLength, :SepalWidth, :PetalLength, :PetalWidth],
-        ConditionalLinearGaussianCPD,
-        max_n_parents=2
-    )
-    bn = fit(BayesNet, data, parameters)
+    # parameters = K2GraphSearch(
+    #     [:Species, :SepalLength, :SepalWidth, :PetalLength, :PetalWidth],
+    #     ConditionalLinearGaussianCPD,
+    #     max_n_parents=2
+    # )
+    # bn = fit(BayesNet, data, parameters)
 end
