@@ -1057,7 +1057,7 @@ end
 
 
 """
-    analyse(
+    analyseviaBLR(
         trials::Trials,
         traits::Vector{String};
         grm::Union{GRM,Nothing} = nothing,
@@ -1158,11 +1158,11 @@ julia> grm = grmploidyaware(genomes, ploidy=2, max_iter=10);
 
 julia> trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_harvests=1, n_sites=3, n_replications=3, verbose=false);
 
-julia> tebv_1, spatial_diagnostics_1 = analyse(trials, ["trait_1"], n_iter = 1_000, n_burnin = 100);
+julia> tebv_1, spatial_diagnostics_1 = analyseviaBLR(trials, ["trait_1"], n_iter = 1_000, n_burnin = 100);
 
-julia> tebv_2, spatial_diagnostics_2 = analyse(trials, ["trait_1", "trait_2"], other_covariates = ["trait_3"], n_iter = 1_000, n_burnin = 100);
+julia> tebv_2, spatial_diagnostics_2 = analyseviaBLR(trials, ["trait_1", "trait_2"], other_covariates = ["trait_3"], n_iter = 1_000, n_burnin = 100);
 
-julia> tebv_3, spatial_diagnostics_3 = analyse(trials, ["trait_3"], grm = grm, n_iter = 1_000, n_burnin = 100);
+julia> tebv_3, spatial_diagnostics_3 = analyseviaBLR(trials, ["trait_3"], grm = grm, n_iter = 1_000, n_burnin = 100);
 
 julia> (length(tebv_1.phenomes[1].entries) == 5) && (length(tebv_1.phenomes[2].entries) == 30) && (length(spatial_diagnostics_1) == 6)
 true
@@ -1174,7 +1174,7 @@ julia> (length(tebv_3.phenomes[1].entries) == 5) && (length(tebv_3.phenomes[2].e
 true
 ```
 """
-function analyse(
+function analyseviaBLR(
     trials::Trials,
     traits::Vector{String};
     grm::Union{GRM,Nothing} = nothing,
@@ -1417,4 +1417,44 @@ function analyse(
     # Clean-up and emit output
     rm(fname_df_spat_adj_tmp_jl2)
     (tebv, spatial_diagnostics)
+end
+
+function analyseviaBayesNet(
+    trials::Trials,
+    traits::Vector{String};
+    grm::Union{GRM,Nothing} = nothing,
+    other_covariates::Union{Vector{String},Nothing} = nothing,
+    n_iter::Int64 = 10_000,
+    n_burnin::Int64 = 1_000,
+    seed::Int64 = 1234,
+    verbose::Bool = false,
+)::Nothing
+    # genomes = simulategenomes(n=5, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_harvests=1, n_sites=3, n_replications=3); grm::Union{GRM, Nothing} = grmploidyaware(genomes; ploidy = 2, max_iter = 10, verbose = true); traits::Vector{String} = ["trait_1"]; other_covariates::Union{Vector{String}, Nothing} = ["trait_2"]; n_iter::Int64 = 1_000; n_burnin::Int64 = 100; seed::Int64 = 1234; verbose::Bool = true;
+    # Check arguments
+    if !checkdims(trials)
+        error("The Trials struct is corrupted ☹.")
+    end
+    if length(traits) > 0
+        for trait in traits
+            if !(trait ∈ trials.traits)
+                throw(ArgumentError("The `traits` ($traits) argument is not a trait in the Trials struct."))
+            end
+        end
+    end
+    if !isnothing(grm)
+        if !checkdims(grm)
+            throw(ArgumentError("The GRM is corrupted ☹."))
+        end
+    end
+    if !isnothing(other_covariates)
+        for c in other_covariates
+            if !(c ∈ trials.traits)
+                throw(ArgumentError("The `other_covariates` ($c) argument is not a trait in the Trials struct."))
+            end
+        end
+    end
+    # Bayesian network is a directed acyclic graph (DAG) representing probabilistic relationships between variables.
+    # We therefore want to create a Bayesian network structure that captures the relationships between the one or more traits traits, entries, and other covariates.
+    
+
 end

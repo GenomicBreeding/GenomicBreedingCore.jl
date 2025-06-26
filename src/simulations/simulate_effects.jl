@@ -210,7 +210,7 @@ Simulate a diagonal covariance matrix with specified variances σ² on the diago
 - `Matrix{Float64}`: p × p diagonal covariance matrix
 
 # Examples
-```jldoctest; setup = :(using GenomicBreedingCore, LinearAlgebra)
+```jldoctest; setup = :(using GenomicBreedingCore, StatsBase, LinearAlgebra)
 julia> Σ = simulatecovariancediagonal(7, rand(7));
 
 julia> size(Σ)
@@ -249,7 +249,7 @@ The function generates a random covariance matrix by:
 3. Inflating the diagonal elements to ensure positive definiteness
 
 # Examples
-```jldoctest; setup = :(using GenomicBreedingCore)
+```jldoctest; setup = :(using GenomicBreedingCore, StatsBase, LinearAlgebra)
 julia> Σ = simulatecovariancerandom(7, 123);
 
 julia> size(Σ)
@@ -285,7 +285,7 @@ decays exponentially with their distance.
 - `ArgumentError`: If ρ is not between -1 and 1
 
 # Examples
-```jldoctest; setup = :(using GenomicBreedingCore)
+```jldoctest; setup = :(using GenomicBreedingCore, StatsBase, LinearAlgebra)
 julia> Σ = simulatecovarianceautocorrelated(7, 0.72);
 
 julia> size(Σ)
@@ -331,7 +331,7 @@ Calculate a genomic relationship matrix (GRM) from simulated genomic data.
 # Throws
 - `ArgumentError`: If the provided `p` doesn't match the number of entries in `genomes`
 # Examples
-```jldoctest; setup = :(using GenomicBreedingCore)
+```jldoctest; setup = :(using GenomicBreedingCore, StatsBase, LinearAlgebra)
 julia> Σ = simulatecovariancekinship(7, simulategenomes(n=7, l=1_000, verbose=false));
 
 julia> size(Σ)
