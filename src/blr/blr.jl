@@ -337,7 +337,7 @@ julia> genomes = simulategenomes(n=5, l=1_000, verbose=false);
 
 julia> trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_harvests=1, n_sites=3, n_replications=3, verbose=false);
 
-julia> tebv, spatial_diagnostics = analyse(trials, ["trait_1"], n_iter = 1_000, n_burnin = 100);
+julia> tebv, spatial_diagnostics = analyseviaBLR(trials, ["trait_1"], n_iter = 1_000, n_burnin = 100);
 
 julia> blr = tebv.models[1];
 
@@ -355,7 +355,7 @@ julia> [size(v) for (k, v) in dfs]
 function extracteffects(blr::BLR; verbose::Bool = false)::Dict{String,DataFrame}
     # genomes = simulategenomes(n=5, l=1_000, verbose=false);
     # trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_harvests=1, n_sites=3, n_replications=3, verbose=false);
-    # tebv, spatial_diagnostics = analyse(trials, ["trait_1"], n_iter = 1_000, n_burnin = 100);
+    # tebv, spatial_diagnostics = analyseviaBLR(trials, ["trait_1"], n_iter = 1_000, n_burnin = 100);
     # blr = tebv.models[1]
     # Check argument
     if !checkdims(blr)
