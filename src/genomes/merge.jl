@@ -19,9 +19,11 @@ Merge two Genomes structs by combining their entries and loci_alleles while reso
 
 # Details
 The function performs the following operations:
-1. Combines unique entries and loci_alleles from both input structs
-2. Resolves population conflicts by concatenating conflicting values
-3. For overlapping entries and loci:
+1. If the loci_alleles are identical and there are no overlapping entries, performs a quick merge:
+   - Concatenates entries, populations, allele frequencies, and mask without conflict resolution.
+2. Combines unique entries and loci_alleles from both input structs
+3. Resolves population conflicts by concatenating conflicting values
+4. For overlapping entries and loci:
    - If allele frequencies match, uses the existing value
    - If frequencies differ, applies weighted average using conflict_resolution
    - For missing values, uses available non-missing value
@@ -69,6 +71,23 @@ function Base.merge(
     end
     if (length(conflict_resolution) != 2) && (sum(conflict_resolution) != 1.00)
         throw(ArgumentError("We expect `conflict_resolution` 2 be a 2-item tuple which sums up to exactly 1.00."))
+    end
+    # Check if quick merging is possible
+    if (genomes.loci_alleles == other.loci_alleles) && (length(intersect(genomes.entries, other.entries)) == 0)
+        # If the loci_alleles are the same and there are no common entries, we can quickly merge
+        if verbose
+            println("Quick merging of 2 Genomes structs with no common entries and identical loci_alleles.")
+        end
+        out = Genomes(n = length(genomes.entries) + length(other.entries), p = length(genomes.loci_alleles))
+        out.entries = vcat(genomes.entries, other.entries)
+        out.populations = vcat(genomes.populations, other.populations)
+        out.loci_alleles = genomes.loci_alleles
+        out.allele_frequencies = vcat(genomes.allele_frequencies, other.allele_frequencies)
+        out.mask = vcat(genomes.mask, other.mask)
+        if !checkdims(out)
+            throw(ErrorException("Error merging the 2 Genomes structs."))
+        end
+        return out
     end
     # Instantiate the merged Genomes struct
     entries::Vector{String} = genomes.entries ∪ other.entries
