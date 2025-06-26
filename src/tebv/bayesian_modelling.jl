@@ -1455,6 +1455,10 @@ function analyseviaBayesNet(
     end
     # Bayesian network is a directed acyclic graph (DAG) representing probabilistic relationships between variables.
     # We therefore want to create a Bayesian network structure that captures the relationships between the one or more traits traits, entries, and other covariates.
-    
-
+    # Following a logistic regression example in Turing.jl - will have to clean-up the packages I'm loading below after testing
+    using RDatasets
+    data = RDatasets.dataset("ISLR", "Default")
+    data[!, :DefaultNum] = [r.Default == "Yes" ? 1.0 : 0.0 for r in eachrow(data)]
+    data[!, :StudentNum] = [r.Student == "Yes" ? 1.0 : 0.0 for r in eachrow(data)]
+    select!(data, Not([:Default, :Student]))
 end
