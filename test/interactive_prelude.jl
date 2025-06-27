@@ -19,4 +19,4 @@ using UnicodePlots
 using ProgressMeter
 using Suppressor
 using JLD2
-using Lux # for Fit deep learning model
+using Lux, Optimisers # for Fit deep learning model

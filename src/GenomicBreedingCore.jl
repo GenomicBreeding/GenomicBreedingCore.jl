@@ -13,7 +13,7 @@ using UnicodePlots
 using JLD2
 using ProgressMeter
 using Suppressor
-using Lux
+using Lux, Optimisers
 
 # Structs
 include("all_structs.jl")
@@ -31,8 +31,9 @@ include("trials/trials.jl")
 include("trials/filter.jl")
 # Trial-estimated breeding values
 include("tebv/tebv.jl")
-include("tebv/linear_mixed_modelling.jl")
-include("tebv/bayesian_modelling.jl")
+include("tebv/lmm.jl")
+include("tebv/bayes.jl")
+include("tebv/dl.jl")
 # Linear and non-linear genotype-to-phenotype models struct
 include("fit/fit.jl")
 # Bayesian linear regression fit struct
@@ -71,6 +72,6 @@ export @stringevaluation, addcompositetrait
 export maskmissing!, divideintomockscaffolds, estimateld, estimatedistances, knni, knnioptim, impute
 export inflatediagonals!, grmsimple, grmploidyaware
 # Experimental:
-export analyseviaBLR, analyseviaBayesNet
+export analyseviaBLR, analyseviaNN
 
 end

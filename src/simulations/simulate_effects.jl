@@ -610,7 +610,11 @@ function simulategenomiceffects(;
         D::Matrix{Float64} =
             simulateeffects(; p = d, q = 1, covar_details = (simulatecovariancediagonal, rand(d)), seed = seed)
         # Define the loci-alleles combination indexes corresponding to the first allele per locus with a dominance effect
-        idx_p_dominance = (idx_dominance * (max_n_alleles - 1)) .- 1
+        idx_p_dominance = idx_dominance * (max_n_alleles - 1)
+        # idx_p_dominance::Vector{Int64} = []
+        # for i = 1:(max_n_alleles-1)
+        #     append!(idx_p_dominance, (idx_dominance * (max_n_alleles - 1)) .- (i - 1))
+        # end
         sort!(idx_p_dominance)
         # Update the dominance allele effects
         δ[idx_p_dominance] = D[:, 1]

@@ -576,7 +576,7 @@ function simulatetrials(;
     end
     # Output check
     if !checkdims(trials)
-        throw(DimensionMismatch("Error simulating genomes."))
+        throw(DimensionMismatch("Error simulating trials."))
     end
     if verbose
         # Show distribution of the traits across the entire simulation
