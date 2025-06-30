@@ -73,7 +73,8 @@ function Base.merge(
         throw(ArgumentError("We expect `conflict_resolution` 2 be a 2-item tuple which sums up to exactly 1.00."))
     end
     # Check if quick merging is possible
-    if (genomes.loci_alleles == other.loci_alleles) && (length(intersect(genomes.entries, other.entries)) == 0)
+    if (sort(genomes.loci_alleles) == sort(other.loci_alleles)) &&
+       (length(intersect(genomes.entries, other.entries)) == 0)
         # If the loci_alleles are the same and there are no common entries, we can quickly merge
         if verbose
             println("Quick merging of 2 Genomes structs with no common entries and identical loci_alleles.")
@@ -81,8 +82,10 @@ function Base.merge(
         out = Genomes(n = length(genomes.entries) + length(other.entries), p = length(genomes.loci_alleles))
         out.entries = vcat(genomes.entries, other.entries)
         out.populations = vcat(genomes.populations, other.populations)
-        out.loci_alleles = genomes.loci_alleles
-        out.allele_frequencies = vcat(genomes.allele_frequencies, other.allele_frequencies)
+        idx_1 = sortperm(genomes.loci_alleles)
+        idx_2 = sortperm(other.loci_alleles)
+        out.loci_alleles = genomes.loci_alleles[idx_1]
+        out.allele_frequencies = vcat(genomes.allele_frequencies[:, idx_1], other.allele_frequencies[:, idx_2])
         out.mask = vcat(genomes.mask, other.mask)
         if !checkdims(out)
             throw(ErrorException("Error merging the 2 Genomes structs."))

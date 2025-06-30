@@ -4,6 +4,7 @@ authors = ["jeffersonparil@gmail.com"]
 version = "0.1.0"
 
 [deps]
+BAT = "c0cd4b16-88b7-57fa-983b-ab80aecada7e"
 Bijectors = "76274a88-744f-5084-9051-94815aaf08c4"
 CovarianceEstimation = "587fd27a-f159-11e8-2dae-1979310e6154"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
@@ -32,6 +33,7 @@ UnicodePlots = "b8865327-cd53-5732-bb35-84acbb429228"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [compat]
+BAT = "3.4.0"
 Bijectors = "0.15.6"
 CovarianceEstimation = "0.2.13"
 DataFrames = "1.7.0"

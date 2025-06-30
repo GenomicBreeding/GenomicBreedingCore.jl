@@ -41,9 +41,9 @@ julia> focal_terms_1 = checkandfocalterms(trait = trials.traits[1], factors = ["
 
 julia> focal_terms_2 = checkandfocalterms(trait = trials.traits[1], factors = ["years", "seasons", "sites"], df = df)
 5-element Vector{String}:
- "sites"
- "seasons"
  "years"
+ "seasons"
+ "sites"
  "years:sites"
  "seasons:sites"
 ```
@@ -88,7 +88,7 @@ function checkandfocalterms(;
         end
     end
     # Main effects and interaction terms we are most interested in fitting
-    main_effects = ["entries", "sites", "seasons", "years"]
+    main_effects = filter(x -> x ∈ ["entries", "sites", "seasons", "years"], factors)
     # Interaction effects between environmental components and the entries
     exe_gxe_effects = if ("years" ∈ factors) && ("seasons" ∈ factors) && ("sites" ∈ factors)
         # Excludes other interaction effects with years for parsimony
@@ -112,41 +112,55 @@ function checkandfocalterms(;
         nothing
     end
     # Site-specific spatial effects per harvest (i.e. stage-1 effects per year-site-season-harvest combination)
-    spatial_effects = if ("rows" ∈ factors) && ("cols" ∈ factors)
-        # Regardless of whether or not the blocks are present, use only the rows and columns for parsimony
-        ["rows", "cols"]
-    elseif ("blocks" ∈ factors) && ("rows" ∈ factors) && !("cols" ∈ factors)
-        # Check if the blocks and rows are unique, use the non-fixed one if not, else use both plus their interaction
-        br = unique(string(df.blocks, "\t", df.rows))
-        b = unique(string(df.blocks))
-        r = unique(string(df.rows))
-        if length(br) == length(b)
+    spatial_effects = begin
+        spatial_terms = if ("rows" ∈ factors) && ("cols" ∈ factors)
+            # Regardless of whether or not the blocks are present, use only the rows and columns for parsimony
+            ["rows", "cols"]
+        elseif ("blocks" ∈ factors) && ("rows" ∈ factors) && !("cols" ∈ factors)
+            # Check if the blocks and rows are unique, use the non-fixed one if not, else use both plus their interaction
+            br = unique(string(df.blocks, "\t", df.rows))
+            b = unique(string(df.blocks))
+            r = unique(string(df.rows))
+            if length(br) == length(b)
+                ["blocks"]
+            elseif length(br) == length(r)
+                ["rows"]
+            else
+                ["blocks", "rows"]
+            end
+        elseif ("blocks" ∈ factors) && !("rows" ∈ factors) && ("cols" ∈ factors)
+            # Check if the blocks and cols are unique, use the non-fixed one if not, else use both plus their interaction
+            bc = unique(string(df.blocks, "\t", df.cols))
+            b = unique(string(df.blocks))
+            c = unique(string(df.cols))
+            if length(bc) == length(b)
+                ["blocks"]
+            elseif length(bc) == length(c)
+                ["cols"]
+            else
+                ["blocks", "cols"]
+            end
+        elseif ("blocks" ∈ factors) && !("rows" ∈ factors) && !("cols" ∈ factors)
             ["blocks"]
-        elseif length(br) == length(r)
+        elseif !("blocks" ∈ factors) && ("rows" ∈ factors) && !("cols" ∈ factors)
             ["rows"]
-        else
-            ["blocks", "rows"]
-        end
-    elseif ("blocks" ∈ factors) && !("rows" ∈ factors) && ("cols" ∈ factors)
-        # Check if the blocks and cols are unique, use the non-fixed one if not, else use both plus their interaction
-        bc = unique(string(df.blocks, "\t", df.cols))
-        b = unique(string(df.blocks))
-        c = unique(string(df.cols))
-        if length(bc) == length(b)
-            ["blocks"]
-        elseif length(bc) == length(c)
+        elseif !("blocks" ∈ factors) && !("rows" ∈ factors) && ("cols" ∈ factors)
             ["cols"]
         else
-            ["blocks", "cols"]
+            nothing
         end
-    elseif ("blocks" ∈ factors) && !("rows" ∈ factors) && !("cols" ∈ factors)
-        ["blocks"]
-    elseif !("blocks" ∈ factors) && ("rows" ∈ factors) && !("cols" ∈ factors)
-        ["rows"]
-    elseif !("blocks" ∈ factors) && !("rows" ∈ factors) && ("cols" ∈ factors)
-        ["cols"]
-    else
-        nothing
+        # Nest the spatial terms within years and/or seasons and/or sites
+        nesters = if length(main_effects) > 0
+            join(filter(x -> isnothing(match(Regex("entries"), x)), main_effects), ":")
+        else
+            []
+        end
+        spatial_effects = if (length(nesters) > 0) && !isnothing(spatial_terms)
+            nesters .* ":" .* spatial_terms
+        else
+            spatial_terms
+        end
+        spatial_effects
     end
     # Filter the focal terms
     focal_terms = []
@@ -765,6 +779,70 @@ function turingblrmcmc!(
     end
     return nothing
 end
+
+
+
+# Assessing how computationally efficient or how reasonably fast/slow the fitting of the full model via Bayesian linear regression is...
+function fitfullmodel()
+    genomes = simulategenomes(n = 1_000, l = 1_000, n_populations = 3, verbose = true)
+    trials, simulated_effects = simulatetrials(
+        genomes = genomes,
+        f_add_dom_epi = rand(13, 3),
+        n_years = 5,
+        n_seasons = 4,
+        n_harvests = 1,
+        n_sites = 10,
+        n_replications = 4,
+        sparsity = 0.05,
+        verbose = true,
+    )
+    trials = removemissnaninf(trials)
+    df = tabularise(trials)
+    blr = instantiateblr(
+        trait = trials.traits[1],
+        factors = ["years", "seasons", "sites", "rows", "cols"],
+        df = df,
+        other_covariates = trials.traits[2:end],
+        verbose = true,
+    )
+
+    # Testing Turing.jl for this HUGE model...
+    # turingblrmcmc!(blr, n_iter=1_000, n_burnin=200, seed=123, verbose=true);
+
+    # Turing.jl is very slow for estimating many parameters so we will test BAT.jl for now...
+    # using BAT
+    # data::Vector{Float64} = df.trait_1
+    # step_size = 0.1
+    # hist = append!(
+    #     Histogram(
+    #         minimum(data):step_size:maximum(data)
+    #     ), data
+    # )
+    # function fit_function(p::NamedTuple{(:a, :mu, :sigma)}, x::Real)
+    #     p.a[1] * pdf(Normal(p.mu[1], p.sigma), x) +
+    #     p.a[2] * pdf(Normal(p.mu[2], p.sigma), x)
+    # end
+
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 """
     removespatialeffects!(df::DataFrame; factors::Vector{String}, traits::Vector{String}, 

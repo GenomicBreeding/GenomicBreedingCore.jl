@@ -64,7 +64,7 @@ function analyseviaNN(
             end
         end
     end
-    # Omiyt GRM?!?!?!
+    # Omit GRM?!?!?!
     if !isnothing(grm)
         if !checkdims(grm)
             throw(ArgumentError("The GRM is corrupted ☹."))

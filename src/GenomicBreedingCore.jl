@@ -52,7 +52,8 @@ include("simulations/simulate_mating.jl")
 export AbstractGB, Genomes, Phenomes, Trials, SimulatedEffects, BLR, TEBV, Fit, CV, GRM
 export clone, hash, ==
 export checkdims, dimensions, loci_alleles, loci, distances, plot, tabularise, summarise, aggregateharvests
-export slice, sparsities, filter, filterbysparsity, filterbymaf, filterbypca, filterbysnplist, extracteffects
+export slice,
+    sparsities, filter, filterbysparsity, filterbymaf, filterbypca, filterbysnplist, removemissnaninf, extracteffects
 export simulatechromstruct,
     simulateposandalleles, simulatepopgroups, simulateldblocks, simulateperpopμΣ, simulateallelefreqs!
 export simulategenomes,

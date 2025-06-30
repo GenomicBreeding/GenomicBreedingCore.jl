@@ -239,3 +239,87 @@ function slice(
     # Output
     return sliced_trials
 end
+
+"""
+    removemissnaninf(trials::Trials)::Trials
+
+Removes missing (`missing`), `NaN`, and `Inf` values from the `Trials` struct.
+
+# Arguments
+- `trials::Trials`: A `Trials` struct containing phenotypic and trial data.
+
+# Returns
+- A new `Trials` struct with:
+  - Trait columns that are completely missing, `NaN`, or `Inf` removed.
+  - Rows with any missing, `NaN`, or `Inf` values in phenotypes removed.
+
+# Throws
+- If the `Trials` struct is corrupted (fails dimension checks), an `ArgumentError` is thrown.
+- If no rows are removed (i.e., all rows are valid), the original `Trials` struct is returned.
+- If the resulting `Trials` struct fails dimension checks after filtering, a `DimensionMismatch` error is thrown.
+
+# Example
+```jldoctest; setup = :(using GenomicBreedingCore)
+julia> trials, _ = simulatetrials(genomes = simulategenomes(n=50, l=100, verbose=false), f_add_dom_epi=rand(13,3), sparsity=0.1, verbose=false);
+
+julia> filtered_trials = removemissnaninf(trials);
+
+julia> D1 = dimensions(trials); D2 = dimensions(filtered_trials);
+
+julia> (D1["n_missing"] > D2["n_missing"]) && (D2["n_missing"] == D2["n_nan"] == D2["n_inf"] == 0)
+true
+```
+"""
+function removemissnaninf(trials::Trials)::Trials
+    # trials, _ = simulatetrials(genomes = simulategenomes(n=50, l=100), f_add_dom_epi=rand(13,3), sparsity=0.1);
+    # Check arguments
+    if !checkdims(trials)
+        throw(ArgumentError("Phenomes struct is corrupted ☹."))
+    end
+    # Remove completely missing trait column/s
+    n = length(trials.years)
+    traits = []
+    for t in eachindex(trials.traits)
+        bool_omit = .!(
+            .!ismissing.(trials.phenotypes[:, t]) .&&
+            .!isnan.(trials.phenotypes[:, t]) .&&
+            .!isinf.(trials.phenotypes[:, t]),
+        )
+        if sum(bool_omit) < n
+            push!(traits, trials.traits[t])
+        end
+    end
+    # Remove rows with missing, NaN, or Inf values in phenotypes
+    bool_retain = fill(true, n)
+    for t in eachindex(traits)
+        bool_retain =
+            bool_retain .&&
+            .!ismissing.(trials.phenotypes[:, t]) .&&
+            .!isnan.(trials.phenotypes[:, t]) .&&
+            .!isinf.(trials.phenotypes[:, t])
+    end
+    if sum(.!bool_retain) == 0
+        return trials
+    end
+    # Create new Trials struct with non-missing values
+    idx_rows = findall(bool_retain)
+    idx_cols = [x ∈ traits for x in trials.traits]
+    trials_filtered = Trials(n = length(idx_rows), t = length(idx_cols))
+    trials_filtered.traits = trials.traits[idx_cols]
+    trials_filtered.phenotypes = trials.phenotypes[idx_rows, idx_cols]
+    trials_filtered.populations = trials.populations[idx_rows]
+    trials_filtered.entries = trials.entries[idx_rows]
+    trials_filtered.years = trials.years[idx_rows]
+    trials_filtered.harvests = trials.harvests[idx_rows]
+    trials_filtered.seasons = trials.seasons[idx_rows]
+    trials_filtered.sites = trials.sites[idx_rows]
+    trials_filtered.replications = trials.replications[idx_rows]
+    trials_filtered.blocks = trials.blocks[idx_rows]
+    trials_filtered.rows = trials.rows[idx_rows]
+    trials_filtered.cols = trials.cols[idx_rows]
+    # Check dimensions
+    if !checkdims(trials_filtered)
+        throw(DimensionMismatch("Error removing missing values from the Trials struct."))
+    end
+    return trials_filtered
+end
