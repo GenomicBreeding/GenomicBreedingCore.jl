@@ -810,19 +810,84 @@ function fitfullmodel()
     # turingblrmcmc!(blr, n_iter=1_000, n_burnin=200, seed=123, verbose=true);
 
     # Turing.jl is very slow for estimating many parameters so we will test BAT.jl for now...
-    # using BAT
-    # data::Vector{Float64} = df.trait_1
-    # step_size = 0.1
-    # hist = append!(
-    #     Histogram(
-    #         minimum(data):step_size:maximum(data)
-    #     ), data
-    # )
-    # function fit_function(p::NamedTuple{(:a, :mu, :sigma)}, x::Real)
-    #     p.a[1] * pdf(Normal(p.mu[1], p.sigma), x) +
-    #     p.a[2] * pdf(Normal(p.mu[2], p.sigma), x)
-    # end
+    n = 123
+    p = 1_000
+    h² = 0.5
+    X = rand(Beta(2.0, 2.0), n, p) 
+    β = abs.(round.(rand(Laplace(0.0, 0.001), p), digits=2))
+    σ²ᵦ = var(X * β)
+    σ² = σ²ᵦ * (1.0 / h² - 1.0)
+    e = rand(Normal(0.0, σ²), n)
+    y = X*β + e
+    UnicodePlots.histogram(y)
+    Turing.@model toy(X, y) = begin
+        _n, p = size(X)
+        # α₁ ~ Exponential(10.0)
+        # α₂ ~ Exponential(10.0)
+        # β = fill(0.0, p)
+        # for i in 1:p
+        #     # f = α₁ / (α₁+α₂)
+        #     β[i] ~ Normal(0.0, 1.0)
+        # end
+        # σ²ᵦ ~ Exponential(10.0)
+        # σ²ᵦ ~ Chisq(10.0)
+        # σ²ᵦ ~ MvNormal(fill(0.0, p), 1.0)
+        # σ²ᵦ ~ filldist(Exponential(10.0), p)
+        # # Σᵦ = Matrix(Diagonal(σ²ᵦ))
+        # # β ~ MvNormal(fill(0.0, p), Σᵦ)
+        # β ~ MvNormal(fill(0.0, p), abs.(σ²ᵦ))
+        # β ~ MvNormal(fill(0.0, p), 10.0)
+        # β ~ filldist(Laplace(0.0, σ²ᵦ), p)
+        # β = fill(0.0, p)
+        # for j in 1:p
+        #     β[j] ~ Laplace(0.0, σ²ᵦ)
+        # end
+        σ²ᵦ ~ filldist(Normal(0.0, 0.01), p)
+        β ~ MvNormal(fill(0.0, p), abs.(σ²ᵦ))
+        # β ~ MvNormal(fill(0.0, p), 1.0)
+        # β ~ filldist(Normal(0.0, 1.0), p)
+        σ² ~ InverseGamma(1,1)
+        y ~ MvNormal(X*β, σ²)
+    end
+    model = toy(X, y)
+    n_iter::Int64 = 20_000
+    n_burnin::Int64 = 1_000
+    n_adapts::Int64 = 500
+    δ::Float64 = 0.65
+    max_depth::Int64 = 5
+    Δ_max::Float64 = 1000.0
+    init_ϵ::Float64 = 0.2
+    adtype::AutoReverseDiff = AutoReverseDiff(compile = true)
+    sampling_function = NUTS(n_adapts, δ, max_depth = max_depth, Δ_max = Δ_max, init_ϵ = init_ϵ; adtype = adtype)
+    diagnostics_threshold_std_lt = 0.05
+    diagnostics_threshold_ess_ge = 100
+    diagnostics_threshold_rhat_lt = 1.01
+    @time chain = Turing.sample(model, sampling_function, n_iter, discard_initial = n_burnin, progress = true)
 
+    params = Turing.get_params(chain);
+    β_hat = [mean(params.β[i]) for i in eachindex(params.β)]
+    UnicodePlots.scatterplot(β, β_hat)
+    UnicodePlots.scatterplot(y, X*β_hat)
+    cor(y, X*β_hat)
+
+
+    
+
+    diagnostics = disallowmissing(
+        leftjoin(
+            leftjoin(
+                DataFrame(Turing.summarystats(chain))[:, 1:3], # parameter names, mean and std only
+                DataFrame(MCMCDiagnosticTools.ess_rhat(chain, split_chains = 5)), # new R̂: maximum R̂ of :bulk and :tail
+                on = :parameters,
+            ),
+            DataFrame(MCMCDiagnosticTools.mcse(chain, split_chains = 5)),
+            on = :parameters,
+        ),
+    )
+    p = size(diagnostics, 1)
+    n_mcse_converged = sum(diagnostics.mcse ./ diagnostics.std .< diagnostics_threshold_std_lt)
+    n_ess_converged = sum(diagnostics.ess .>= diagnostics_threshold_ess_ge)
+    n_rhat_converged = sum(diagnostics.rhat .< diagnostics_threshold_rhat_lt)
 end
 
 
