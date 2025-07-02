@@ -12,7 +12,7 @@ using LinearAlgebra
 using StatsBase
 using Distributions, SparseArrays, PDMats
 using StatsModels, MixedModels
-using Turing, MCMCDiagnosticTools, Zygote, ReverseDiff
+using Turing, MCMCDiagnosticTools, Zygote, ReverseDiff, ForwardDiff
 using MultivariateStats
 using Distances, CovarianceEstimation
 using UnicodePlots

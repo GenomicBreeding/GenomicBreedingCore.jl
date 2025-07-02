@@ -781,6 +781,191 @@ function turingblrmcmc!(
 end
 
 
+# ### ATTEMPTING TO MAKE A BAYESIAN APPROACH TAILORED SPECIFICALLY FOR LARGE PARAMTER SPACES ###
+# # The implementation would typically involve:
+# # 1. Defining the Hamiltonian dynamics of the model.
+# # 2. Implementing the leapfrog integrator to simulate the Hamiltonian dynamics.
+# # 3. Adapting the step size and trajectory length based on the acceptance rate.
+# # 4. Using a dual averaging scheme to adjust the step size dynamically.
+# # 5. Implementing the No-U-Turn condition to terminate the trajectory early if it starts to turn back on itself.
+# # 6. Returning samples from the posterior distribution of the model parameters.
+# # using LinearAlgebra
+# # using Statistics
+# # using Random
+# # using ForwardDiff
+
+# """
+# Computes the log of the joint probability of the position θ and momentum r.
+# This is equivalent to the negative Hamiltonian.
+# """
+# function log_joint(θ, log_posterior, r)
+#     return log_posterior(θ) - 0.5 * dot(r, r)
+# end
+
+# """
+# Performs a single leapfrog step to update the position and momentum.
+# """
+# function leapfrog(θ, r, ϵ, log_posterior_grad)
+#     # Half step for momentum
+#     r_half = r + 0.5 * ϵ * log_posterior_grad(θ)
+#     # Full step for position
+#     θ_new = θ + ϵ * r_half
+#     # Full step for momentum
+#     r_new = r_half + 0.5 * ϵ * log_posterior_grad(θ_new)
+#     return θ_new, r_new
+# end
+
+
+# """
+# The No-U-Turn Sampler (Iterative Implementation).
+# """
+# function NoUTurnSampler(initial_θ, log_posterior, n_samples; ϵ=0.1, max_depth=10)
+#     # Automatically create the gradient function using ForwardDiff
+#     log_posterior_grad = θ -> ForwardDiff.gradient(log_posterior, θ)
+
+#     D = length(initial_θ)
+#     samples = zeros(n_samples, D)
+#     samples[1, :] = initial_θ
+#     θ_current = initial_θ
+
+#     println("Starting sampling...")
+#     @inbounds for i in 2:n_samples
+#         if i % (n_samples ÷ 10) == 0
+#             println("Progress: $(round(i/n_samples*100))%")
+#         end
+
+#         # Resample momentum from a standard normal distribution
+#         r0 = randn(D)
+
+#         # Determine the slice variable for the acceptance window
+#         # The log(rand()) is a trick to sample from an exponential distribution
+#         u = log(rand()) + log_joint(θ_current, log_posterior, r0)
+
+#         # Initialize the trajectory endpoints
+#         θ_minus, θ_plus = θ_current, θ_current
+#         r_minus, r_plus = r0, r0
+        
+#         j = 0         # Tree depth
+#         θ_proposal = θ_current # The proposed next sample
+#         n = 1         # Number of valid points in the trajectory
+#         s = 1         # Trajectory validity flag (1 = valid, 0 = invalid/U-turn)
+
+#         # Iteratively build the trajectory tree until a U-turn is detected or max depth is reached
+#         while s == 1 && j < max_depth
+#             # Choose a random direction to expand the tree: -1 (backwards) or 1 (forwards)
+#             direction = rand([-1, 1])
+            
+#             # --- Build a new subtree in the chosen direction ---
+#             θ_edge, r_edge = (direction == -1) ? (θ_minus, r_minus) : (θ_plus, r_plus)
+            
+#             n_prime = 0          # Number of valid points in the new subtree
+#             s_prime = 1          # Validity of the new subtree
+#             θ_prime_subtree = θ_edge # The proposal from the new subtree
+
+#             # The number of steps to take depends on the tree depth (2^j)
+#             num_steps = 2^j
+#             @inbounds for _ in 1:num_steps
+#                 # Take a leapfrog step
+#                 θ_edge, r_edge = leapfrog(θ_edge, r_edge, direction * ϵ, log_posterior_grad)
+                
+#                 # Check for divergence
+#                 if !isfinite(log_joint(θ_edge, log_posterior, r_edge))
+#                     s_prime = 0
+#                     break
+#                 end
+
+#                 # Check if the new point is within the slice
+#                 logp_new = log_joint(θ_edge, log_posterior, r_edge)
+#                 if u <= logp_new
+#                     n_prime += 1
+#                     # With probability 1/n_prime, accept this new point as the subtree's proposal
+#                     if rand() < 1.0 / n_prime
+#                         θ_prime_subtree = θ_edge
+#                     end
+#                 end
+#             end
+            
+#             # Update the main trajectory endpoints with the edge of the new subtree
+#             if direction == -1
+#                 θ_minus, r_minus = θ_edge, r_edge
+#             else
+#                 θ_plus, r_plus = θ_edge, r_edge
+#             end
+
+#             # --- Combine the new subtree with the existing trajectory ---
+#             if s_prime == 1 && n_prime > 0
+#                 # Probabilistically choose between the proposal from the old trajectory and the new one
+#                 if rand() < n_prime / (n + n_prime)
+#                     θ_proposal = θ_prime_subtree
+#                 end
+#             end
+            
+#             n += n_prime # Update the total count of valid points
+
+#             # Check for a U-turn across the full trajectory
+#             # This is the "No-U-Turn" condition. It checks if the trajectory has started to double back on itself.
+#             s = s_prime * (dot(θ_plus - θ_minus, r_minus) >= 0) * (dot(θ_plus - θ_minus, r_plus) >= 0)
+            
+#             j += 1 # Increment tree depth
+#         end # end while
+
+#         samples[i, :] = θ_proposal
+#         θ_current = θ_proposal
+#     end # end for
+
+#     println("Sampling complete.")
+#     return samples
+# end
+
+# # --- Example Usage ---
+# # 🎯 Define a target log-posterior (e.g., a multivariate normal distribution)
+# const target_mean = [0.5, -0.5]
+# const target_cov = [1.0 0.8; 0.8 1.0]
+# const target_cov_inv = inv(target_cov)
+
+# function log_posterior_mvn(θ)
+#     -0.5 * (θ - target_mean)' * target_cov_inv * (θ - target_mean)
+# end
+# # Set initial parameters
+# initial_position = [0.0, 0.0]
+# num_samples = 10_000
+# step_size = 0.1
+# max_tree_depth = 10
+# @time samples = NoUTurnSampler(initial_position, log_posterior_mvn, num_samples, ϵ=step_size, max_depth=max_tree_depth);
+
+
+# n = 123
+# p = 100
+# h² = 0.5
+# X = rand(Beta(2.0, 2.0), n, p) 
+# β = abs.(round.(rand(Laplace(0.0, 0.001), p), digits=2))
+# σ²ᵦ = var(X * β)
+# σ² = σ²ᵦ * (1.0 / h² - 1.0)
+# e = rand(Normal(0.0, σ²), n)
+# y = X*β + e
+# UnicodePlots.histogram(y)
+# function log_posterior_mvn(θ)
+#     -sqrt(mean((X*θ - y).^2))
+# end
+# initial_position = zeros(p)  # Initial position in the parameter space
+
+# # Run the sampler
+# # The first run might be slower due to Just-In-Time (JIT) compilation
+# samples = NoUTurnSampler(initial_position, log_posterior_mvn, num_samples, ϵ=step_size, max_depth=max_tree_depth)
+
+# # Analyze the results 📊
+# println("\nTarget Mean:")
+# println(target_mean)
+# println("\nSample Mean:")
+# println(mean(samples, dims=1))
+
+# println("\nTarget Covariance:")
+# println(target_cov)
+# println("\nSample Covariance:")
+# println(cov(samples))
+
+
+
 
 # Assessing how computationally efficient or how reasonably fast/slow the fitting of the full model via Bayesian linear regression is...
 function fitfullmodel()
@@ -806,10 +991,10 @@ function fitfullmodel()
         verbose = true,
     )
 
-    # Testing Turing.jl for this HUGE model...
-    # turingblrmcmc!(blr, n_iter=1_000, n_burnin=200, seed=123, verbose=true);
+    # # Testing Turing.jl for this HUGE model...
+    # # turingblrmcmc!(blr, n_iter=1_000, n_burnin=200, seed=123, verbose=true);
 
-    # Turing.jl is very slow for estimating many parameters so we will test BAT.jl for now...
+    # # Turing.jl is very slow for estimating many parameters so we will test BAT.jl for now...
     n = 123
     p = 1_000
     h² = 0.5
@@ -819,38 +1004,36 @@ function fitfullmodel()
     σ² = σ²ᵦ * (1.0 / h² - 1.0)
     e = rand(Normal(0.0, σ²), n)
     y = X*β + e
-    UnicodePlots.histogram(y)
+    # UnicodePlots.histogram(y)
+    # struct SomeDist <: ContinuousUnivariateDistribution
+    #     a::Real
+    #     b::Real
+    # end
+    # function Distributions.rand(rng::AbstractRNG, d::SomeDist)::Real
+    #     # d = SomeDist(1.0, 1.0)
+    #     # rand()
+    #     rand(Normal(d.a, d.b))
+    # end
+    # function Distributions.logpdf(d::SomeDist, x::Real)::Real
+    #     # d = SomeDist(1.0, 1.0)
+    #     # -log(abs(x*(d.a + d.b)) + 1e-21)
+    #     logpdf(Normal(d.a, d.b), x)
+    # end
+    # Distributions.minimum(d::SomeDist) = -Inf
+    # Distributions.maximum(d::SomeDist) = Inf
+
     Turing.@model toy(X, y) = begin
         _n, p = size(X)
-        # α₁ ~ Exponential(10.0)
-        # α₂ ~ Exponential(10.0)
-        # β = fill(0.0, p)
-        # for i in 1:p
-        #     # f = α₁ / (α₁+α₂)
-        #     β[i] ~ Normal(0.0, 1.0)
-        # end
-        # σ²ᵦ ~ Exponential(10.0)
-        # σ²ᵦ ~ Chisq(10.0)
-        # σ²ᵦ ~ MvNormal(fill(0.0, p), 1.0)
-        # σ²ᵦ ~ filldist(Exponential(10.0), p)
-        # # Σᵦ = Matrix(Diagonal(σ²ᵦ))
-        # # β ~ MvNormal(fill(0.0, p), Σᵦ)
+        # σ²ᵦ ~ filldist(Normal(0.0, 0.01), p)
         # β ~ MvNormal(fill(0.0, p), abs.(σ²ᵦ))
-        # β ~ MvNormal(fill(0.0, p), 10.0)
-        # β ~ filldist(Laplace(0.0, σ²ᵦ), p)
-        # β = fill(0.0, p)
-        # for j in 1:p
-        #     β[j] ~ Laplace(0.0, σ²ᵦ)
-        # end
-        σ²ᵦ ~ filldist(Normal(0.0, 0.01), p)
-        β ~ MvNormal(fill(0.0, p), abs.(σ²ᵦ))
-        # β ~ MvNormal(fill(0.0, p), 1.0)
+        # β ~ filldist(SomeDist(0.0, 1.0), p)
         # β ~ filldist(Normal(0.0, 1.0), p)
+        β ~ MvNormal(fill(0.0, p), 1.0)
         σ² ~ InverseGamma(1,1)
         y ~ MvNormal(X*β, σ²)
     end
     model = toy(X, y)
-    n_iter::Int64 = 20_000
+    n_iter::Int64 = 10_000
     n_burnin::Int64 = 1_000
     n_adapts::Int64 = 500
     δ::Float64 = 0.65
@@ -862,10 +1045,14 @@ function fitfullmodel()
     diagnostics_threshold_std_lt = 0.05
     diagnostics_threshold_ess_ge = 100
     diagnostics_threshold_rhat_lt = 1.01
-    @time chain = Turing.sample(model, sampling_function, n_iter, discard_initial = n_burnin, progress = true)
+    @time chain = Turing.sample(model, sampling_function, n_iter, discard_initial = n_burnin, progress = true);
 
-    params = Turing.get_params(chain);
-    β_hat = [mean(params.β[i]) for i in eachindex(params.β)]
+    q_init = q_fullrank_gaussian(model)  # initial variational approximation
+    vi(model, q_init, 1000, show_progress=true) # perform VI with the default algorithm on `m` for 1000 iterations
+
+
+    θs = Turing.get_params(chain);
+    β_hat = [mean(θs.β[i]) for i in eachindex(θs.β)];
     UnicodePlots.scatterplot(β, β_hat)
     UnicodePlots.scatterplot(y, X*β_hat)
     cor(y, X*β_hat)
@@ -873,21 +1060,21 @@ function fitfullmodel()
 
     
 
-    diagnostics = disallowmissing(
-        leftjoin(
-            leftjoin(
-                DataFrame(Turing.summarystats(chain))[:, 1:3], # parameter names, mean and std only
-                DataFrame(MCMCDiagnosticTools.ess_rhat(chain, split_chains = 5)), # new R̂: maximum R̂ of :bulk and :tail
-                on = :parameters,
-            ),
-            DataFrame(MCMCDiagnosticTools.mcse(chain, split_chains = 5)),
-            on = :parameters,
-        ),
-    )
-    p = size(diagnostics, 1)
-    n_mcse_converged = sum(diagnostics.mcse ./ diagnostics.std .< diagnostics_threshold_std_lt)
-    n_ess_converged = sum(diagnostics.ess .>= diagnostics_threshold_ess_ge)
-    n_rhat_converged = sum(diagnostics.rhat .< diagnostics_threshold_rhat_lt)
+    # diagnostics = disallowmissing(
+    #     leftjoin(
+    #         leftjoin(
+    #             DataFrame(Turing.summarystats(chain))[:, 1:3], # parameter names, mean and std only
+    #             DataFrame(MCMCDiagnosticTools.ess_rhat(chain, split_chains = 5)), # new R̂: maximum R̂ of :bulk and :tail
+    #             on = :parameters,
+    #         ),
+    #         DataFrame(MCMCDiagnosticTools.mcse(chain, split_chains = 5)),
+    #         on = :parameters,
+    #     ),
+    # )
+    # p = size(diagnostics, 1)
+    # n_mcse_converged = sum(diagnostics.mcse ./ diagnostics.std .< diagnostics_threshold_std_lt)
+    # n_ess_converged = sum(diagnostics.ess .>= diagnostics_threshold_ess_ge)
+    # n_rhat_converged = sum(diagnostics.rhat .< diagnostics_threshold_rhat_lt)
 end
 
 
