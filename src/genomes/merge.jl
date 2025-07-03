@@ -72,7 +72,7 @@ function Base.merge(
     if (length(conflict_resolution) != 2) && (sum(conflict_resolution) != 1.00)
         throw(ArgumentError("We expect `conflict_resolution` 2 be a 2-item tuple which sums up to exactly 1.00."))
     end
-    # Check if quick merging is possible
+    # Check if quick merging of entries is possible
     if (sort(genomes.loci_alleles) == sort(other.loci_alleles)) &&
        (length(intersect(genomes.entries, other.entries)) == 0)
         # If the loci_alleles are the same and there are no common entries, we can quickly merge
@@ -86,12 +86,33 @@ function Base.merge(
         idx_2 = sortperm(other.loci_alleles)
         out.loci_alleles = genomes.loci_alleles[idx_1]
         out.allele_frequencies = vcat(genomes.allele_frequencies[:, idx_1], other.allele_frequencies[:, idx_2])
-        out.mask = vcat(genomes.mask, other.mask)
+        out.mask = vcat(genomes.mask[:, idx_1], other.mask[:, idx_2])
         if !checkdims(out)
             throw(ErrorException("Error merging the 2 Genomes structs."))
         end
         return out
     end
+    # Check if quick merging of loci is possible
+    if (sort(genomes.entries) == sort(other.entries)) &&
+       (length(intersect(genomes.loci_alleles, other.loci_alleles)) == 0)
+        # If the entries are the same and there are no common loci_alleles, we can quickly merge
+        if verbose
+            println("Quick merging of 2 Genomes structs with no common loci_alleles and identical entries.")
+        end
+        out = Genomes(n = length(genomes.entries), p = length(genomes.loci_alleles) + length(other.loci_alleles))
+        out.loci_alleles = vcat(genomes.loci_alleles, other.loci_alleles)
+        out.populations = genomes.populations
+        idx_1 = sortperm(genomes.entries)
+        idx_2 = sortperm(other.entries)
+        out.entries = genomes.entries
+        out.allele_frequencies = hcat(genomes.allele_frequencies[idx_1, :], other.allele_frequencies[idx_2, :])
+        out.mask = hcat(genomes.mask[idx_1, :], other.mask[idx_2, :])
+        if !checkdims(out)
+            throw(ErrorException("Error merging the 2 Genomes structs."))
+        end
+        return out
+    end
+
     # Instantiate the merged Genomes struct
     entries::Vector{String} = genomes.entries ∪ other.entries
     populations::Vector{String} = fill("", length(entries))

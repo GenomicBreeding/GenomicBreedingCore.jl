@@ -176,7 +176,10 @@ function analyseviaNN(
         # model = model
         # return rand(size(xy[2], 2))
         ŷ, st = model(x, ps, st)
-        loss = sum((y .- ŷ) .^ 2) / length(y)
+        # loss = sum((y .- ŷ) .^ 2) / length(y)
+        S = y * y'
+        Ŝ = ŷ' * ŷ
+        loss = mean((S .- Ŝ).^2)
         return loss, st, NamedTuple()
     end
 
