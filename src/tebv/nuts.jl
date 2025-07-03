@@ -32,7 +32,7 @@ function leapfrog(θ, r, ϵ, log_posterior_grad)
     return θ_new, r_new
 end
 
-function naivegradient(log_posterior, θ; s=0.1)
+function naivegradient(log_posterior, θ; s = 0.1)
     # n = 123
     # p = 1_000
     # h² = 0.5
@@ -60,16 +60,16 @@ function naivegradient(log_posterior, θ; s=0.1)
     p = length(θ)
     # θ_δ = rand(Normal(0.0, s), p)
     θ_δ = fill(0.0, p)
-    idx = sample(1:p, Int(ceil(p*0.5)), replace=false)
+    idx = sample(1:p, Int(ceil(p * 0.5)), replace = false)
     θ_δ[idx] = rand(Normal(0.0, s), length(idx))
     c = (log_posterior(θ) - log_posterior(θ .+ θ_δ))
-    θ .+ (θ_δ.*c)
+    θ .+ (θ_δ .* c)
 end
 
 """
 The No-U-Turn Sampler (Iterative Implementation).
 """
-function NoUTurnSampler(initial_θ, log_posterior, n_samples; ϵ=0.1, max_depth=10)
+function NoUTurnSampler(initial_θ, log_posterior, n_samples; ϵ = 0.1, max_depth = 10)
     #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@    
     # n = 123
     # p = 100_000
@@ -97,8 +97,8 @@ function NoUTurnSampler(initial_θ, log_posterior, n_samples; ϵ=0.1, max_depth=
     samples[1, :] = initial_θ
     θ_current = initial_θ
 
-    pb = ProgressMeter.Progress(n_samples, desc="Sampling progress")
-    @inbounds for i in 2:n_samples
+    pb = ProgressMeter.Progress(n_samples, desc = "Sampling progress")
+    @inbounds for i = 2:n_samples
         # i = 2
         # if i % (n_samples ÷ 10) == 0
         #     println("Progress: $(round(i/n_samples*100))%")
@@ -114,7 +114,7 @@ function NoUTurnSampler(initial_θ, log_posterior, n_samples; ϵ=0.1, max_depth=
         # Initialize the trajectory endpoints
         θ_minus, θ_plus = θ_current, θ_current
         r_minus, r_plus = r0, r0
-        
+
         j = 0         # Tree depth
         θ_proposal = θ_current # The proposed next sample
         n = 1         # Number of valid points in the trajectory
@@ -124,20 +124,20 @@ function NoUTurnSampler(initial_θ, log_posterior, n_samples; ϵ=0.1, max_depth=
         while s == 1 && j < max_depth
             # Choose a random direction to expand the tree: -1 (backwards) or 1 (forwards)
             direction = rand([-1, 1])
-            
+
             # --- Build a new subtree in the chosen direction ---
             θ_edge, r_edge = (direction == -1) ? (θ_minus, r_minus) : (θ_plus, r_plus)
-            
+
             n_prime = 0          # Number of valid points in the new subtree
             s_prime = 1          # Validity of the new subtree
             θ_prime_subtree = θ_edge # The proposal from the new subtree
 
             # The number of steps to take depends on the tree depth (2^j)
             num_steps = 2^j
-            @inbounds for _ in 1:num_steps
+            @inbounds for _ = 1:num_steps
                 # Take a leapfrog step
                 θ_edge, r_edge = leapfrog(θ_edge, r_edge, direction * ϵ, log_posterior_grad)
-                
+
                 # Check for divergence
                 if !isfinite(log_joint(θ_edge, log_posterior, r_edge))
                     s_prime = 0
@@ -154,7 +154,7 @@ function NoUTurnSampler(initial_θ, log_posterior, n_samples; ϵ=0.1, max_depth=
                     end
                 end
             end
-            
+
             # Update the main trajectory endpoints with the edge of the new subtree
             if direction == -1
                 θ_minus, r_minus = θ_edge, r_edge
@@ -169,13 +169,13 @@ function NoUTurnSampler(initial_θ, log_posterior, n_samples; ϵ=0.1, max_depth=
                     θ_proposal = θ_prime_subtree
                 end
             end
-            
+
             n += n_prime # Update the total count of valid points
 
             # Check for a U-turn across the full trajectory
             # This is the "No-U-Turn" condition. It checks if the trajectory has started to double back on itself.
             s = s_prime * (dot(θ_plus - θ_minus, r_minus) >= 0) * (dot(θ_plus - θ_minus, r_plus) >= 0)
-            
+
             j += 1 # Increment tree depth
         end # end while
 
@@ -189,24 +189,24 @@ function NoUTurnSampler(initial_θ, log_posterior, n_samples; ϵ=0.1, max_depth=
 end
 
 
-X, y, β, log_posterior_mvn = let n = Int(round(rand()*1_000)), p = Int(round(rand()*500)), h² = 0.5
-    X = rand(Beta(2.0, 2.0), n, p) 
+X, y, β, log_posterior_mvn = let n = Int(round(rand() * 1_000)), p = Int(round(rand() * 500)), h² = 0.5
+    X = rand(Beta(2.0, 2.0), n, p)
     # β = abs.(round.(rand(Laplace(0.0, 0.001), p), digits=2))
     β = rand(Normal(0.0, 0.1), p)
     σ²ᵦ = var(X * β)
     σ² = σ²ᵦ * (1.0 / h² - 1.0)
     e = rand(Normal(0.0, σ²), n)
-    y = X*β + e
+    y = X * β + e
     display(UnicodePlots.histogram(y))
-    (X, y, β, θ -> -sqrt(mean((X*θ - y).^2)))
+    (X, y, β, θ -> -sqrt(mean((X * θ - y) .^ 2)))
 end
 initial_θ = zeros(size(β))  # Initial position in the parameter space
 n_samples = 10_000
 step_size = 0.1
 max_tree_depth = 3
 
-@time samples = NoUTurnSampler(initial_θ, log_posterior_mvn, n_samples, ϵ=step_size, max_depth=max_tree_depth);
-b_hat = mean(samples, dims=1)[1, :]
-UnicodePlots.scatterplot(X*b_hat, y)
+@time samples = NoUTurnSampler(initial_θ, log_posterior_mvn, n_samples, ϵ = step_size, max_depth = max_tree_depth);
+b_hat = mean(samples, dims = 1)[1, :]
+UnicodePlots.scatterplot(X * b_hat, y)
 @show size(X)
-@show cor(X*b_hat,  y)
+@show cor(X * b_hat, y)

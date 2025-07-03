@@ -18,6 +18,7 @@ A tuple `(X, X_vars, X_labels)` where:
 ```
 """
 function makex(varex::Vector{String}; df::DataFrame)::Tuple{Matrix{Float64},Vector{String},Vector{String}}
+    n = nrow(df)
     X = nothing
     X_vars = []
     X_labels = []
@@ -29,10 +30,10 @@ function makex(varex::Vector{String}; df::DataFrame)::Tuple{Matrix{Float64},Vect
             # i = 1
             A[i, findfirst(x .== df[i, v])] = 1.0
         end
-        if isnothing(X)
-            X = A
+        X = if isnothing(X)
+            A
         else
-            X = hcat(X, A)
+            hcat(X, A)
         end
         X_vars = vcat(X_vars, repeat([v], length(x)))
         X_labels = vcat(X_labels, x)
@@ -85,14 +86,36 @@ function analyseviaNN(
     Random.seed!(rng, seed)
     df = tabularise(trials)
     n = nrow(df)
-    y::Vector{Float64} = df[!, "trait_3"]
+    trait_id = "trait_1"
+    y::Vector{Float64} = df[!, trait_id]
     varex = ["years", "seasons", "sites", "entries"]
     X, X_vars, X_labels = makex(varex; df = df)
+    # Map into 0 to 1 range instead of standardising because we are not a ssuming a single distribution for the trait, i.e. it may be multi-modal
     y_min = minimum(y)
     y_max = maximum(y)
+    y = (y .- y_min) ./ (y_max - y_min)
+    # y_mu = mean(y)
+    # y_sd = std(y)
+    # y = (y .- y_mu) ./ y_sd
+    # UnicodePlots.histogram(y, title="Histogram of $traits", xlabel="Standardised $traits", ylabel="Frequency")
+
+    # Add variance-covariance components
+    X, X_vars, X_labels = begin
+        Σ = y * y'
+        inflatediagonals!(Σ)
+        # det(Σ) |> println
+        A = hcat(X, Σ)
+        A_vars = vcat(X_vars, repeat(["Σ"], size(Σ, 2)))
+        A_labels = vcat(X_labels, ["Σ_$(i)" for i = 1:size(Σ, 2)])
+        (A, A_vars, A_labels)
+    end
+
+
+
+
     # Instantiate output Fit
     activation = [sigmoid, sigmoid_fast, relu, tanh][3]
-    use_cpu = true
+    use_cpu = false
     verbose = true
     n_layers = 3
     max_n_nodes = 256
@@ -136,22 +159,47 @@ function analyseviaNN(
     else
         gpu_device()
     end
+
+
     # Move the data to the device (Note that we have to transpose X and y)
     X_transposed::Matrix{Float64} = X'
     x = dev(X_transposed)
-    y = (y .- y_min) ./ (y_max - y_min)
     a = dev(reshape(y, 1, n))
     # Parameter and State Variables
     ps, st = Lux.setup(rng, model) |> dev # ps => parameters => weights and biases; st => state variable
     ## First construct a TrainState
     train_state = Lux.Training.TrainState(model, ps, st, Optimisers.Adam(0.0001f0))
+
+
+    # Defining a custom loss function
+    function W(model, ps, st, (x, y))
+        # model = model
+        # return rand(size(xy[2], 2))
+        ŷ, st = model(x, ps, st)
+        loss = sum((y .- ŷ) .^ 2) / length(y)
+        return loss, st, NamedTuple()
+    end
+
+
     ### Train
     Lux.trainmode(st) # not really required as the default is training mode, this is more for debugging with metrics calculations below
+    if verbose
+        pb = ProgressMeter.Progress(n_epochs, desc = "Training progress")
+    end
     for iter = 1:n_epochs
-        _, loss, _, train_state = Lux.Training.single_train_step!(AutoZygote(), MSELoss(), (x, a), train_state)
+        # Compute the gradients
+        gs, loss, stats, train_state = Lux.Training.compute_gradients(AutoZygote(), W, (x, a), train_state)
+        ## Optimise
+        train_state = Training.apply_gradients!(train_state, gs)
+        # # Compute gradients and optimise as a single call
+        # _, loss, _, train_state = Lux.Training.single_train_step!(AutoZygote(), MSELoss(), (x, a), train_state)
         if verbose
-            println("Iteration: $iter\tLoss: $loss")
+            # println("Iteration: $iter ($(round(100*iter/n_epochs))%)\tLoss: $loss")
+            ProgressMeter.next!(pb)
         end
+    end
+    if verbose
+        ProgressMeter.finish!(pb)
     end
     # Metrics
     Lux.testmode(st)
@@ -162,23 +210,70 @@ function analyseviaNN(
     cor(ϕ_pred, ϕ_true) |> println
     (ϕ_pred - ϕ_true) .^ 2 |> mean |> sqrt |> println
 
-    ps[1].weight
-    ps[1].bias
-    DataFrame(ids = X_labels, weights = ps[1].weight[1, :])
-    # Extract effects per entry
-    bool_entries = (X_vars .== "entries") .|| (X_vars .== "sites")
-    A = deepcopy(X)
-    A[:, .!bool_entries] .= 0.0
-    As = [join(r) for r in eachrow(A)]
-    Asu = unique(As)
-    idx = [findfirst(As .== x) for x in Asu]
-    A = A[idx, :]
+    # ps[1].weight
+    # ps[1].bias
+    # DataFrame(ids = X_labels, weights = ps[1].weight[1, :])
+    # # Extract effects per entry
+    # bool_entries = (X_vars .== "entries") .|| (X_vars .== "sites")
+    # A = deepcopy(X)
+    # A[:, .!bool_entries] .= 0.0
+    # As = [join(r) for r in eachrow(A)]
+    # Asu = unique(As)
+    # idx = [findfirst(As .== x) for x in Asu]
+    # A = A[idx, :]
+
+    # Set the entries
+    idx = findall([!isnothing(match(Regex("entries"), x)) for x in X_vars])
+    X_new = zeros(length(idx), p)
+    for (i, j) in enumerate(idx)
+        X_new[i, j] = 1.0
+    end
+    # # Set the environmental factors
+    # env_levels = ["year_1", "season_1", "site_1"]
+    # for env in env_levels
+    #     # env = env_levels[2]
+    #     # @show env
+    #     idx = findall([!isnothing(match(Regex(env), x)) for x in X_labels])[1]
+    #     X_new[:, idx] .= 1.0
+    # end
     Lux.testmode(st)
-    y_preds, st = Lux.apply(model, A', ps, st)
-    DataFrame(
-        sites = [X_labels[r.>0.0][1] for r in eachrow(A)],
-        entries = [X_labels[r.>0.0][2] for r in eachrow(A)],
-        y_preds = y_preds[1, :] * (y_max - y_min) .+ y_min,
-    )
+    x_new = dev(X_new')
+    y_preds, st = Lux.apply(model, x_new, ps, st)
+    ŷ = Vector(y_preds[1, :])
+    ŷ = (ŷ * (y_max - y_min)) .+ y_min
+    k = 1
+    for i = 1:length(simulated_effects)
+        # i = 1
+        if simulated_effects[i].id[1] == trait_id
+            k = i
+            break
+        end
+    end
+    g =
+        simulated_effects[k].additive_genetic +
+        simulated_effects[k].dominance_genetic +
+        simulated_effects[k].epistasis_genetic
+    UnicodePlots.scatterplot(ŷ, g)
+    DataFrame(g = g, ŷ = ŷ)
+    @show cor(ŷ, g) >= 0.9
+
+
+
+    # Covariance estimation possible???
+    idx = findall([!isnothing(match(Regex("Σ"), x)) for x in X_vars])
+    X_new = zeros(length(idx), p)
+    for (i, j) in enumerate(idx)
+        X_new[i, j] = 1.0
+    end
+    x_new = dev(X_new')
+    σ, st = Lux.apply(model, x_new, ps, st)
+    σ = Vector(σ[1, :])
+    u = Σ * σ
+    UnicodePlots.histogram(σ)
+    UnicodePlots.histogram(u)
+    UnicodePlots.histogram(y)
+    UnicodePlots.histogram(ŷ)
+
+    df.entries
 
 end

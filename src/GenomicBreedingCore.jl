@@ -14,6 +14,8 @@ using JLD2
 using ProgressMeter
 using Suppressor
 using Lux, Optimisers
+using LuxCUDA
+# using LuxCUDA, AMDGPU, oneAPI # GPU support (Metal is for MacOS)
 
 # Structs
 include("all_structs.jl")

@@ -844,7 +844,7 @@ end
 #         # Initialize the trajectory endpoints
 #         θ_minus, θ_plus = θ_current, θ_current
 #         r_minus, r_plus = r0, r0
-        
+
 #         j = 0         # Tree depth
 #         θ_proposal = θ_current # The proposed next sample
 #         n = 1         # Number of valid points in the trajectory
@@ -854,10 +854,10 @@ end
 #         while s == 1 && j < max_depth
 #             # Choose a random direction to expand the tree: -1 (backwards) or 1 (forwards)
 #             direction = rand([-1, 1])
-            
+
 #             # --- Build a new subtree in the chosen direction ---
 #             θ_edge, r_edge = (direction == -1) ? (θ_minus, r_minus) : (θ_plus, r_plus)
-            
+
 #             n_prime = 0          # Number of valid points in the new subtree
 #             s_prime = 1          # Validity of the new subtree
 #             θ_prime_subtree = θ_edge # The proposal from the new subtree
@@ -867,7 +867,7 @@ end
 #             @inbounds for _ in 1:num_steps
 #                 # Take a leapfrog step
 #                 θ_edge, r_edge = leapfrog(θ_edge, r_edge, direction * ϵ, log_posterior_grad)
-                
+
 #                 # Check for divergence
 #                 if !isfinite(log_joint(θ_edge, log_posterior, r_edge))
 #                     s_prime = 0
@@ -884,7 +884,7 @@ end
 #                     end
 #                 end
 #             end
-            
+
 #             # Update the main trajectory endpoints with the edge of the new subtree
 #             if direction == -1
 #                 θ_minus, r_minus = θ_edge, r_edge
@@ -899,13 +899,13 @@ end
 #                     θ_proposal = θ_prime_subtree
 #                 end
 #             end
-            
+
 #             n += n_prime # Update the total count of valid points
 
 #             # Check for a U-turn across the full trajectory
 #             # This is the "No-U-Turn" condition. It checks if the trajectory has started to double back on itself.
 #             s = s_prime * (dot(θ_plus - θ_minus, r_minus) >= 0) * (dot(θ_plus - θ_minus, r_plus) >= 0)
-            
+
 #             j += 1 # Increment tree depth
 #         end # end while
 
@@ -998,12 +998,12 @@ function fitfullmodel()
     n = 123
     p = 1_000
     h² = 0.5
-    X = rand(Beta(2.0, 2.0), n, p) 
-    β = abs.(round.(rand(Laplace(0.0, 0.001), p), digits=2))
+    X = rand(Beta(2.0, 2.0), n, p)
+    β = abs.(round.(rand(Laplace(0.0, 0.001), p), digits = 2))
     σ²ᵦ = var(X * β)
     σ² = σ²ᵦ * (1.0 / h² - 1.0)
     e = rand(Normal(0.0, σ²), n)
-    y = X*β + e
+    y = X * β + e
     # UnicodePlots.histogram(y)
     # struct SomeDist <: ContinuousUnivariateDistribution
     #     a::Real
@@ -1029,8 +1029,8 @@ function fitfullmodel()
         # β ~ filldist(SomeDist(0.0, 1.0), p)
         # β ~ filldist(Normal(0.0, 1.0), p)
         β ~ MvNormal(fill(0.0, p), 1.0)
-        σ² ~ InverseGamma(1,1)
-        y ~ MvNormal(X*β, σ²)
+        σ² ~ InverseGamma(1, 1)
+        y ~ MvNormal(X * β, σ²)
     end
     model = toy(X, y)
     n_iter::Int64 = 10_000
@@ -1045,20 +1045,20 @@ function fitfullmodel()
     diagnostics_threshold_std_lt = 0.05
     diagnostics_threshold_ess_ge = 100
     diagnostics_threshold_rhat_lt = 1.01
-    @time chain = Turing.sample(model, sampling_function, n_iter, discard_initial = n_burnin, progress = true);
+    @time chain = Turing.sample(model, sampling_function, n_iter, discard_initial = n_burnin, progress = true)
 
     q_init = q_fullrank_gaussian(model)  # initial variational approximation
-    vi(model, q_init, 1000, show_progress=true) # perform VI with the default algorithm on `m` for 1000 iterations
+    vi(model, q_init, 1000, show_progress = true) # perform VI with the default algorithm on `m` for 1000 iterations
 
 
-    θs = Turing.get_params(chain);
-    β_hat = [mean(θs.β[i]) for i in eachindex(θs.β)];
+    θs = Turing.get_params(chain)
+    β_hat = [mean(θs.β[i]) for i in eachindex(θs.β)]
     UnicodePlots.scatterplot(β, β_hat)
-    UnicodePlots.scatterplot(y, X*β_hat)
-    cor(y, X*β_hat)
+    UnicodePlots.scatterplot(y, X * β_hat)
+    cor(y, X * β_hat)
 
 
-    
+
 
     # diagnostics = disallowmissing(
     #     leftjoin(
