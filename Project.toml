@@ -5,6 +5,7 @@ version = "0.1.0"
 
 [deps]
 Bijectors = "76274a88-744f-5084-9051-94815aaf08c4"
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 CovarianceEstimation = "587fd27a-f159-11e8-2dae-1979310e6154"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Distances = "b4f34e82-e78d-54a5-968a-f98e89d6e8f7"
@@ -34,6 +35,7 @@ Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [compat]
 Bijectors = "0.15.6"
+CUDA = "5.8.2"
 CovarianceEstimation = "0.2.13"
 DataFrames = "1.7.0"
 Distances = "0.10.12"

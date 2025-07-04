@@ -85,33 +85,22 @@ function analyseviaNN(
     rng = Random.default_rng()
     Random.seed!(rng, seed)
     df = tabularise(trials)
-    n = nrow(df)
-    trait_id = "trait_1"
-    y::Vector{Float64} = df[!, trait_id]
-    varex = ["years", "seasons", "sites", "entries"]
-    X, X_vars, X_labels = makex(varex; df = df)
-    # Map into 0 to 1 range instead of standardising because we are not a ssuming a single distribution for the trait, i.e. it may be multi-modal
-    y_min = minimum(y)
-    y_max = maximum(y)
-    y = (y .- y_min) ./ (y_max - y_min)
-    # y_mu = mean(y)
-    # y_sd = std(y)
-    # y = (y .- y_mu) ./ y_sd
-    # UnicodePlots.histogram(y, title="Histogram of $traits", xlabel="Standardised $traits", ylabel="Frequency")
-
-    # Add variance-covariance components
-    X, X_vars, X_labels = begin
-        Σ = y * y'
-        inflatediagonals!(Σ)
-        # det(Σ) |> println
-        A = hcat(X, Σ)
-        A_vars = vcat(X_vars, repeat(["Σ"], size(Σ, 2)))
-        A_labels = vcat(X_labels, ["Σ_$(i)" for i = 1:size(Σ, 2)])
-        (A, A_vars, A_labels)
+    y, X, X_vars, X_labels = let trait_id = "trait_1", varex = ["years", "seasons", "sites", "entries"]
+        # trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries"];
+        y::Vector{Float64} = df[!, trait_id]
+        X, X_vars, X_labels = makex(varex; df = df)
+        n, p = size(X)
+        # Map into 0 to 1 range instead of standardising because we are not assuming a single distribution for the trait, i.e. it may be multi-modal
+        y_min = minimum(y)
+        y_max = maximum(y)
+        # UnicodePlots.histogram(y)
+        y = (y .- y_min) ./ (y_max - y_min)
+        y = vcat(y, zeros(n))
+        X = vcat(hcat(X, zeros(n, n)), hcat(zeros(n, p), diagm(ones(n))))
+        X_vars = vcat(X_vars, repeat(["Σ"], n))
+        X_labels = vcat(X_labels, [string("Σ_", i) for i = 1:n])
+        (y, X, X_vars, X_labels)
     end
-
-
-
 
     # Instantiate output Fit
     activation = [sigmoid, sigmoid_fast, relu, tanh][3]
@@ -164,7 +153,7 @@ function analyseviaNN(
     # Move the data to the device (Note that we have to transpose X and y)
     X_transposed::Matrix{Float64} = X'
     x = dev(X_transposed)
-    a = dev(reshape(y, 1, n))
+    a = dev(reshape(y, 1, length(y)))
     # Parameter and State Variables
     ps, st = Lux.setup(rng, model) |> dev # ps => parameters => weights and biases; st => state variable
     ## First construct a TrainState
@@ -172,14 +161,17 @@ function analyseviaNN(
 
 
     # Defining a custom loss function
-    function W(model, ps, st, (x, y))
-        # model = model
-        # return rand(size(xy[2], 2))
-        ŷ, st = model(x, ps, st)
-        # loss = sum((y .- ŷ) .^ 2) / length(y)
-        S = y * y'
-        Ŝ = ŷ' * ŷ
-        loss = mean((S .- Ŝ).^2)
+    function W(model, ps, st, (x, a))
+        â, st = model(x, ps, st)
+        n = Int(size(â, 2) / 2)
+        y = view(a, 1:n)
+        ŷ = view(â, 1:n)
+        ŝ = view(â, (n+1):(2*n))
+        Ŝ = ŝ * ŝ'
+        loss_y = mean((y .- ŷ) .^ 2)
+        loss_S = logpdf(MvNormal(zeros(n), Matrix{Float64}(Ŝ) + diagm(fill(0.1, n))), ŷ)
+        loss_S = 0.0
+        loss = loss_y + loss_S
         return loss, st, NamedTuple()
     end
 
