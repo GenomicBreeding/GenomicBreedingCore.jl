@@ -85,7 +85,7 @@ function analyseviaNN(
     rng = Random.default_rng()
     Random.seed!(rng, seed)
     df = tabularise(trials)
-    y, X, X_vars, X_labels = let trait_id = "trait_1", varex = ["years", "seasons", "sites", "entries"]
+    y, y_min, y_max, X, X_vars, X_labels = let trait_id = "trait_1", varex = ["years", "seasons", "sites", "entries"]
         # trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries"];
         y::Vector{Float64} = df[!, trait_id]
         X, X_vars, X_labels = makex(varex; df = df)
@@ -99,7 +99,7 @@ function analyseviaNN(
         X = vcat(hcat(X, zeros(n, n)), hcat(zeros(n, p), diagm(ones(n))))
         X_vars = vcat(X_vars, repeat(["Σ"], n))
         X_labels = vcat(X_labels, [string("Σ_", i) for i = 1:n])
-        (y, X, X_vars, X_labels)
+        (y, y_min, y_max, X, X_vars, X_labels)
     end
 
     # Instantiate output Fit
@@ -110,7 +110,7 @@ function analyseviaNN(
     max_n_nodes = 256
     n_nodes_droprate = 0.50
     dropout_droprate = 0.25
-    n_epochs = 100_000
+    n_epochs = 1_000
     n, p = size(X)
     model = if n_layers == 1
         Chain(Dense(p, 1, activation))
@@ -159,18 +159,22 @@ function analyseviaNN(
     ## First construct a TrainState
     train_state = Lux.Training.TrainState(model, ps, st, Optimisers.Adam(0.0001f0))
 
-
     # Defining a custom loss function
     function W(model, ps, st, (x, a))
         â, st = model(x, ps, st)
         n = Int(size(â, 2) / 2)
         y = view(a, 1:n)
         ŷ = view(â, 1:n)
+        loss_y = mean((ŷ .- y) .^ 2)
         ŝ = view(â, (n+1):(2*n))
-        Ŝ = ŝ * ŝ'
-        loss_y = mean((y .- ŷ) .^ 2)
-        loss_S = logpdf(MvNormal(zeros(n), Matrix{Float64}(Ŝ) + diagm(fill(0.1, n))), ŷ)
-        loss_S = 0.0
+        Ŝ = Matrix{Float64}(ŝ * ŝ')
+        # loss_S = logpdf(MvNormal(zeros(n), Matrix{Float64}(Ŝ) + diagm(fill(0.1, n))), ŷ)
+        # loss_S = logpdf(MvNormal(zeros(n), Ŝ), ŷ)
+        loss_S = if !LinearAlgebra.isposdef(Ŝ)
+            2*loss_y
+        else
+            logpdf(mvnorm_lol(Ŝ), ŷ)
+        end
         loss = loss_y + loss_S
         return loss, st, NamedTuple()
     end
@@ -184,6 +188,7 @@ function analyseviaNN(
     for iter = 1:n_epochs
         # Compute the gradients
         gs, loss, stats, train_state = Lux.Training.compute_gradients(AutoZygote(), W, (x, a), train_state)
+        # gs, loss, stats, train_state = Lux.Training.compute_gradients(AutoZygote(), MSELoss(), (x, a), train_state)
         ## Optimise
         train_state = Training.apply_gradients!(train_state, gs)
         # # Compute gradients and optimise as a single call
