@@ -204,12 +204,28 @@ function analyseviaNN(
     # Metrics
     Lux.testmode(st)
     y_pred, st = Lux.apply(model, x, ps, st)
-    ϕ_pred::Vector{Float64} = y_pred[1, :] * (y_max - y_min) .+ y_min
-    ϕ_true::Vector{Float64} = a[1, :] * (y_max - y_min) .+ y_min
+    n = Int(length(y_pred) / 2)
+    ϕ_pred::Vector{Float64} = y_pred[1, 1:n] * (y_max - y_min) .+ y_min
+    ϕ_true::Vector{Float64} = a[1, 1:n] * (y_max - y_min) .+ y_min
     display(UnicodePlots.scatterplot(ϕ_true, ϕ_pred))
     cor(ϕ_pred, ϕ_true) |> println
     (ϕ_pred - ϕ_true) .^ 2 |> mean |> sqrt |> println
 
+
+    # Extract the covariance matrix Σ
+    Lux.testmode(st)
+    X_new = zeros(size(X))
+    X_new[(n+1):end, (end-n+1):end] = diagm(ones(n))
+    x_new = dev(X_new')
+    y_preds, st = Lux.apply(model, x_new, ps, st)
+    ŷ = Vector(y_preds[1, :])
+    s = ŷ[(n+1):end]
+    Σ = Matrix{Float64}(s * s')
+    inflatediagonals!(Σ)
+    det(Σ)
+    
+
+    
     # ps[1].weight
     # ps[1].bias
     # DataFrame(ids = X_labels, weights = ps[1].weight[1, :])
