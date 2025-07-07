@@ -19,4 +19,6 @@ using UnicodePlots
 using ProgressMeter
 using Suppressor
 using JLD2
-using Lux, Optimisers # for Fit deep learning model
+using Lux, Optimisers
+using LuxCUDA, CUDA
+# using LuxCUDA, AMDGPU, oneAPI # GPU support (Metal is for MacOS)

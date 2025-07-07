@@ -159,6 +159,33 @@ function analyseviaNN(
     ## First construct a TrainState
     train_state = Lux.Training.TrainState(model, ps, st, Optimisers.Adam(0.0001f0))
 
+
+    function logpdf_mvnormal_gpu(; x::CuVector{T}, μ::CuVector{T}, Σ::CuMatrix{T}) where T<:AbstractFloat
+        # Get the dimension of the distribution
+        d = length(x)
+        # Ensure the covariance matrix is symmetric
+        Σ_sym = Symmetric(Σ)
+        # Perform Cholesky factorization of the covariance matrix
+        # This is more numerically stable than directly computing the inverse
+        C = cholesky(Σ_sym)
+        # Calculate the log-determinant of the covariance matrix
+        # log(det(Σ)) = 2 * sum(log.(diag(C.L)))
+        # log_det_Σ = 2 * sum(log.(diag(C.L)))
+        log_det_Σ = 2 * sum(CuArray(C.L))
+        # Calculate the difference vector (x - μ)
+        x_minus_μ = x - μ
+        # Solve for the Mahalanobis distance term without explicit inversion
+        # This is equivalent to (x - μ)' * inv(Σ) * (x - μ)
+        mahalanobis_dist = sum(abs2, C.L \ x_minus_μ)
+        # The logpdf formula for a multivariate normal distribution
+        # -0.5 * (d*log(2π) + log_det_Σ + mahalanobis_dist)
+        # return -0.5 * (d * log((2.0) * π) + log_det_Σ + mahalanobis_dist)
+        return -0.5 * (d * log((2.0) * π) + log_det_Σ)
+    end
+    # gs, loss, stats, train_state = Lux.Training.compute_gradients(AutoZygote(), W, (x, a), train_state)
+
+
+
     # Defining a custom loss function
     function W(model, ps, st, (x, a))
         â, st = model(x, ps, st)
@@ -166,15 +193,10 @@ function analyseviaNN(
         y = view(a, 1:n)
         ŷ = view(â, 1:n)
         loss_y = mean((ŷ .- y) .^ 2)
+        # return loss_y, st, NamedTuple()
         ŝ = view(â, (n+1):(2*n))
-        Ŝ = Matrix{Float64}(ŝ * ŝ')
-        # loss_S = logpdf(MvNormal(zeros(n), Matrix{Float64}(Ŝ) + diagm(fill(0.1, n))), ŷ)
-        # loss_S = logpdf(MvNormal(zeros(n), Ŝ), ŷ)
-        loss_S = if !LinearAlgebra.isposdef(Ŝ)
-            2*loss_y
-        else
-            logpdf(mvnorm_lol(Ŝ), ŷ)
-        end
+        Ŝ = (ŝ * ŝ') + CuArray(Array{Float32}(diagm(fill(0.1, n))))
+        loss_S = -logpdf_mvnormal_gpu(x=ŷ, μ=CuArray(Array{Float32}(zeros(n))), Σ=Ŝ)
         loss = loss_y + loss_S
         return loss, st, NamedTuple()
     end
@@ -223,6 +245,7 @@ function analyseviaNN(
     Σ = Matrix{Float64}(s * s')
     inflatediagonals!(Σ)
     det(Σ)
+    logpdf(MvNormal(Σ), ŷ[1:n])
     
 
     
