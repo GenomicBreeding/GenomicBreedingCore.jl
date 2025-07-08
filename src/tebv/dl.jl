@@ -89,16 +89,17 @@ function analyseviaNN(
         # trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries"];
         y::Vector{Float64} = df[!, trait_id]
         X, X_vars, X_labels = makex(varex; df = df)
+        q = findall(X_vars .== "entries")[1] - 1
         n, p = size(X)
         # Map into 0 to 1 range instead of standardising because we are not assuming a single distribution for the trait, i.e. it may be multi-modal
         y_min = minimum(y)
         y_max = maximum(y)
         # UnicodePlots.histogram(y)
         y = (y .- y_min) ./ (y_max - y_min)
-        y = vcat(y, zeros(n))
-        X = vcat(hcat(X, zeros(n, n)), hcat(zeros(n, p), diagm(ones(n))))
-        X_vars = vcat(X_vars, repeat(["Σ"], n))
-        X_labels = vcat(X_labels, [string("Σ_", i) for i = 1:n])
+        y = vcat(y, zeros(n), q)
+        X = vcat(hcat(X, zeros(n, n)), hcat(zeros(n, p), diagm(ones(n))), zeros(1, n+p))
+        X_vars = vcat(X_vars, repeat(["Σ"], n), "q")
+        X_labels = vcat(X_labels, [string("Σ_", i) for i = 1:n], "q")
         (y, y_min, y_max, X, X_vars, X_labels)
     end
 
@@ -110,7 +111,7 @@ function analyseviaNN(
     max_n_nodes = 256
     n_nodes_droprate = 0.50
     dropout_droprate = 0.25
-    n_epochs = 100_000
+    n_epochs = 1_000
     n, p = size(X)
     model = if n_layers == 1
         Chain(Dense(p, 1, activation))
@@ -180,12 +181,34 @@ function analyseviaNN(
 
 
 
+    # # Trying to improve the covariance estimates by specifying a mixture of distributions instead of a single MvNormal distribution
+    # p = 100; q = Int(ceil(p/2))
+    # # pars = []
+    # # for i in 1:5
+    # #     s = rand(Distributions.Beta(2,2), p);
+    # #     S = (s * s') + diagm(0.1 * ones(p));
+    # #     push!(pars, (fill(2.00*i, p), S))
+    # # end
+    # # M = MixtureModel(MvNormal, pars)
+    # # ϕ = rand(M, 10)
+    # # UnicodePlots.histogram(reshape(ϕ, prod(size(ϕ))))
+    # # Or simply a multivariate normal distribution with non-constant μ - this way we can also have covariance between "hierarchical" levels...
+    # s = rand(Distributions.Beta(2,2), p);
+    # S = (s * s') + diagm(0.1 * ones(p));
+    # # S[(q+1):end, 1:q] = S[1:q, (q+1):end] .= 0.0
+    # # D = Distributions.MvNormal(rand(p), S)
+    # D = Distributions.MvNormal(repeat([0, 3], inner=q), S)
+    # ϕ = rand(D, 100)
+    # UnicodePlots.histogram(reshape(ϕ, prod(size(ϕ))))
+    # # TODO: hence we will need an info dimension in X which tells us which which first k columns to use to extract the μ vector from
+
+
     # Defining a custom loss function
     function W(model, ps, st, (x, a))
         # Forward pass through the model to get predictions
         â, st = model(x, ps, st)
         # Split the predictions into two halves (n is number of samples)
-        n = Int(size(â, 2) / 2)
+        n = Int((size(â, 2)-1) / 2)
         # Extract true values and predicted values for the trait
         y = view(a, 1:n)
         ŷ = view(â, 1:n)
@@ -199,9 +222,16 @@ function analyseviaNN(
             # Construct covariance matrix with small diagonal regularization
             S = (s * s') + CuArray(Array{Float32}(diagm(fill(0.1, n))))
             S_inv = inv(S)
-            # sqrt(ŷ' * S_inv * ŷ)
+            # Extract the expectations
+            # μ = CUDA.allowscalar() do
+            #     q = Int(1.00 .* view(y, length(y)))
+            #     w = view(x, 1:q, 1:n)
+            #     # reduce(x -> string(x), w; dims=1)
+            # end
+            # diff = y .- μ
+            diff = y
             CUDA.allowscalar() do
-                sqrt(y' * S_inv * y)
+                sqrt(diff' * S_inv * diff)
             end
         end
         # Combine both losses
@@ -245,25 +275,25 @@ function analyseviaNN(
 
     # Metrics
     Lux.testmode(st)
-    y_pred, st = Lux.apply(model, x, ps, st)
-    n = Int(length(y_pred) / 2)
-    ϕ_pred::Vector{Float64} = y_pred[1, 1:n] * (y_max - y_min) .+ y_min
-    ϕ_true::Vector{Float64} = a[1, 1:n] * (y_max - y_min) .+ y_min
+    y_pred, st = Lux.apply(model, x, ps, st);
+    n = Int(length(y_pred) / 2);
+    ϕ_pred::Vector{Float64} = y_pred[1, 1:n] * (y_max - y_min) .+ y_min;
+    ϕ_true::Vector{Float64} = a[1, 1:n] * (y_max - y_min) .+ y_min;
     display(UnicodePlots.scatterplot(ϕ_true, ϕ_pred))
     cor(ϕ_pred, ϕ_true) |> println
     (ϕ_pred - ϕ_true) .^ 2 |> mean |> sqrt |> println
 
 
     # Extract the covariance matrix Σ
-    X_new = zeros(size(X))
-    X_new[(n+1):end, (end-n+1):end] = diagm(ones(n))
-    x_new = dev(X_new')
-    s_pred, st = Lux.apply(model, x_new, ps, st)
-    s = s_pred[1, (n+1):end]
-    Σ = Matrix{Float64}(s * s') .+ diagm(0.1 * ones(n))
-    # inflatediagonals!(Σ)
-    det(Σ)
-    logpdf(MvNormal(Σ), Vector(y_pred[1, 1:n]))
+    X_new = zeros(size(X));
+    X_new[(n+1):end, (end-n+1):end] = diagm(ones(n));
+    x_new = dev(X_new');
+    s_pred, st = Lux.apply(model, x_new, ps, st);
+    s = s_pred[1, (n+1):end];
+    Σ = Matrix{Float64}(s * s') .+ diagm(0.1 * ones(n));
+    # inflatediagonals!(Σ);
+    det(Σ);
+    logpdf(MvNormal(Σ), Vector(y_pred[1, 1:n]));
     UnicodePlots.heatmap(Σ)
 
 
