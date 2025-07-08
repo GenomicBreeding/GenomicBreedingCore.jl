@@ -75,6 +75,6 @@ export @stringevaluation, addcompositetrait
 export maskmissing!, divideintomockscaffolds, estimateld, estimatedistances, knni, knnioptim, impute
 export inflatediagonals!, grmsimple, grmploidyaware
 # Experimental:
-export analyseviaBLR, analyseviaNN
+export analyseviaBLR, analyseviaNN, makex
 
 end

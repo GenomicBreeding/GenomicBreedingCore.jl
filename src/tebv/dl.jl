@@ -110,7 +110,7 @@ function analyseviaNN(
     max_n_nodes = 256
     n_nodes_droprate = 0.50
     dropout_droprate = 0.25
-    n_epochs = 1_000
+    n_epochs = 100_000
     n, p = size(X)
     model = if n_layers == 1
         Chain(Dense(p, 1, activation))
@@ -160,43 +160,51 @@ function analyseviaNN(
     train_state = Lux.Training.TrainState(model, ps, st, Optimisers.Adam(0.0001f0))
 
 
-    function logpdf_mvnormal_gpu(; x::CuVector{T}, μ::CuVector{T}, Σ::CuMatrix{T}) where T<:AbstractFloat
-        # Get the dimension of the distribution
-        d = length(x)
-        # Ensure the covariance matrix is symmetric
-        Σ_sym = Symmetric(Σ)
-        # Perform Cholesky factorization of the covariance matrix
-        # This is more numerically stable than directly computing the inverse
-        C = cholesky(Σ_sym)
-        # Calculate the log-determinant of the covariance matrix
-        # log(det(Σ)) = 2 * sum(log.(diag(C.L)))
-        # log_det_Σ = 2 * sum(log.(diag(C.L)))
-        log_det_Σ = 2 * sum(CuArray(C.L))
-        # Calculate the difference vector (x - μ)
-        x_minus_μ = x - μ
-        # Solve for the Mahalanobis distance term without explicit inversion
-        # This is equivalent to (x - μ)' * inv(Σ) * (x - μ)
-        mahalanobis_dist = sum(abs2, C.L \ x_minus_μ)
-        # The logpdf formula for a multivariate normal distribution
-        # -0.5 * (d*log(2π) + log_det_Σ + mahalanobis_dist)
-        # return -0.5 * (d * log((2.0) * π) + log_det_Σ + mahalanobis_dist)
-        return -0.5 * (d * log((2.0) * π) + log_det_Σ)
-    end
-    # gs, loss, stats, train_state = Lux.Training.compute_gradients(AutoZygote(), W, (x, a), train_state)
+    # function logpdf_mvnormal_gpu(; x̄::CuVector{T}, μ::CuVector{T}, Σ::CuMatrix{T}) where {T<:AbstractFloat}
+    #     # â, st = model(x, ps, st); n = Int(size(â, 2) / 2); x̄ = view(â, 1:n); s = view(â, (n+1):(2*n)); Σ = (s * s') + CuArray(Array{Float32}(diagm(fill(0.1, n)))); μ = CuArray(Array{Float32}(zeros(n)))
+    #     # n = length(x̄)
+    #     Σ_inv = inv(Σ)
+    #     # logdet_Σ = begin
+    #     #     # logdet(Matrix(Σ_inv))
+    #     #     X_d, ipiv_d = CUSOLVER.getrf!(CuArray{Float64}(Σ_inv))
+    #     #     p = sum(CuArray(ipiv_d) .== CuArray(collect(1:length(ipiv_d))))
+    #     #     ldet = sum(filter(x -> !isnan(x) && !isinf(x), log.(diag(X_d)))) + (im * π * p)
+    #     #     real(ldet) + im*(imag(ldet) % 2π)
+    #     # end
+    #     diff = x̄ .- μ
+    #     # exponent = -0.5 * (diff' * Σ_inv * diff)
+    #     # return -0.5 * (n * log(2π) + logdet_Σ + exponent[1, 1])
+    #     return sqrt(diff' * Σ_inv * diff)
+    # end
+    # # gs, loss, stats, train_state = Lux.Training.compute_gradients(AutoZygote(), W, (x, a), train_state)
 
 
 
     # Defining a custom loss function
     function W(model, ps, st, (x, a))
-        â, st = model(x, ps, st)
-        n = Int(size(â, 2) / 2)
+        # Forward pass through the model to get predictions
+        â, st = model(x, ps, st)
+        # Split the predictions into two halves (n is number of samples)
+        n = Int(size(â, 2) / 2)
+        # Extract true values and predicted values for the trait
         y = view(a, 1:n)
-        ŷ = view(â, 1:n)
-        loss_y = mean((ŷ .- y) .^ 2)
-        # return loss_y, st, NamedTuple()
-        ŝ = view(â, (n+1):(2*n))
-        Ŝ = (ŝ * ŝ') + CuArray(Array{Float32}(diagm(fill(0.1, n))))
-        loss_S = -logpdf_mvnormal_gpu(x=ŷ, μ=CuArray(Array{Float32}(zeros(n))), Σ=Ŝ)
+        ŷ = view(â, 1:n)
+        # Calculate MSE loss for the trait predictions
+        loss_y = mean((ŷ .- y) .^ 2)
+        # Calculate loss for covariance structure
+        # using Mahalanobis distance: sqrt((y-μ)ᵀΣ⁻¹(y-μ))
+        loss_S = begin
+            # Extract the predicted variance components
+            s = view(â, (n+1):(2*n))
+            # Construct covariance matrix with small diagonal regularization
+            S = (s * s') + CuArray(Array{Float32}(diagm(fill(0.1, n))))
+            S_inv = inv(S)
+            # sqrt(ŷ' * S_inv * ŷ)
+            CUDA.allowscalar() do
+                sqrt(y' * S_inv * y)
+            end
+        end
+        # Combine both losses
         loss = loss_y + loss_S
         return loss, st, NamedTuple()
     end
@@ -207,6 +215,8 @@ function analyseviaNN(
     if verbose
         pb = ProgressMeter.Progress(n_epochs, desc = "Training progress")
     end
+    t = []
+    l = []
     for iter = 1:n_epochs
         # Compute the gradients
         gs, loss, stats, train_state = Lux.Training.compute_gradients(AutoZygote(), W, (x, a), train_state)
@@ -216,13 +226,23 @@ function analyseviaNN(
         # # Compute gradients and optimise as a single call
         # _, loss, _, train_state = Lux.Training.single_train_step!(AutoZygote(), MSELoss(), (x, a), train_state)
         if verbose
-            # println("Iteration: $iter ($(round(100*iter/n_epochs))%)\tLoss: $loss")
+            # if mod(iter, 100) == 0
+            #     println("Iteration: $iter ($(round(100*iter/n_epochs))%)\tLoss: $loss")
+            # end
             ProgressMeter.next!(pb)
         end
+        push!(t, iter)
+        push!(l, loss)
     end
     if verbose
         ProgressMeter.finish!(pb)
     end
+    # CUDA.reclaim()
+    # CUDA.pool_status()
+
+    # Plot the training loss
+    UnicodePlots.scatterplot(t, l, xlabel = "Iteration", ylabel = "Loss", title = "Training Loss")
+
     # Metrics
     Lux.testmode(st)
     y_pred, st = Lux.apply(model, x, ps, st)
@@ -235,20 +255,19 @@ function analyseviaNN(
 
 
     # Extract the covariance matrix Σ
-    Lux.testmode(st)
     X_new = zeros(size(X))
     X_new[(n+1):end, (end-n+1):end] = diagm(ones(n))
     x_new = dev(X_new')
-    y_preds, st = Lux.apply(model, x_new, ps, st)
-    ŷ = Vector(y_preds[1, :])
-    s = ŷ[(n+1):end]
-    Σ = Matrix{Float64}(s * s')
-    inflatediagonals!(Σ)
+    s_pred, st = Lux.apply(model, x_new, ps, st)
+    s = s_pred[1, (n+1):end]
+    Σ = Matrix{Float64}(s * s') .+ diagm(0.1 * ones(n))
+    # inflatediagonals!(Σ)
     det(Σ)
-    logpdf(MvNormal(Σ), ŷ[1:n])
-    
+    logpdf(MvNormal(Σ), Vector(y_pred[1, 1:n]))
+    UnicodePlots.heatmap(Σ)
 
-    
+
+
     # ps[1].weight
     # ps[1].bias
     # DataFrame(ids = X_labels, weights = ps[1].weight[1, :])
