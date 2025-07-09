@@ -9,21 +9,44 @@ Constructs a design matrix `X` based on categorical variables specified in `vare
 
 # Returns
 A tuple `(X, X_vars, X_labels)` where:
-- `X::Matrix{Float64}`: The design matrix with one-hot encoded columns for each categorical variable.
-- `X_vars::Vector{String}`: A vector indicating the variable name corresponding to each column in `X`.
-- `X_labels::Vector{String}`: A vector of unique labels for each categorical variable.
+- `X::Matrix{Float64}`: The design matrix with one-hot encoded columns for each categorical variable
+- `X_vars::Vector{String}`: A vector indicating the variable name corresponding to each column in `X`
+- `X_labels::Vector{String}`: A vector of unique labels for each column in `X`
+
+# Details
+The function combines non-"entries" variables into a single "environments" factor by concatenating them 
+with tab separators. All categorical variables are then one-hot encoded into binary columns.
 
 # Example
 ```
 ```
 """
 function makex(varex::Vector{String}; df::DataFrame)::Tuple{Matrix{Float64},Vector{String},Vector{String}}
-    n = nrow(df)
+    # genomes = simulategenomes(n=5, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3); 
+    # df = tabularise(trials);
+    # varex = ["years", "seasons", "sites", "entries"];
+    environemnts = nothing
+    for v in filter(x -> x != "entries", varex)
+        # v = filter(x -> x != "entries", varex)[1]
+        if !(v ∈ names(df))
+            continue
+        end
+        if isnothing(environemnts)
+            environemnts = df[!, v]
+        else
+            environemnts = string.(environemnts, "\t", df[!, v])
+        end
+    end
+    df.environments = environemnts
     X = nothing
     X_vars = []
     X_labels = []
-    for v in varex
-        # v = varex[1]
+    n = nrow(df)
+    for v in vcat("environments", filter(x -> x == "entries", varex))
+        # v = vcat("environments", filter(x -> x == "entries", varex))[1]
+        if !(v ∈ names(df))
+            continue
+        end
         x = unique(df[!, v])
         A = zeros(n, length(x))
         for i = 1:n
@@ -87,16 +110,15 @@ function analyseviaNN(
     df = tabularise(trials)
     y, y_min, y_max, X, X_vars, X_labels = let trait_id = "trait_1", varex = ["years", "seasons", "sites", "entries"]
         # trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries"];
-        y::Vector{Float64} = df[!, trait_id]
         X, X_vars, X_labels = makex(varex; df = df)
-        q = findall(X_vars .== "entries")[1] - 1
+        findall(X_vars .== "environments")
         n, p = size(X)
-        # Map into 0 to 1 range instead of standardising because we are not assuming a single distribution for the trait, i.e. it may be multi-modal
+        y::Vector{Float64} = df[!, trait_id]
         y_min = minimum(y)
         y_max = maximum(y)
         # UnicodePlots.histogram(y)
         y = (y .- y_min) ./ (y_max - y_min)
-        y = vcat(y, zeros(n), q)
+        y = vcat(y, zeros(n))
         X = vcat(hcat(X, zeros(n, n)), hcat(zeros(n, p), diagm(ones(n))), zeros(1, n+p))
         X_vars = vcat(X_vars, repeat(["Σ"], n), "q")
         X_labels = vcat(X_labels, [string("Σ_", i) for i = 1:n], "q")
@@ -160,49 +182,6 @@ function analyseviaNN(
     ## First construct a TrainState
     train_state = Lux.Training.TrainState(model, ps, st, Optimisers.Adam(0.0001f0))
 
-
-    # function logpdf_mvnormal_gpu(; x̄::CuVector{T}, μ::CuVector{T}, Σ::CuMatrix{T}) where {T<:AbstractFloat}
-    #     # â, st = model(x, ps, st); n = Int(size(â, 2) / 2); x̄ = view(â, 1:n); s = view(â, (n+1):(2*n)); Σ = (s * s') + CuArray(Array{Float32}(diagm(fill(0.1, n)))); μ = CuArray(Array{Float32}(zeros(n)))
-    #     # n = length(x̄)
-    #     Σ_inv = inv(Σ)
-    #     # logdet_Σ = begin
-    #     #     # logdet(Matrix(Σ_inv))
-    #     #     X_d, ipiv_d = CUSOLVER.getrf!(CuArray{Float64}(Σ_inv))
-    #     #     p = sum(CuArray(ipiv_d) .== CuArray(collect(1:length(ipiv_d))))
-    #     #     ldet = sum(filter(x -> !isnan(x) && !isinf(x), log.(diag(X_d)))) + (im * π * p)
-    #     #     real(ldet) + im*(imag(ldet) % 2π)
-    #     # end
-    #     diff = x̄ .- μ
-    #     # exponent = -0.5 * (diff' * Σ_inv * diff)
-    #     # return -0.5 * (n * log(2π) + logdet_Σ + exponent[1, 1])
-    #     return sqrt(diff' * Σ_inv * diff)
-    # end
-    # # gs, loss, stats, train_state = Lux.Training.compute_gradients(AutoZygote(), W, (x, a), train_state)
-
-
-
-    # # Trying to improve the covariance estimates by specifying a mixture of distributions instead of a single MvNormal distribution
-    # p = 100; q = Int(ceil(p/2))
-    # # pars = []
-    # # for i in 1:5
-    # #     s = rand(Distributions.Beta(2,2), p);
-    # #     S = (s * s') + diagm(0.1 * ones(p));
-    # #     push!(pars, (fill(2.00*i, p), S))
-    # # end
-    # # M = MixtureModel(MvNormal, pars)
-    # # ϕ = rand(M, 10)
-    # # UnicodePlots.histogram(reshape(ϕ, prod(size(ϕ))))
-    # # Or simply a multivariate normal distribution with non-constant μ - this way we can also have covariance between "hierarchical" levels...
-    # s = rand(Distributions.Beta(2,2), p);
-    # S = (s * s') + diagm(0.1 * ones(p));
-    # # S[(q+1):end, 1:q] = S[1:q, (q+1):end] .= 0.0
-    # # D = Distributions.MvNormal(rand(p), S)
-    # D = Distributions.MvNormal(repeat([0, 3], inner=q), S)
-    # ϕ = rand(D, 100)
-    # UnicodePlots.histogram(reshape(ϕ, prod(size(ϕ))))
-    # # TODO: hence we will need an info dimension in X which tells us which which first k columns to use to extract the μ vector from
-
-
     # Defining a custom loss function
     function W(model, ps, st, (x, a))
         # Forward pass through the model to get predictions
@@ -223,6 +202,10 @@ function analyseviaNN(
             S = (s * s') + CuArray(Array{Float32}(diagm(fill(0.1, n))))
             S_inv = inv(S)
             # Extract the expectations
+            # k, m = size(x)
+            # x
+            # a
+            CuArray(Array{Float32}(zeros(n)))
             # μ = CUDA.allowscalar() do
             #     q = Int(1.00 .* view(y, length(y)))
             #     w = view(x, 1:q, 1:n)
