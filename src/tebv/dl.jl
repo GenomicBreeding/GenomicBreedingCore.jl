@@ -97,20 +97,30 @@ function prepinputs(; df::DataFrame, varex::Vector{String}, trait_id::String, ve
         zeros(n), 
         zeros(n),
     )
+    N = maximum([n, p])
     X = vcat(
         hcat(
             X, 
-            zeros(n, n),
+            # zeros(n, n),
+            zeros(n, N-p),
         ), 
         hcat(
-            zeros(n, p), 
             diagm(ones(n)),
+            zeros(n, N-n)
         ), 
-        # zeros(n, n+p),
         hcat(
-            zeros(n, p), 
             diagm(ones(n)),
+            zeros(n, N-n)
         ), 
+        # hcat(
+        #     zeros(n, p), 
+        #     diagm(ones(n)),
+        # ), 
+        # # zeros(n, n+p),
+        # hcat(
+        #     zeros(n, p), 
+        #     diagm(ones(n)),
+        # ), 
     )
     X_vars = vcat(X_vars, repeat(["Σ"], n))
     X_labels = vcat(X_labels, [string("Σ_", i) for i = 1:n])
@@ -236,7 +246,6 @@ function trainNN(
     # n_orig = Int(size(X_orig, 1) / 3)
     # b_orig = rand(Float16, size(X_orig, 2))
     # df[!, trait_id] = X_orig[1:n_orig, :] * b_orig
-
     y, y_min, y_max, X, X_vars, X_labels = prepinputs(df = df, varex = varex, trait_id = trait_id, verbose=verbose)
     n, p = size(X)
     model = prepmodel(
@@ -335,7 +344,7 @@ function trainNN(
     gxe_vars = ["years", "seasons", "harvests", "sites", "entries"]
     idx_varex = vcat([findall([x ∈ gxe_vars for x in varex])], [[x] for x in 1:length(varex)])
     for idx_1 in idx_varex
-        # idx_1 = idx_varex[1]
+        # idx_1 = idx_varex[2]
         # How many rows in the new X matrix do we need?
         m = 1
         for v in varex[idx_1]
@@ -369,7 +378,7 @@ function trainNN(
         # Extract
         ϕ_marginals::Vector{Float16} = y_marginals[1, 1:m]
         s = y_marginals[1, (m+1):(2*m)]
-        Σ_marginals::Matrix{Float16} = Matrix{Float16}(s * s' + CuArray(diagm(0.01 * ones(m))))
+        Σ_marginals::Matrix{Float16} = (s * s') + diagm(0.01 * ones(m))
         z = ϕ_marginals ./ diag(Σ_marginals)
         p_vals = 2 * (1 .- cdf(Normal(0.0, 1.0), abs.(z)))
         marginals[join(varex[idx_1], "|")] = Dict(
@@ -416,7 +425,8 @@ function analyseviaNN(
     seed::Int64 = 42,
     verbose::Bool = true,
 )::Nothing
-    # genomes = simulategenomes(n=10, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, sparsity=0.1, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3); traits = ["trait_1", "trait_2"]; other_covariates=["trait_3"]; activation = [sigmoid, sigmoid_fast, relu, tanh][3]; n_layers = 3; max_n_nodes = 256; n_nodes_droprate = Float16(0.50); dropout_droprate = Float16(0.25); n_epochs = 10_000; use_cpu = false; seed=42;  verbose::Bool = true;
+    # genomes = simulategenomes(n=10, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, sparsity=0.1, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3); traits = ["trait_1", "trait_2"]; other_covariates=["trait_3"]; 
+    # activation = [sigmoid, sigmoid_fast, relu, tanh][3]; n_layers = 3; max_n_nodes = 256; n_nodes_droprate = Float16(0.50); dropout_droprate = Float16(0.25); n_epochs = 10_000; use_cpu = false; seed=42;  verbose::Bool = true;
     # Check arguments
     if !checkdims(trials)
         error("The Trials struct is corrupted ☹.")
