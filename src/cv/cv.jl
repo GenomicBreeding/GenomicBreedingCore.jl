@@ -372,6 +372,7 @@ Summarize cross-validation results from a vector of CV structs into two DataFram
   1. Summary DataFrame with mean metrics across entries, replications, and folds
      - Contains means and standard deviations of correlation coefficients
      - Includes average training and validation set sizes
+     - Also includes the total number of replications-by-folds (`n`), number of replications, and number of folds
      - Grouped by training population, validation population, trait, and model
   2. Entry-level DataFrame with phenotype prediction statistics
      - Contains true phenotype values, predicted means (μ), and standard deviations (σ)
