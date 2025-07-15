@@ -172,6 +172,7 @@ Convert a vector of CV (Cross-Validation) structs into two DataFrames containing
 
 # Arguments
 - `cvs::Vector{CV}`: Vector of CV structs containing cross-validation results
+- `verbose::Bool=false`: Whether to show a progress bar (default: false)
 
 # Returns
 - `Tuple{DataFrame,DataFrame}`: A tuple of two DataFrames:
@@ -261,11 +262,11 @@ julia> df_per_entry[!, [:entry, :y_true, :y_pred]]
    2 │ entry_2      0.0      0.0
 ```
 """
-function tabularise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
+function tabularise(cvs::Vector{CV}; verbose::Bool=false)::Tuple{DataFrame,DataFrame}
     # genomes = GenomicBreedingCore.simulategenomes(n=300, verbose=false); genomes.populations = StatsBase.sample(string.("pop_", 1:3), length(genomes.entries), replace=true);
     # trials, _ = GenomicBreedingCore.simulatetrials(genomes=genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=1, verbose=false);
     # phenomes = extractphenomes(trials);
-    # cvs, notes = cvbulk(genomes=genomes, phenomes=phenomes, models = [ols, ridge, lasso], n_replications=2, n_folds=2);
+    # cvs, notes = cvbulk(genomes=genomes, phenomes=phenomes, models = [ols, ridge, lasso], n_replications=2, n_folds=2); verbose::Bool=true;
     # Check arguments
     c = length(cvs)
     if c < 1
@@ -298,6 +299,9 @@ function tabularise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
     y_trues::Vector{Float64} = []
     y_preds::Vector{Float64} = []
     idx_non_missing_across_entries = []
+    if verbose
+        pb = ProgressMeter.Progress(c, desc = "Tabularising CVs")
+    end
     for i = 1:c
         # i = 1
         # println(i)
@@ -331,6 +335,12 @@ function tabularise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
         append!(y_trues, cvs[i].validation_y_true)
         append!(y_preds, cvs[i].validation_y_pred)
         append!(idx_non_missing_across_entries, i)
+        if verbose
+            ProgressMeter.next!(pb)
+        end
+    end
+    if verbose
+        ProgressMeter.finish!(pb)
     end
     if length(idx_non_missing_across_entries) < nrow(df_across_entries)
         @warn "You have empty CV structs resulting from training size/s less than 5 and/or fixed traits."
@@ -353,7 +363,7 @@ function tabularise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
 end
 
 """
-    summarise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
+    summarise(cvs::Vector{CV}; verbose::Bool=false)::Tuple{DataFrame,DataFrame}
 
 Summarize cross-validation results from a vector of CV structs into two DataFrames.
 
@@ -398,14 +408,14 @@ julia> size(df_summary_per_entry)
 (2, 8)
 ```
 """
-function summarise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
+function summarise(cvs::Vector{CV}; verbose::Bool=false)::Tuple{DataFrame,DataFrame}
     # fit_1 = Fit(n = 1, l = 2); fit_1.trait = "trait_1"
     # fit_1.metrics = Dict("cor" => 0.0, "rmse" => 1.0)
     # cv_1 = CV("replication_1", "fold_1", fit_1, ["population_1"], ["entry_1"], [0.0], [0.0], fit_1.metrics)
     # fit_2 = Fit(n = 1, l = 2); fit_2.trait = "trait_2"
     # fit_2.metrics = Dict("cor" => 1.0, "rmse" => 0.0)
     # cv_2 = CV("replication_2", "fold_2", fit_2, ["population_2"], ["entry_2"], [0.0], [0.0], fit_2.metrics)
-    # cvs = [cv_1, cv_2]
+    # cvs = [cv_1, cv_2]; verbose::Bool=true
     # Check arguments
     for (i, cv) in enumerate(cvs)
         if !checkdims(cv)
@@ -413,7 +423,7 @@ function summarise(cvs::Vector{CV})::Tuple{DataFrame,DataFrame}
         end
     end
     # Tabularise
-    df_across_entries, df_per_entry = tabularise(cvs)
+    df_across_entries, df_per_entry = tabularise(cvs, verbose=verbose)
     # Summarise across entries, reps and folds
     df_summary = combine(
         groupby(df_across_entries, [:training_population, :validation_population, :trait, :model]),
