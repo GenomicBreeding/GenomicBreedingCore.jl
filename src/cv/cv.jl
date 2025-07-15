@@ -402,10 +402,10 @@ julia> cvs = [cv_1, cv_2];
 julia> df_summary, df_summary_per_entry = summarise(cvs);
 
 julia> size(df_summary)
-(2, 8)
+(2, 11)
 
 julia> size(df_summary_per_entry)
-(2, 8)
+(2, 9)
 ```
 """
 function summarise(cvs::Vector{CV}; verbose::Bool=false)::Tuple{DataFrame,DataFrame}
@@ -427,7 +427,15 @@ function summarise(cvs::Vector{CV}; verbose::Bool=false)::Tuple{DataFrame,DataFr
     # Summarise across entries, reps and folds
     df_summary = combine(
         groupby(df_across_entries, [:training_population, :validation_population, :trait, :model]),
-        [:cor => mean, :cor => std, :training_size => mean, :validation_size => mean],
+        [
+            :cor => mean, 
+            :cor => std, 
+            :training_size => mean, 
+            :validation_size => mean,
+            :cor => (x -> length(unique(x))) => "n",
+            :replication => (x -> length(unique(x))) => "n_replications",
+            :fold => (x -> length(unique(x))) => "n_folds",
+        ],
     )
     # Mean and standard deviation of phenotype predictions per entry
     df_summary_per_entry =
@@ -436,7 +444,7 @@ function summarise(cvs::Vector{CV}; verbose::Bool=false)::Tuple{DataFrame,DataFr
             y_true = mean(g.y_true)
             μ = mean(g.y_pred[idx])
             σ = std(g.y_pred[idx])
-            return (y_true = y_true, μ = μ, σ = σ)
+            return (y_true = y_true, μ = μ, σ = σ, n = length(idx))
         end
     (df_summary, df_summary_per_entry)
 end
