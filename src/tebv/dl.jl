@@ -122,8 +122,8 @@ function prepinputs(; df::DataFrame, varex::Vector{String}, trait_id::String, ve
         #     diagm(ones(n)),
         # ), 
     )
-    X_vars = vcat(X_vars, repeat(["Σ"], n))
-    X_labels = vcat(X_labels, [string("Σ_", i) for i = 1:n])
+    X_vars = vcat(X_vars, repeat(["Σ"], N-p))
+    X_labels = vcat(X_labels, [string("Σ_", i) for i = 1:(N-p)])
     (y, y_min, y_max, X, X_vars, X_labels)
 end
 
@@ -179,7 +179,7 @@ function lossϵΣ(model, ps, st, (x, a))
     # using Mahalanobis distance: sqrt((y-μ)ᵀΣ⁻¹(y-μ))
     loss_S = begin
         s = view(â, (n+1):(2*n))
-        S = (s * s') + CuArray(Array{Float16}(diagm(fill(0.01, n))))
+        S = (s * s') + CuArray(Array{Float16}(diagm(fill(0.1, n))))
         S_inv = inv(S)
         μ = view(â, (2*n+1):(3*n))
         diff = y - μ
@@ -202,6 +202,7 @@ function goodnessoffit(;
 )
     ϕ_pred_remapped = Float64.(ϕ_pred) * (Float64(y_max) - Float64(y_min)) .+ Float64(y_min)
     ϕ_true_remapped = Float64.(ϕ_true) * (Float64(y_max) - Float64(y_min)) .+ Float64(y_min)
+    μ_pred_remapped = Float64.(μ) * (Float64(y_max) - Float64(y_min)) .+ Float64(y_min)
     corr_pearson = cor(ϕ_pred_remapped, ϕ_true_remapped)
     corr_spearman = corspearman(ϕ_pred_remapped, ϕ_true_remapped)
     diff = ϕ_pred_remapped - ϕ_true_remapped
@@ -215,6 +216,7 @@ function goodnessoffit(;
     Dict(
         :ϕ_pred_remapped => ϕ_pred_remapped,
         :ϕ_true_remapped => ϕ_true_remapped,
+        :μ_pred_remapped => μ_pred_remapped,
         :corr_pearson => corr_pearson,
         :corr_spearman => corr_spearman,
         :mae => mae,
@@ -234,9 +236,9 @@ function trainNN(
     activation = [sigmoid, sigmoid_fast, relu, tanh][3],
     n_layers::Int64 = 3,
     max_n_nodes::Int64 = 256,
-    n_nodes_droprate::Float16 = 0.50,
-    dropout_droprate::Float16 = 0.25,
-    n_epochs::Int64 = 1_000,
+    n_nodes_droprate::Float64 = 0.50,
+    dropout_droprate::Float64 = 0.25,
+    n_epochs::Int64 = 10_000,
     use_cpu::Bool = false,
     seed::Int64 = 42,
     verbose::Bool = true,
@@ -303,7 +305,10 @@ function trainNN(
     ϕ_true::Vector{Float16} = a[1, 1:n];
     μ::Vector{Float16} = y_pred[1, (2*n+1):(3*n)];
     s::Vector{Float16} = y_pred[1, (n+1):(2*n)];
-    Σ = Matrix{Float16}(s * s' + diagm(0.01 * ones(n))); # inflatediagonals!(Σ); det(Σ)
+    Σ = Matrix{Float16}(s * s' + diagm(fill(0.1, n)));
+    while !isposdef(Σ)
+        Σ += Float16.(diagm(0.01 * ones(n)))
+    end
     stats = goodnessoffit(
         ϕ_true=ϕ_true,
         ϕ_pred=ϕ_pred,
@@ -326,7 +331,7 @@ function trainNN(
         println("RMSE: ", round(stats[:rmse], digits=4))
         println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
         println("FITTED MULTIVARIATE NORMAL DISTRIBUTION:")
-        # display(UnicodePlots.scatterplot(ϕ_true_remapped, μ, xlabel = "Observed", ylabel = "Fitted expectations of the multivariate normal distribution (μ)", title = "μ vs Observed"))
+        display(UnicodePlots.scatterplot(stats[:ϕ_true_remapped], stats[:μ_pred_remapped], xlabel = "Observed", ylabel = "Fitted expectations of the multivariate normal distribution (μ)", title = "μ vs Observed"))
         # println("Pearson's product-moment correlation with μ: ", round(100*stats[:corr_pearson_μ], digits=2), "%")
         # println("Spearman's rank correlation with μ: ", round(100*stats[:corr_spearman_μ], digits=2), "%")
         # println("MAE with μ: ", round(stats[:mae_μ], digits=4))
@@ -344,7 +349,7 @@ function trainNN(
     gxe_vars = ["years", "seasons", "harvests", "sites", "entries"]
     idx_varex = vcat([findall([x ∈ gxe_vars for x in varex])], [[x] for x in 1:length(varex)])
     for idx_1 in idx_varex
-        # idx_1 = idx_varex[2]
+        # idx_1 = idx_varex[end]
         # How many rows in the new X matrix do we need?
         m = 1
         for v in varex[idx_1]
@@ -410,6 +415,84 @@ function trainNN(
     )
 end
 
+# Testing trainNN
+if false
+    n_iter = 25
+    corrs = DataFrame(
+        iter = collect(1:n_iter),
+        years = NaN,
+        seasons = NaN,
+        sites = NaN,
+        entries = NaN,
+    )
+    for i in 1:n_iter
+        # i = 1
+        genomes = simulategenomes(n=10, l=1_000, seed=i); trials, simulated_effects = simulatetrials(genomes = genomes, f_add_dom_epi = rand(1,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3, seed=i); 
+        df = tabularise(trials); trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries"];activation = [sigmoid, sigmoid_fast, relu, tanh][3]; n_layers = 3; max_n_nodes = 256; n_nodes_droprate = 0.50; dropout_droprate = 0.25; n_epochs = 1_000; use_cpu = false; seed=42;  verbose::Bool = true;
+        # h2 = 0.75
+        y_orig, y_min_origin, y_max_orig, X_orig, X_vars_orig, X_labels_orig = prepinputs(df = df, varex = varex, trait_id = trait_id, verbose=verbose)
+        n_orig = Int(size(X_orig, 1) / 3)
+
+        # TODO: prep. k-fold cross-validation here to test model fit as using the old simulation below is a self-fullfilling prophecy for linear-mixed models or just linear models in general
+
+        # b_orig = zeros(size(X_orig, 2))
+        # idx_years = findall(X_vars_orig .== "years")
+        # idx_seasons = findall(X_vars_orig .== "seasons")
+        # idx_sites = findall(X_vars_orig .== "sites")
+        # idx_entries = findall(X_vars_orig .== "entries")
+        # idx_with_effects = vcat(idx_years, idx_seasons, idx_sites, idx_entries)
+        # b_orig[idx_with_effects] = rand(Float16, length(idx_with_effects))
+        # a_orig = (X_orig[1:n_orig, :] * b_orig)
+        # va = var(a_orig)
+        # ve = va/h2 - va
+        # error = rand(Normal(0.0, sqrt(ve)), n_orig)
+        # df[!, trait_id] = a_orig .+ error
+
+        # df.blocks .= "block_x"
+        # df.rows .= "row_x"
+        # df.cols .= "col_x"
+
+        # b_years_orig = b_orig[idx_years]
+        # b_seasons_orig = b_orig[idx_seasons]
+        # b_sites_orig = b_orig[idx_sites]
+        # b_entries_orig = b_orig[idx_entries]
+        out = trainNN(df, trait_id=trait_id, varex=varex, n_epochs=10_000, verbose=true)
+        out["stats"]
+
+        x_new = dev()
+        y_pred, st = model(x_new1, ps, st)
+        n = Int(size(â, 2) / 3)
+        # Extract true values and predicted values for the trait
+        y = view(a, 1:n)
+
+        # corrs.years[i] = cor(Float64.(b_years_orig), Float64.(out["marginals"]["years"]["ϕ_marginals"]))
+        # corrs.seasons[i] = cor(Float64.(b_seasons_orig), Float64.(out["marginals"]["seasons"]["ϕ_marginals"]))
+        # corrs.sites[i] = cor(Float64.(b_sites_orig), Float64.(out["marginals"]["sites"]["ϕ_marginals"]))
+        # corrs.entries[i] = cor(Float64.(b_entries_orig), Float64.(out["marginals"]["entries"]["ϕ_marginals"]))
+        # UnicodePlots.scatterplot(Float64.(b_entries_orig), Float64.(out["marginals"]["entries"]["ϕ_marginals"]))
+        @show i
+
+        # # Comparison with LMM --> a better way to compare will be replicated k-fold cross-validations
+        # f = @formula trait_1 ~ years + seasons + sites + entries + (1|rows) + (1|cols)
+        # model = MixedModel(f, df)
+        # model.optsum.REML = true
+        # model.optsum.maxtime = 360
+        # fit!(model, progress = true)
+        # df_BLUEs = DataFrame(coeftable(model))[:, [1, 2]]
+        # intercept = df_BLUEs[1, 2]
+        # years_blues = vcat(intercept, intercept .+ df_BLUEs[.!isnothing.(match.(Regex("years"), df_BLUEs.Name)), 2])
+        # seasons_blues = vcat(intercept, intercept .+ df_BLUEs[.!isnothing.(match.(Regex("seasons"), df_BLUEs.Name)), 2])
+        # sites_blues = vcat(intercept, intercept .+ df_BLUEs[.!isnothing.(match.(Regex("sites"), df_BLUEs.Name)), 2])
+        # entries_blues = vcat(intercept, intercept .+ df_BLUEs[.!isnothing.(match.(Regex("entries"), df_BLUEs.Name)), 2])
+        # cor(years_blues, Float64.(b_years_orig))
+        # cor(seasons_blues, Float64.(b_seasons_orig))
+        # cor(sites_blues, Float64.(b_sites_orig))
+        # cor(entries_blues, Float64.(b_entries_orig))
+        # UnicodePlots.scatterplot(Float64.(b_entries_orig), entries_blues)
+
+    end
+end
+
 # Under construction...
 function analyseviaNN(
     trials::Trials,
@@ -418,8 +501,8 @@ function analyseviaNN(
     activation = [sigmoid, sigmoid_fast, relu, tanh][3],
     n_layers::Int64 = 3,
     max_n_nodes::Int64 = 256,
-    n_nodes_droprate::Float16 = 0.50,
-    dropout_droprate::Float16 = 0.25,
+    n_nodes_droprate::Float64 = 0.50,
+    dropout_droprate::Float64 = 0.25,
     n_epochs::Int64 = 1_000,
     use_cpu::Bool = false,
     seed::Int64 = 42,
