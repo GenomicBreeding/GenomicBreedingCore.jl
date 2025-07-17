@@ -3,7 +3,7 @@ module GenomicBreedingCore
 using Random
 using DataFrames
 using LinearAlgebra
-using StatsBase
+using StatsBase, Clustering
 using Distributions, SparseArrays, PDMats
 using StatsModels, MixedModels
 using Turing, MCMCDiagnosticTools, Zygote, ReverseDiff

@@ -174,7 +174,7 @@ function lossϵΣ(model, ps, st, (x, a))
     y = view(a, 1:n)
     ŷ = view(â, 1:n)
     # Calculate MSE loss for the trait predictions
-    loss_y = mean((ŷ .- y) .^ 2)
+    loss_y = sum((ŷ .- y) .^ 2)
     # Calculate loss for covariance structure
     # using Mahalanobis distance: sqrt((y-μ)ᵀΣ⁻¹(y-μ))
     loss_S = begin
@@ -203,15 +203,16 @@ function goodnessoffit(;
     ϕ_pred_remapped = Float64.(ϕ_pred) * (Float64(y_max) - Float64(y_min)) .+ Float64(y_min)
     ϕ_true_remapped = Float64.(ϕ_true) * (Float64(y_max) - Float64(y_min)) .+ Float64(y_min)
     μ_pred_remapped = Float64.(μ) * (Float64(y_max) - Float64(y_min)) .+ Float64(y_min)
-    corr_pearson = cor(ϕ_pred_remapped, ϕ_true_remapped)
-    corr_spearman = corspearman(ϕ_pred_remapped, ϕ_true_remapped)
+    corr_pearson = cor(ϕ_true_remapped, ϕ_pred_remapped)
+    corr_spearman = corspearman(ϕ_true_remapped, ϕ_pred_remapped)
     diff = ϕ_pred_remapped - ϕ_true_remapped
     mae = mean(abs.(diff))
     rmse = sqrt(mean(diff.^ 2))
-    corr_pearson_μ = cor(Float64.(μ), Float64.(ϕ_true))
-    corr_spearman_μ = corspearman(Float64.(μ), Float64.(ϕ_true))
-    mae_μ = mean(abs.(Float64.(μ) - Float64.(ϕ_true)))
-    rmse_μ = sqrt(mean((Float64.(μ) - Float64.(ϕ_true)) .^ 2))
+    R² = 1 - (sum((diff.^ 2)) / sum((ϕ_true_remapped .- mean(ϕ_true_remapped)).^2))
+    # corr_pearson_μ = cor(Float64.(μ), Float64.(ϕ_true))
+    # corr_spearman_μ = corspearman(Float64.(μ), Float64.(ϕ_true))
+    # mae_μ = mean(abs.(Float64.(μ) - Float64.(ϕ_true)))
+    # rmse_μ = sqrt(mean((Float64.(μ) - Float64.(ϕ_true)) .^ 2))
     loglik = logpdf(MvNormal(Float64.(μ), Σ), Float64.(ϕ_true))
     Dict(
         :ϕ_pred_remapped => ϕ_pred_remapped,
@@ -221,10 +222,11 @@ function goodnessoffit(;
         :corr_spearman => corr_spearman,
         :mae => mae,
         :rmse => rmse,
-        :corr_pearson_μ => corr_pearson_μ,
-        :corr_spearman_μ => corr_spearman_μ,
-        :mae_μ => mae_μ,
-        :rmse_μ => rmse_μ,
+        :R² => R²,
+        # :corr_pearson_μ => corr_pearson_μ,
+        # :corr_spearman_μ => corr_spearman_μ,
+        # :mae_μ => mae_μ,
+        # :rmse_μ => rmse_μ,
         :loglik => loglik,
     )
 end
@@ -233,22 +235,85 @@ function trainNN(
     df::DataFrame;
     trait_id::String,
     varex::Vector{String},
+    idx_training::Union{Vector{Int64}, Nothing} = nothing,
+    idx_validation::Union{Vector{Int64}, Nothing} = nothing,
     activation = [sigmoid, sigmoid_fast, relu, tanh][3],
     n_layers::Int64 = 3,
     max_n_nodes::Int64 = 256,
-    n_nodes_droprate::Float64 = 0.50,
+    n_nodes_droprate::Float64 = 0.10,
     dropout_droprate::Float64 = 0.25,
     n_epochs::Int64 = 10_000,
     use_cpu::Bool = false,
     seed::Int64 = 42,
     verbose::Bool = true,
 )
-    # genomes = simulategenomes(n=5, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3); df = tabularise(trials); trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries"];activation = [sigmoid, sigmoid_fast, relu, tanh][3]; n_layers = 3; max_n_nodes = 256; n_nodes_droprate = 0.50; dropout_droprate = 0.25; n_epochs = 1_000; use_cpu = false; seed=42;  verbose::Bool = true;
-    # y_orig, y_min_origin, y_max_orig, X_orig, X_vars_orig, X_labels_orig = prepinputs(df = df, varex = varex, trait_id = trait_id, verbose=verbose)
-    # n_orig = Int(size(X_orig, 1) / 3)
-    # b_orig = rand(Float16, size(X_orig, 2))
-    # df[!, trait_id] = X_orig[1:n_orig, :] * b_orig
-    y, y_min, y_max, X, X_vars, X_labels = prepinputs(df = df, varex = varex, trait_id = trait_id, verbose=verbose)
+    # genomes = simulategenomes(n=5, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3); df = tabularise(trials); trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries"];activation = [sigmoid, sigmoid_fast, relu, tanh][3]; n_layers = 3; max_n_nodes = 256; n_nodes_droprate = 0.50; dropout_droprate = 0.25; n_epochs = 1_000; use_cpu = false; seed=42;  verbose::Bool = true; idx_training = sort(sample(1:nrow(df), Int(round(0.9*nrow(df))), replace=false)); idx_validation = filter(x -> !(x ∈ idx_training), 1:nrow(df));
+    # # y_orig, y_min_origin, y_max_orig, X_orig, X_vars_orig, X_labels_orig = prepinputs(df = df, varex = varex, trait_id = trait_id, verbose=verbose)
+    # # n_orig = Int(size(X_orig, 1) / 3)
+    # # b_orig = rand(Float16, size(X_orig, 2))
+    # # df[!, trait_id] = X_orig[1:n_orig, :] * b_orig
+    # Checks
+    errors::Vector{String} = []
+    ϕ = df[!, trait_id]
+    if sum(ismissing.(ϕ) .|| isnan.(ϕ) .|| isinf.(ϕ)) > 0
+        push!(error, "Missing data in trait: $trait_id is not permitted. Please filter-out missing data first as these may potentially conflict with the supplied training and/or validation set indexes.")
+    end
+    if !("entries" ∈ names(df))
+        push!(error, "The expected `entries` column is absent in the input data frame. We expect a tabularised Trials struct.")
+    end
+    # Checks
+    if !isnothing(idx_training)
+        if minimum(idx_training) < 1
+            push!(errors, "Training set index starts below 1.")
+        end
+        if maximum(idx_training) > nrow(df)
+            push!(errors, "Training set index is greater than the number of observations, i.e. above $(nrow(df)).")
+        end
+    end
+    if !isnothing(idx_validation)
+        if minimum(idx_validation) < 1
+            push!(errors, "Validation set index starts below 1.")
+        end
+        if maximum(idx_validation) > nrow(df)
+            push!(errors, "Validation set index is greater than the number of observations, i.e. above $(nrow(df)).")
+        end
+    end
+    idx_training, idx_validation= if isnothing(idx_training) && isnothing(idx_validation)
+        (collect(1:nrow(df)), [])
+    elseif isnothing(idx_training) && !isnothing(idx_validation)
+        (filter(x -> !(x ∈ idx_validation), 1:nrow(df)), sort(idx_validation))
+    elseif !isnothing(idx_training) && isnothing(idx_validation)
+        (sort(idx_training), filter(x -> !(x ∈ idx_training), 1:nrow(df)))
+    else
+        (sort(idx_training), sort(idx_validation))
+    end
+    if length(idx_training) < 2
+        push!(errors, "There is less than 2 observations for training!")
+    end
+    if length(filter(x -> x ∈ idx_training, idx_validation)) > 0
+        push!(errors, "There is data leakage!")
+    end
+    if length(errors) > 0
+        throw(ArgumentError(string("\n\t‣ ", join(errors, "\n\t‣ "))))
+    end
+    y, X, y_validation, X_validation, y_min, y_max, X_vars, X_labels = begin
+        y_ALL, y_min_ALL, y_max_ALL, X_ALL, X_vars_ALL, X_labels_ALL = prepinputs(df = df, varex = varex, trait_id = trait_id, verbose=verbose)
+        n = nrow(df)
+        sort!(idx_training)
+        sort!(idx_validation)
+        idx_training_including_μ_and_Σ = vcat(idx_training, idx_training.+(n), idx_training.+(2*n))
+        idx_validation_including_μ_and_Σ = vcat(idx_validation, idx_validation.+(n), idx_validation.+(2*n))
+        (
+            y_ALL[idx_training_including_μ_and_Σ],
+            X_ALL[idx_training_including_μ_and_Σ, :],
+            y_ALL[idx_validation_including_μ_and_Σ],
+            X_ALL[idx_validation_including_μ_and_Σ, :],
+            y_min_ALL, 
+            y_max_ALL, 
+            X_vars_ALL, 
+            X_labels_ALL,
+        )
+    end
     n, p = size(X)
     model = prepmodel(
         p = p, 
@@ -317,6 +382,31 @@ function trainNN(
         μ=μ,
         Σ=Σ,
     )
+    # Cross-validation
+    stats_validation = if length(idx_validation) > 0
+        n = length(idx_validation)
+        x_validation = dev(X_validation')
+        a_validation = dev(reshape(y_validation, 1, 3*n))
+        y_pred_validation, st = Lux.apply(model, x_validation, ps, st);
+        ϕ_pred_validation::Vector{Float16} = y_pred_validation[1, 1:n];
+        ϕ_true_validation::Vector{Float16} = a_validation[1, 1:n];
+        μ_validation::Vector{Float16} = y_pred_validation[1, (2*n+1):(3*n)];
+        s_validation::Vector{Float16} = y_pred_validation[1, (n+1):(2*n)];
+        Σ_validation = Matrix{Float16}(s_validation * s_validation' + diagm(fill(0.1, n)));
+        while !isposdef(Σ)
+            Σ += Float16.(diagm(0.01 * ones(n)))
+        end
+        goodnessoffit(
+            ϕ_true=ϕ_true_validation,
+            ϕ_pred=ϕ_pred_validation,
+            y_max=y_max,
+            y_min=y_min,
+            μ=μ_validation,
+            Σ=Σ_validation,
+        )
+    else
+        nothing
+    end
     if verbose
         # Plot the training loss
         println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
@@ -331,15 +421,25 @@ function trainNN(
         println("RMSE: ", round(stats[:rmse], digits=4))
         println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
         println("FITTED MULTIVARIATE NORMAL DISTRIBUTION:")
-        display(UnicodePlots.scatterplot(stats[:ϕ_true_remapped], stats[:μ_pred_remapped], xlabel = "Observed", ylabel = "Fitted expectations of the multivariate normal distribution (μ)", title = "μ vs Observed"))
+        # display(UnicodePlots.scatterplot(stats[:ϕ_true_remapped], stats[:μ_pred_remapped], xlabel = "Observed", ylabel = "Fitted expectations of the multivariate normal distribution (μ)", title = "μ vs Observed"))
         # println("Pearson's product-moment correlation with μ: ", round(100*stats[:corr_pearson_μ], digits=2), "%")
         # println("Spearman's rank correlation with μ: ", round(100*stats[:corr_spearman_μ], digits=2), "%")
         # println("MAE with μ: ", round(stats[:mae_μ], digits=4))
         # println("RMSE with μ: ", round(stats[:rmse_μ], digits=4))
         display(UnicodePlots.heatmap(Σ, title="Fitted variance-covariance matrix (Σ)"))
         println("Goodness of fit in log-likelihood: ", round(stats[:loglik], digits=4))
+        println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+        println("CROSS-VALIDATION:")
+        if isnothing(stats_validation)
+            println("None")
+        else
+            display(UnicodePlots.scatterplot(stats_validation[:ϕ_true_remapped], stats_validation[:ϕ_pred_remapped]))
+            println("Pearson's product-moment correlation: ", round(100*stats_validation[:corr_pearson], digits=2), "%")
+            println("Spearman's rank correlation: ", round(100*stats_validation[:corr_spearman], digits=2), "%")
+            println("MAE: ", round(stats_validation[:mae], digits=4))
+            println("RMSE: ", round(stats_validation[:rmse], digits=4))
+        end
     end
-    # TODO: Fix below as it is probably wrong...
     # Marginal effects extraction, i.e. the effects of column in X keeping the other columns constant; all the while excluding the Σ variables
     if verbose
         pb = ProgressMeter.Progress(length(varex) + 1, desc = "Extracting marginal effects")
@@ -412,85 +512,132 @@ function trainNN(
         "covariances" => Σ,
         "marginals" => marginals,
         "stats" => stats,
+        "stats_validation" => stats_validation,
     )
 end
 
 # Testing trainNN
 if false
-    n_iter = 25
-    corrs = DataFrame(
-        iter = collect(1:n_iter),
-        years = NaN,
-        seasons = NaN,
-        sites = NaN,
-        entries = NaN,
-    )
+    n_iter = 1
+    iter = []
+    rep = []
+    fold = []
+    dl_corr_pearson = []
+    dl_corr_spearman = []
+    dl_mae = []
+    dl_rmse = []
+    lmm_corr_pearson = []
+    lmm_corr_spearman = []
+    lmm_mae = []
+    lmm_rmse = []
     for i in 1:n_iter
         # i = 1
-        genomes = simulategenomes(n=10, l=1_000, seed=i); trials, simulated_effects = simulatetrials(genomes = genomes, f_add_dom_epi = rand(1,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3, seed=i); 
+        rng = Random.seed!(i)
+        n_traits = 1
+        genomes = simulategenomes(n=10, l=1_000, seed=i); trials, simulated_effects = simulatetrials(genomes = genomes, f_add_dom_epi = rand(rng, n_traits, 3), proportion_of_variance = rand(rng, 9, n_traits), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3, seed=i); 
         df = tabularise(trials); trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries"];activation = [sigmoid, sigmoid_fast, relu, tanh][3]; n_layers = 3; max_n_nodes = 256; n_nodes_droprate = 0.50; dropout_droprate = 0.25; n_epochs = 1_000; use_cpu = false; seed=42;  verbose::Bool = true;
-        # h2 = 0.75
-        y_orig, y_min_origin, y_max_orig, X_orig, X_vars_orig, X_labels_orig = prepinputs(df = df, varex = varex, trait_id = trait_id, verbose=verbose)
-        n_orig = Int(size(X_orig, 1) / 3)
+        # vt = var(df.trait_1)
+        # df.trait_1 += rand(Normal(0.0, sqrt(1.5*vt)), nrow(df))
+        # rename!(df, "yield_biomass_g" =>"trait_1")
+        df = filter(x -> !ismissing(x.trait_1), df)
+        n = nrow(df)
+        n_replications = 2
+        n_folds = 5
+        n_samples = Int(floor(n/n_folds))
+        partitionings::Dict{String, Vector{Int64}} = Dict()
+        for r in 1:n_replications
+            # r = 1
+            idx = sample(1:n, n, replace=false)
+            for f in 1:n_folds
+                # f = 1
+                ini = (f-1)*n_samples+1
+                fin = f < n_folds ? f*n_samples[1] : n
+                partitionings[string("rep", r, "|fold", f)] = idx[ini:fin]
+            end
+        end
+        for r in 1:n_replications
+            for f in 1:n_folds
+                # r=f=1
+                # DL
+                dl = begin
+                    dl = trainNN(
+                        df, 
+                        trait_id=trait_id, 
+                        idx_validation=partitionings[string("rep", r, "|fold", f)],
+                        varex=varex,
+                        n_epochs=1_000,
+                        n_layers=3,
+                        verbose=true,
+                    )
+                    dl["stats"]
+                    dl["stats_validation"]
+                    display(UnicodePlots.scatterplot(dl["stats_validation"][:ϕ_true_remapped], dl["stats_validation"][:ϕ_pred_remapped]))
+                    (
+                        dl["stats_validation"][:corr_pearson],
+                        dl["stats_validation"][:corr_spearman],
+                        dl["stats_validation"][:mae],
+                        dl["stats_validation"][:rmse],
+                        dl["stats_validation"][:R²],
+                    )
+                end
+                @show dl
 
-        # TODO: prep. k-fold cross-validation here to test model fit as using the old simulation below is a self-fullfilling prophecy for linear-mixed models or just linear models in general
-
-        # b_orig = zeros(size(X_orig, 2))
-        # idx_years = findall(X_vars_orig .== "years")
-        # idx_seasons = findall(X_vars_orig .== "seasons")
-        # idx_sites = findall(X_vars_orig .== "sites")
-        # idx_entries = findall(X_vars_orig .== "entries")
-        # idx_with_effects = vcat(idx_years, idx_seasons, idx_sites, idx_entries)
-        # b_orig[idx_with_effects] = rand(Float16, length(idx_with_effects))
-        # a_orig = (X_orig[1:n_orig, :] * b_orig)
-        # va = var(a_orig)
-        # ve = va/h2 - va
-        # error = rand(Normal(0.0, sqrt(ve)), n_orig)
-        # df[!, trait_id] = a_orig .+ error
-
-        # df.blocks .= "block_x"
-        # df.rows .= "row_x"
-        # df.cols .= "col_x"
-
-        # b_years_orig = b_orig[idx_years]
-        # b_seasons_orig = b_orig[idx_seasons]
-        # b_sites_orig = b_orig[idx_sites]
-        # b_entries_orig = b_orig[idx_entries]
-        out = trainNN(df, trait_id=trait_id, varex=varex, n_epochs=10_000, verbose=true)
-        out["stats"]
-
-        x_new = dev()
-        y_pred, st = model(x_new1, ps, st)
-        n = Int(size(â, 2) / 3)
-        # Extract true values and predicted values for the trait
-        y = view(a, 1:n)
-
-        # corrs.years[i] = cor(Float64.(b_years_orig), Float64.(out["marginals"]["years"]["ϕ_marginals"]))
-        # corrs.seasons[i] = cor(Float64.(b_seasons_orig), Float64.(out["marginals"]["seasons"]["ϕ_marginals"]))
-        # corrs.sites[i] = cor(Float64.(b_sites_orig), Float64.(out["marginals"]["sites"]["ϕ_marginals"]))
-        # corrs.entries[i] = cor(Float64.(b_entries_orig), Float64.(out["marginals"]["entries"]["ϕ_marginals"]))
-        # UnicodePlots.scatterplot(Float64.(b_entries_orig), Float64.(out["marginals"]["entries"]["ϕ_marginals"]))
-        @show i
-
-        # # Comparison with LMM --> a better way to compare will be replicated k-fold cross-validations
-        # f = @formula trait_1 ~ years + seasons + sites + entries + (1|rows) + (1|cols)
-        # model = MixedModel(f, df)
-        # model.optsum.REML = true
-        # model.optsum.maxtime = 360
-        # fit!(model, progress = true)
-        # df_BLUEs = DataFrame(coeftable(model))[:, [1, 2]]
-        # intercept = df_BLUEs[1, 2]
-        # years_blues = vcat(intercept, intercept .+ df_BLUEs[.!isnothing.(match.(Regex("years"), df_BLUEs.Name)), 2])
-        # seasons_blues = vcat(intercept, intercept .+ df_BLUEs[.!isnothing.(match.(Regex("seasons"), df_BLUEs.Name)), 2])
-        # sites_blues = vcat(intercept, intercept .+ df_BLUEs[.!isnothing.(match.(Regex("sites"), df_BLUEs.Name)), 2])
-        # entries_blues = vcat(intercept, intercept .+ df_BLUEs[.!isnothing.(match.(Regex("entries"), df_BLUEs.Name)), 2])
-        # cor(years_blues, Float64.(b_years_orig))
-        # cor(seasons_blues, Float64.(b_seasons_orig))
-        # cor(sites_blues, Float64.(b_sites_orig))
-        # cor(entries_blues, Float64.(b_entries_orig))
-        # UnicodePlots.scatterplot(Float64.(b_entries_orig), entries_blues)
-
+                # LMM
+                lmm = begin
+                    idx_validation = sort(partitionings[string("rep", r, "|fold", f)])
+                    idx_training = filter(x -> !(x ∈ idx_validation), 1:nrow(df))
+                    # F = @formula trait_1 ~ years + seasons + sites + entries + (1|rows) + (1|cols)
+                    F = @formula trait_1 ~ seasons + sites + entries + (1|rows) + (1|cols)
+                    model = MixedModel(F, df[idx_training, :])
+                    model.optsum.REML = true
+                    model.optsum.maxtime = 360
+                    fit!(model, progress = true)
+                    y_true = Float64.(df[idx_validation, "trait_1"])
+                    y_pred = Float64.(predict(model, df[idx_validation, :]))
+                    # Intra-cluster correlations
+                    idx_validation = sort(partitionings[string("rep", r, "|fold", f)])
+                    y_true = Float64.(y_true)
+                    y_pred = Float64.(y_pred)
+                    R² = 1 - (sum((y_true - y_pred).^2) / sum((y_true .- mean(y_true)).^2))
+                    hcat(y_true, y_pred)
+                    display(UnicodePlots.scatterplot(y_true, y_pred))
+                    (
+                        cor(y_true, y_pred),
+                        corspearman(Float64.(y_true), Float64.(y_pred)),
+                        mean(abs.(Float64.(y_true) - Float64.(y_pred))),
+                        sqrt(mean((Float64.(y_true) - Float64.(y_pred)).^2)),
+                        R²,
+                    )
+                end
+                @show lmm
+                # Collect metrics
+                push!(iter, i)
+                push!(rep, r)
+                push!(fold, f)
+                push!(dl_corr_pearson, dl[1])
+                push!(dl_corr_spearman, dl[2])
+                push!(dl_mae, dl[3])
+                push!(dl_rmse, dl[4])
+                push!(lmm_corr_pearson, lmm[1])
+                push!(lmm_corr_spearman, lmm[2])
+                push!(lmm_mae, lmm[3])
+                push!(lmm_rmse, lmm[4])
+            end
+        end
     end
+    DataFrame(
+        iter=iter,
+        rep=rep,
+        fold=fold,
+        dl_corr_pearson=dl_corr_pearson,
+        dl_corr_spearman=dl_corr_spearman,
+        dl_mae=dl_mae,
+        dl_rmse=dl_rmse,
+        lmm_corr_pearson=lmm_corr_pearson,
+        lmm_corr_spearman=lmm_corr_spearman,
+        lmm_mae=lmm_mae,
+        lmm_rmse=lmm_rmse,
+    )
 end
 
 # Under construction...
