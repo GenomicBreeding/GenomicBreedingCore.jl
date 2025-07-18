@@ -97,33 +97,37 @@ function prepinputs(; df::DataFrame, varex::Vector{String}, trait_id::String, ve
         zeros(n), 
         zeros(n),
     )
-    N = maximum([n, p])
+    # N = maximum([n, p])
     X = vcat(
         hcat(
             X, 
-            # zeros(n, n),
-            zeros(n, N-p),
-        ), 
-        hcat(
-            diagm(ones(n)),
-            zeros(n, N-n)
-        ), 
-        hcat(
-            diagm(ones(n)),
-            zeros(n, N-n)
+            zeros(n, n),
+            # zeros(n, N-p),
         ), 
         # hcat(
-        #     zeros(n, p), 
         #     diagm(ones(n)),
+        #     zeros(n, N-n)
         # ), 
+        # hcat(
+        #     diagm(ones(n)),
+        #     zeros(n, N-n)
+        # ), 
+        hcat(
+            zeros(n, p), 
+            diagm(ones(n)),
+        ), 
+        hcat(
+            zeros(n, p), 
+            diagm(ones(n)),
+        ), 
         # # zeros(n, n+p),
         # hcat(
         #     zeros(n, p), 
         #     diagm(ones(n)),
         # ), 
     )
-    X_vars = vcat(X_vars, repeat(["Σ"], N-p))
-    X_labels = vcat(X_labels, [string("Σ_", i) for i = 1:(N-p)])
+    X_vars = vcat(X_vars, repeat(["Σ"], n))
+    X_labels = vcat(X_labels, [string("Σ_", i) for i = 1:n])
     (y, y_min, y_max, X, X_vars, X_labels)
 end
 
@@ -132,8 +136,8 @@ function prepmodel(;
     activation = [sigmoid, sigmoid_fast, relu, tanh][3],
     n_layers = 3,
     max_n_nodes = 256,
-    n_nodes_droprate = 0.50,
-    dropout_droprate = 0.25,
+    n_nodes_droprate = 0.01,
+    dropout_droprate = 0.50,
 )
     if n_layers == 1
         Chain(Dense(p, 1, activation))
@@ -148,12 +152,12 @@ function prepmodel(;
         for i = 2:(n_layers-1)
             model = if dropout_droprate > 0.0
                 in_dims = model.layers[end-1].out_dims
-                out_dims = Int64(maximum([round(in_dims * n_nodes_droprate), 1]))
+                out_dims = Int64(maximum([round(in_dims * (1.00-n_nodes_droprate)), 1]))
                 dp = model.layers[end].p * dropout_droprate
                 Chain(model, Dense(in_dims, out_dims, activation), Dropout(dp))
             else
                 in_dims = model.layers[end].out_dims
-                out_dims = Int64(maximum([round(in_dims * n_nodes_droprate), 1]))
+                out_dims = Int64(maximum([round(in_dims * (1.00-n_nodes_droprate)), 1]))
                 Chain(model, Dense(in_dims, out_dims, activation))
             end
         end
@@ -184,7 +188,7 @@ function lossϵΣ(model, ps, st, (x, a))
         μ = view(â, (2*n+1):(3*n))
         diff = y - μ
         CUDA.allowscalar() do
-            sqrt(diff' * S_inv * diff)
+            mean(sqrt(diff' * S_inv * diff))
         end
     end
     # Combine both losses
@@ -240,14 +244,14 @@ function trainNN(
     activation = [sigmoid, sigmoid_fast, relu, tanh][3],
     n_layers::Int64 = 3,
     max_n_nodes::Int64 = 256,
-    n_nodes_droprate::Float64 = 0.10,
-    dropout_droprate::Float64 = 0.25,
+    n_nodes_droprate::Float64 = 0.01,
+    dropout_droprate::Float64 = 0.50,
     n_epochs::Int64 = 10_000,
     use_cpu::Bool = false,
     seed::Int64 = 42,
     verbose::Bool = true,
 )
-    # genomes = simulategenomes(n=5, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3); df = tabularise(trials); trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries"];activation = [sigmoid, sigmoid_fast, relu, tanh][3]; n_layers = 3; max_n_nodes = 256; n_nodes_droprate = 0.50; dropout_droprate = 0.25; n_epochs = 1_000; use_cpu = false; seed=42;  verbose::Bool = true; idx_training = sort(sample(1:nrow(df), Int(round(0.9*nrow(df))), replace=false)); idx_validation = filter(x -> !(x ∈ idx_training), 1:nrow(df));
+    # genomes = simulategenomes(n=5, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3); df = tabularise(trials); trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries"];activation = [sigmoid, sigmoid_fast, relu, tanh][3]; n_layers = 3; max_n_nodes = 256; n_nodes_droprate = 0.00; dropout_droprate = 0.00; n_epochs = 1_000; use_cpu = false; seed=42;  verbose::Bool = true; idx_training = sort(sample(1:nrow(df), Int(round(0.9*nrow(df))), replace=false)); idx_validation = filter(x -> !(x ∈ idx_training), 1:nrow(df));
     # # y_orig, y_min_origin, y_max_orig, X_orig, X_vars_orig, X_labels_orig = prepinputs(df = df, varex = varex, trait_id = trait_id, verbose=verbose)
     # # n_orig = Int(size(X_orig, 1) / 3)
     # # b_orig = rand(Float16, size(X_orig, 2))
@@ -334,7 +338,12 @@ function trainNN(
     a = dev(reshape(y, 1, n))
     ps, st = Lux.setup(rng, model) |> dev # ps => parameters => weights and biases; st => state variable
     ## First construct a TrainState
-    train_state = Lux.Training.TrainState(model, ps, st, Optimisers.Adam(0.0001f0))
+    # train_state = Lux.Training.TrainState(model, ps, st, Optimisers.Adam(0.0001f0))
+    # train_state = Lux.Training.TrainState(model, ps, st, Optimisers.Adam(0.03))
+    # train_state = Lux.Training.TrainState(model, ps, st, Optimisers.NAdam())
+    # train_state = Lux.Training.TrainState(model, ps, st, Optimisers.RAdam())
+    train_state = Lux.Training.TrainState(model, ps, st, Optimisers.AdaMax())
+    # train_state = Lux.Training.TrainState(model, ps, st, Optimisers.SGD(0.01f0))
     ### Train
     Lux.trainmode(st) # not really required as the default is training mode, this is more for debugging with metrics calculations below
     if verbose
@@ -534,7 +543,7 @@ if false
         # i = 1
         rng = Random.seed!(i)
         n_traits = 1
-        genomes = simulategenomes(n=10, l=1_000, seed=i); trials, simulated_effects = simulatetrials(genomes = genomes, f_add_dom_epi = rand(rng, n_traits, 3), proportion_of_variance = rand(rng, 9, n_traits), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3, seed=i); 
+        genomes = simulategenomes(n=20, l=1_000, seed=i); trials, simulated_effects = simulatetrials(genomes = genomes, f_add_dom_epi = rand(rng, n_traits, 3), proportion_of_variance = rand(rng, 9, n_traits), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3, seed=i); 
         df = tabularise(trials); trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries"];activation = [sigmoid, sigmoid_fast, relu, tanh][3]; n_layers = 3; max_n_nodes = 256; n_nodes_droprate = 0.50; dropout_droprate = 0.25; n_epochs = 1_000; use_cpu = false; seed=42;  verbose::Bool = true;
         # vt = var(df.trait_1)
         # df.trait_1 += rand(Normal(0.0, sqrt(1.5*vt)), nrow(df))
@@ -565,8 +574,11 @@ if false
                         trait_id=trait_id, 
                         idx_validation=partitionings[string("rep", r, "|fold", f)],
                         varex=varex,
-                        n_epochs=1_000,
+                        n_epochs=10_000,
                         n_layers=3,
+                        max_n_nodes=1_000,
+                        n_nodes_droprate=0.00,
+                        dropout_droprate=0.00,
                         verbose=true,
                     )
                     dl["stats"]
