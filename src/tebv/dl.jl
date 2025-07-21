@@ -92,6 +92,9 @@ function prepinputs(; df::DataFrame, varex::Vector{String}, trait_id::String, ve
     y = (y .- y_min) ./ (y_max - y_min)
     X, X_vars, X_labels = makex(df = df[idx, :], varex=varex, verbose=verbose)
     n, p = size(X)
+    
+    # TODO: consider SparseArrays.jl
+    
     y = vcat(
         y, 
         zeros(n), 
@@ -137,7 +140,7 @@ function prepmodel(;
     n_layers = 3,
     max_n_nodes = 256,
     n_nodes_droprate = 0.01,
-    dropout_droprate = 0.50,
+    dropout_droprate = 0.01,
 )
     if n_layers == 1
         Chain(Dense(p, 1, activation))
@@ -178,7 +181,7 @@ function lossϵΣ(model, ps, st, (x, a))
     y = view(a, 1:n)
     ŷ = view(â, 1:n)
     # Calculate MSE loss for the trait predictions
-    loss_y = sum((ŷ .- y) .^ 2)
+    loss_y = mean((ŷ .- y) .^ 2)
     # Calculate loss for covariance structure
     # using Mahalanobis distance: sqrt((y-μ)ᵀΣ⁻¹(y-μ))
     loss_S = begin
@@ -245,7 +248,7 @@ function trainNN(
     n_layers::Int64 = 3,
     max_n_nodes::Int64 = 256,
     n_nodes_droprate::Float64 = 0.01,
-    dropout_droprate::Float64 = 0.50,
+    dropout_droprate::Float64 = 0.01,
     n_epochs::Int64 = 10_000,
     use_cpu::Bool = false,
     seed::Int64 = 42,
@@ -525,9 +528,15 @@ function trainNN(
     )
 end
 
+# TODO: build the following:
+#   1. automatic cross-validation to avoid over-fitting
+#   2. automatic hyperparameter optimisation
+
 # Testing trainNN
 if false
-    n_iter = 1
+    n_iter = 10
+    n_replications = 1
+    n_folds = 5
     iter = []
     rep = []
     fold = []
@@ -550,8 +559,6 @@ if false
         # rename!(df, "yield_biomass_g" =>"trait_1")
         df = filter(x -> !ismissing(x.trait_1), df)
         n = nrow(df)
-        n_replications = 2
-        n_folds = 5
         n_samples = Int(floor(n/n_folds))
         partitionings::Dict{String, Vector{Int64}} = Dict()
         for r in 1:n_replications
@@ -592,8 +599,6 @@ if false
                         dl["stats_validation"][:R²],
                     )
                 end
-                @show dl
-
                 # LMM
                 lmm = begin
                     idx_validation = sort(partitionings[string("rep", r, "|fold", f)])
@@ -621,6 +626,7 @@ if false
                         R²,
                     )
                 end
+                @show dl
                 @show lmm
                 # Collect metrics
                 push!(iter, i)
@@ -637,7 +643,7 @@ if false
             end
         end
     end
-    DataFrame(
+    perf = DataFrame(
         iter=iter,
         rep=rep,
         fold=fold,
