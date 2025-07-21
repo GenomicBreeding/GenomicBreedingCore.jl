@@ -135,41 +135,27 @@ function prepinputs(; df::DataFrame, varex::Vector{String}, trait_id::String, ve
 end
 
 function prepmodel(;
-    p, 
+    input_dims::Int64,
+    hidden_dims::Int64,
     activation = [sigmoid, sigmoid_fast, relu, tanh][3],
-    n_layers = 3,
-    max_n_nodes = 256,
-    n_nodes_droprate = 0.01,
-    dropout_droprate = 0.01,
+    output_dims::Int64 = 1,
+    n_hidden_layers::Int64 = 3,
+    dropout_rate::Float64 = 0.1,
 )
-    if n_layers == 1
-        Chain(Dense(p, 1, activation))
-    elseif n_layers == 2
-        Chain(Dense(p, max_n_nodes, activation), Dense(max_n_nodes, 1, activation))
-    else
-        model = if dropout_droprate > 0.0
-            Chain(Dense(p, max_n_nodes, activation), Dropout(dropout_droprate))
-        else
-            Chain(Dense(p, max_n_nodes, activation))
+    @compact(
+        input=Dense(input_dims, hidden_dims),
+        hidden=[Dense(hidden_dims, hidden_dims) for i in 1:n_hidden_layers],
+        output=Dense(hidden_dims, output_dims),
+        activation=activation,
+        dropout=Dropout(dropout_rate),
+    ) do x
+        layers = activation.(input(x))
+        for W in hidden
+            W = activation.(W(layers))
+            W = dropout(W)
         end
-        for i = 2:(n_layers-1)
-            model = if dropout_droprate > 0.0
-                in_dims = model.layers[end-1].out_dims
-                out_dims = Int64(maximum([round(in_dims * (1.00-n_nodes_droprate)), 1]))
-                dp = model.layers[end].p * dropout_droprate
-                Chain(model, Dense(in_dims, out_dims, activation), Dropout(dp))
-            else
-                in_dims = model.layers[end].out_dims
-                out_dims = Int64(maximum([round(in_dims * (1.00-n_nodes_droprate)), 1]))
-                Chain(model, Dense(in_dims, out_dims, activation))
-            end
-        end
-        in_dims = if dropout_droprate > 0.0
-            model.layers[end-1].out_dims
-        else
-            in_dims = model.layers[end].out_dims
-        end
-        Chain(model, Dense(in_dims, 1, activation))
+        out = output(layers)
+        @return out
     end
 end
 
@@ -245,16 +231,21 @@ function trainNN(
     idx_training::Union{Vector{Int64}, Nothing} = nothing,
     idx_validation::Union{Vector{Int64}, Nothing} = nothing,
     activation = [sigmoid, sigmoid_fast, relu, tanh][3],
-    n_layers::Int64 = 3,
-    max_n_nodes::Int64 = 256,
-    n_nodes_droprate::Float64 = 0.01,
-    dropout_droprate::Float64 = 0.01,
+    optimiser = [
+        Optimisers.Adam(0.0001f0),
+        Optimisers.NAdam(),
+        Optimisers.RAdam(),
+        Optimisers.AdaMax(),
+    ][4],
+    n_hidden_layers::Int64 = 3,
+    hidden_dims::Int64 = 256,
+    dropout_rate::Float64 = 0.01,
     n_epochs::Int64 = 10_000,
     use_cpu::Bool = false,
     seed::Int64 = 42,
     verbose::Bool = true,
 )
-    # genomes = simulategenomes(n=5, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3); df = tabularise(trials); trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries"];activation = [sigmoid, sigmoid_fast, relu, tanh][3]; n_layers = 3; max_n_nodes = 256; n_nodes_droprate = 0.00; dropout_droprate = 0.00; n_epochs = 1_000; use_cpu = false; seed=42;  verbose::Bool = true; idx_training = sort(sample(1:nrow(df), Int(round(0.9*nrow(df))), replace=false)); idx_validation = filter(x -> !(x ∈ idx_training), 1:nrow(df));
+    # genomes = simulategenomes(n=5, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3); df = tabularise(trials); trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries"];activation = [sigmoid, sigmoid_fast, relu, tanh][3]; n_hidden_layers = 3; hidden_dims = 256; dropout_rate = 0.00; n_epochs = 1_000; use_cpu = false; seed=42;  verbose::Bool = true; idx_training = sort(sample(1:nrow(df), Int(round(0.9*nrow(df))), replace=false)); idx_validation = filter(x -> !(x ∈ idx_training), 1:nrow(df)); optimiser = [Optimisers.Adam(0.0001f0),Optimisers.NAdam(),Optimisers.RAdam(),Optimisers.AdaMax(),][4]
     # # y_orig, y_min_origin, y_max_orig, X_orig, X_vars_orig, X_labels_orig = prepinputs(df = df, varex = varex, trait_id = trait_id, verbose=verbose)
     # # n_orig = Int(size(X_orig, 1) / 3)
     # # b_orig = rand(Float16, size(X_orig, 2))
@@ -323,12 +314,12 @@ function trainNN(
     end
     n, p = size(X)
     model = prepmodel(
-        p = p, 
-        activation = activation, 
-        n_layers = n_layers, 
-        max_n_nodes = max_n_nodes, 
-        n_nodes_droprate = n_nodes_droprate, 
-        dropout_droprate = dropout_droprate,
+        input_dims=p,
+        hidden_dims=hidden_dims,
+        activation=activation,
+        output_dims=1,
+        n_hidden_layers=n_hidden_layers,
+        dropout_rate=dropout_rate,
     )
     dev = if use_cpu
         cpu_device()
@@ -341,14 +332,8 @@ function trainNN(
     a = dev(reshape(y, 1, n))
     ps, st = Lux.setup(rng, model) |> dev # ps => parameters => weights and biases; st => state variable
     ## First construct a TrainState
-    # train_state = Lux.Training.TrainState(model, ps, st, Optimisers.Adam(0.0001f0))
-    # train_state = Lux.Training.TrainState(model, ps, st, Optimisers.Adam(0.03))
-    # train_state = Lux.Training.TrainState(model, ps, st, Optimisers.NAdam())
-    # train_state = Lux.Training.TrainState(model, ps, st, Optimisers.RAdam())
-    train_state = Lux.Training.TrainState(model, ps, st, Optimisers.AdaMax())
-    # train_state = Lux.Training.TrainState(model, ps, st, Optimisers.SGD(0.01f0))
+    training_state = Lux.Training.TrainState(model, ps, st, optimiser)
     ### Train
-    Lux.trainmode(st) # not really required as the default is training mode, this is more for debugging with metrics calculations below
     if verbose
         pb = ProgressMeter.Progress(n_epochs, desc = "Training progress")
     end
@@ -356,11 +341,11 @@ function trainNN(
     l = []
     for iter = 1:n_epochs
         # Compute the gradients
-        gs, loss, stats, train_state = Lux.Training.compute_gradients(AutoZygote(), lossϵΣ, (x, a), train_state)
+        gradients, loss, stats, training_state = Lux.Training.compute_gradients(AutoZygote(), lossϵΣ, (x, a), training_state)
         ## Optimise
-        train_state = Training.apply_gradients!(train_state, gs)
+        training_state = Training.apply_gradients!(training_state, gradients)
         # # Alternatively, compute gradients and optimise with a single call
-        # _, loss, _, train_state = Lux.Training.single_train_step!(AutoZygote(), MSELoss(), (x, a), train_state)
+        # _, loss, _, training_state = Lux.Training.single_train_step!(AutoZygote(), MSELoss(), (x, a), training_state)
         if verbose
             ProgressMeter.next!(pb)
         end
@@ -375,8 +360,8 @@ function trainNN(
     if verbose
         CUDA.pool_status()
     end
-    Lux.testmode(st)
-    y_pred, st = Lux.apply(model, x, ps, st);
+    validation_state = Lux.testmode(training_state.states)
+    y_pred, _ = Lux.apply(model, x, ps, validation_state);
     n = Int(length(y_pred) / 3);
     ϕ_pred::Vector{Float16} = y_pred[1, 1:n];
     ϕ_true::Vector{Float16} = a[1, 1:n];
@@ -399,14 +384,14 @@ function trainNN(
         n = length(idx_validation)
         x_validation = dev(X_validation')
         a_validation = dev(reshape(y_validation, 1, 3*n))
-        y_pred_validation, st = Lux.apply(model, x_validation, ps, st);
+        y_pred_validation, _ = Lux.apply(model, x_validation, ps, validation_state);
         ϕ_pred_validation::Vector{Float16} = y_pred_validation[1, 1:n];
         ϕ_true_validation::Vector{Float16} = a_validation[1, 1:n];
         μ_validation::Vector{Float16} = y_pred_validation[1, (2*n+1):(3*n)];
         s_validation::Vector{Float16} = y_pred_validation[1, (n+1):(2*n)];
         Σ_validation = Matrix{Float16}(s_validation * s_validation' + diagm(fill(0.1, n)));
-        while !isposdef(Σ)
-            Σ += Float16.(diagm(0.01 * ones(n)))
+        while !isposdef(Σ_validation)
+            Σ_validation += Float16.(diagm(0.01 * ones(n)))
         end
         goodnessoffit(
             ϕ_true=ϕ_true_validation,
@@ -491,7 +476,7 @@ function trainNN(
         end
         # Predict
         x_new = dev(X_new')
-        y_marginals, st = Lux.apply(model, x_new, ps, st)
+        y_marginals, _ = Lux.apply(model, x_new, ps, validation_state)
         # Extract
         ϕ_marginals::Vector{Float16} = y_marginals[1, 1:m]
         s = y_marginals[1, (m+1):(2*m)]
@@ -513,12 +498,12 @@ function trainNN(
         ProgressMeter.finish!(pb)
     end
     # # Model I/O
-    # @save "temp_model.jld2" ps st
-    # @load "temp_model.jld2" ps st
+    # @save "temp_model.jld2" training_state.parameters training_state.states
+    # @load "temp_model.jld2" training_state.parameters training_state.states
     return Dict(
         "model" => model,
-        "parameters" => ps,
-        "state" => st,
+        "parameters" => training_state.parameters,
+        "state" => training_state.states,
         "values" => ϕ_pred * (y_max - y_min) .+ y_min,
         "means" => μ,
         "covariances" => Σ,
@@ -528,9 +513,205 @@ function trainNN(
     )
 end
 
-# TODO: build the following:
-#   1. automatic cross-validation to avoid over-fitting
-#   2. automatic hyperparameter optimisation
+
+function cvNN(
+    df::DataFrame;
+    trait_id::String,
+    varex::Vector{String},
+    n_replications::Int64 = 5,
+    n_folds::Int64 = 5,
+    activation = [sigmoid, sigmoid_fast, relu, tanh][3],
+    optimiser = [Optimisers.Adam(0.0001f0), Optimisers.NAdam(), Optimisers.RAdam(), Optimisers.AdaMax()][4],
+    n_epochs::Int64 = 10_000,
+    n_hidden_layers::Int64 = 3,
+    hidden_dims::Int64 = 256,
+    dropout_rate::Float64 = 0.01,
+    use_cpu::Bool = false,
+    seed::Int64 = 42,
+    verbose::Bool = true,
+)::Tuple{Float64, Float64}
+    # genomes = simulategenomes(n=20, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3); df = tabularise(trials); trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries"]; n_replications=3; n_folds=5; activation = [sigmoid, sigmoid_fast, relu, tanh][3]; n_hidden_layers = 3; hidden_dims = 256; dropout_rate = 0.00; n_epochs = 1_000; use_cpu = false; seed=42;  verbose::Bool = true;
+    ϕ = df[!, trait_id]
+    if sum(ismissing.(ϕ) .|| isnan.(ϕ) .|| isinf.(ϕ)) > 0
+        throw(ArgumentError("Missing data in trait: $trait_id is not permitted. Please filter-out missing data first as these may potentially conflict with the supplied training and/or validation set indexes."))
+    end
+    n = nrow(df)
+    if (n / n_folds) < 1
+        throw(ArgumentError("There are less observations ($n) than the requested number of cross-validation folds ($n_folds). Please consider reducing the number of folds."))
+    end
+    n_samples = Int(floor(n/n_folds))
+    partitionings::Dict{String, Vector{Int64}} = Dict()
+    rng = Random.seed!(seed)
+    for r in 1:n_replications
+        # r = 1
+        idx = sample(rng, 1:n, n, replace=false)
+        for f in 1:n_folds
+            # f = 1
+            ini = (f-1)*n_samples+1
+            fin = f < n_folds ? f*n_samples[1] : n
+            partitionings[string("rep", r, "|fold", f)] = idx[ini:fin]
+        end
+    end
+    cv_metrics = []
+    if verbose
+        pb = ProgressMeter.Progress(n_replications*n_folds, desc="Cross-validation ($n_replications-replications x $n_folds-folds):")
+    end
+    for r in 1:n_replications
+        for f in 1:n_folds
+            # r=f=1
+            dl = trainNN(
+                df, 
+                trait_id=trait_id, 
+                idx_validation=partitionings[string("rep", r, "|fold", f)],
+                varex=varex,
+                activation=activation,
+                optimiser=optimiser,
+                n_epochs=n_epochs,
+                n_hidden_layers=n_hidden_layers,
+                hidden_dims=hidden_dims,
+                dropout_rate=dropout_rate,
+                use_cpu=use_cpu,
+                seed=parse(Int64, string(r, f)),
+                verbose=false,
+            )
+            push!(cv_metrics, dl["stats_validation"])
+            if verbose
+                ProgressMeter.next!(pb)
+            end
+        end
+    end
+    if verbose
+        ProgressMeter.finish!(pb)
+    end
+    R² = mean([d[:R²] for d in cv_metrics])
+    R²_std = std([d[:R²] for d in cv_metrics])
+    (R², R²_std)
+end
+
+function htNN(
+    df::DataFrame;
+    trait_id::String,
+    varex::Vector{String},
+    n_replications::Int64 = 1,
+    n_folds::Int64 = 2,
+    activation::Any = [sigmoid, sigmoid_fast, relu, tanh][3],
+    optimiser = nothing,
+    n_epochs::Union{Nothing, Int64} = nothing,
+    n_hidden_layers::Union{Nothing, Int64} = nothing,
+    hidden_dims::Union{Nothing, Int64} = nothing,
+    dropout_rate::Union{Nothing, Float64} = nothing,
+    use_cpu::Bool = false,
+    verbose::Bool = true,
+)
+    # genomes = simulategenomes(n=20, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3); df = tabularise(trials); trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries"]; n_replications=1; n_folds=2; activation = [sigmoid, sigmoid_fast, relu, tanh][3]; optimiser = nothing; use_cpu = false; seed=42;  verbose::Bool = true; n_hidden_layers = nothing; hidden_dims = nothing; dropout_rate = nothing; n_epochs = nothing;
+    choices_activation = if !isnothing(activation)
+        [activation]
+    else
+        [sigmoid, sigmoid_fast, relu, tanh]
+    end
+    choices_optimiser = if !isnothing(optimiser)
+        [optimiser]
+    else
+        [
+            Optimisers.Adam(),
+            Optimisers.NAdam(),
+            Optimisers.RAdam(),
+            Optimisers.AdaMax(),
+        ]
+    end
+    choices_n_epochs = if !isnothing(n_epochs)
+        n_epochs
+    else
+        [1_000, 5_000, 7_000, 10_000]
+    end
+    choices_n_hidden_layers = if !isnothing(n_hidden_layers)
+        [n_hidden_layers]
+    else
+        [2, 3, 4, 5]
+    end
+    choices_hidden_dims = if !isnothing(hidden_dims)
+        [hidden_dims]
+    else
+        [2^8, 2^9, 2^10, 2^11]
+    end
+    choices_dropout_rate = if !isnothing(dropout_rate)
+        [dropout_rate]
+    else
+        [0.0, 0.001, 0.01, 0.1]
+    end
+    df_stats = DataFrame(
+        id=collect(1:(
+            length(choices_activation)*
+            length(choices_optimiser)*
+            length(choices_n_epochs)*
+            length(choices_n_hidden_layers)*
+            length(choices_hidden_dims)*
+            length(choices_dropout_rate)
+        )),
+        activation="",
+        optimiser="",
+        n_epochs=NaN,
+        n_hidden_layers=NaN,
+        hidden_dims=NaN,
+        dropout_rate=NaN,
+        R²=NaN,
+        R²_std=NaN,
+    )
+    i = 0
+    if verbose
+        pb = ProgressMeter.Progress(nrow(df_stats), desc="Fine-tuning hyperparameters")
+    end
+     for activation in choices_activation
+        for optimiser in choices_optimiser
+            for n_epochs in choices_n_epochs
+                for n_hidden_layers in choices_n_hidden_layers
+                    for hidden_dims in choices_hidden_dims
+                        for dropout_rate in choices_dropout_rate
+                            # activation=choices_activation[1]; optimiser=choices_optimiser[1]; n_epochs=choices_n_epochs[1]; n_hidden_layers=choices_n_hidden_layers[1]; hidden_dims=choices_hidden_dims[1]; dropout_rate=choices_dropout_rate[1];
+                            stats = cvNN(
+                                df,
+                                trait_id=trait_id,
+                                varex=varex,
+                                n_replications=n_replications,
+                                n_folds=n_folds,
+                                activation=activation,
+                                optimiser=optimiser,
+                                n_epochs=n_epochs,
+                                n_hidden_layers=n_hidden_layers,
+                                hidden_dims=hidden_dims,
+                                dropout_rate=dropout_rate,
+                                use_cpu=use_cpu,
+                                seed=i,
+                                verbose=false,
+                            )
+                            i += 1
+                            df_stats.activation[i] = string(activation)
+                            df_stats.optimiser[i] = string(optimiser)
+                            df_stats.n_hidden_layers[i] = Float64(n_hidden_layers)
+                            df_stats.hidden_dims[i] = Float64(hidden_dims)
+                            df_stats.dropout_rate[i] = dropout_rate
+                            df_stats.n_epochs[i] = n_epochs
+                            df_stats.R²[i] = stats[1]
+                            df_stats.R²_std[i] = stats[2]
+                            if verbose
+                                ProgressMeter.next!(pb)
+                            end
+                        end
+                    end
+                    @show combine(groupby(df_stats, [:n_hidden_layers]), :R² => (x -> mean(skipmissing(x))))
+                end
+                @show combine(groupby(df_stats, [:n_epochs]), :R² => (x -> mean(skipmissing(x))))
+            end
+            @show combine(groupby(df_stats, [:optimiser]), :R² => (x -> mean(skipmissing(x))))
+        end
+        @show combine(groupby(df_stats, [:activation]), :R² => (x -> mean(skipmissing(x))))
+    end
+    if verbose
+        ProgressMeter.finish!(pb)
+    end
+    # Grid search cross-validated coefficients of determination (R²) and its standard deviation
+    df_stats
+end
 
 # Testing trainNN
 if false
@@ -553,7 +734,7 @@ if false
         rng = Random.seed!(i)
         n_traits = 1
         genomes = simulategenomes(n=20, l=1_000, seed=i); trials, simulated_effects = simulatetrials(genomes = genomes, f_add_dom_epi = rand(rng, n_traits, 3), proportion_of_variance = rand(rng, 9, n_traits), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3, seed=i); 
-        df = tabularise(trials); trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries"];activation = [sigmoid, sigmoid_fast, relu, tanh][3]; n_layers = 3; max_n_nodes = 256; n_nodes_droprate = 0.50; dropout_droprate = 0.25; n_epochs = 1_000; use_cpu = false; seed=42;  verbose::Bool = true;
+        df = tabularise(trials); trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries"];activation = [sigmoid, sigmoid_fast, relu, tanh][3]; n_hidden_layers = 3; hidden_dims = 256; dropout_rate = 0.50; n_epochs = 1_000; use_cpu = false; seed=42;  verbose::Bool = true;
         # vt = var(df.trait_1)
         # df.trait_1 += rand(Normal(0.0, sqrt(1.5*vt)), nrow(df))
         # rename!(df, "yield_biomass_g" =>"trait_1")
@@ -581,11 +762,10 @@ if false
                         trait_id=trait_id, 
                         idx_validation=partitionings[string("rep", r, "|fold", f)],
                         varex=varex,
-                        n_epochs=10_000,
-                        n_layers=3,
-                        max_n_nodes=1_000,
-                        n_nodes_droprate=0.00,
-                        dropout_droprate=0.00,
+                        n_epochs=7_000,
+                        n_hidden_layers=3,
+                        hidden_dims=1_000,
+                        dropout_rate=0.00,
                         verbose=true,
                     )
                     dl["stats"]
@@ -664,17 +844,16 @@ function analyseviaNN(
     traits::Vector{String};
     other_covariates::Union{Vector{String},Nothing} = nothing,
     activation = [sigmoid, sigmoid_fast, relu, tanh][3],
-    n_layers::Int64 = 3,
-    max_n_nodes::Int64 = 256,
-    n_nodes_droprate::Float64 = 0.50,
-    dropout_droprate::Float64 = 0.25,
+    n_hidden_layers::Int64 = 3,
+    hidden_dims::Int64 = 256,
+    dropout_rate::Float64 = 0.50,
     n_epochs::Int64 = 1_000,
     use_cpu::Bool = false,
     seed::Int64 = 42,
     verbose::Bool = true,
 )::Nothing
     # genomes = simulategenomes(n=10, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, sparsity=0.1, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3); traits = ["trait_1", "trait_2"]; other_covariates=["trait_3"]; 
-    # activation = [sigmoid, sigmoid_fast, relu, tanh][3]; n_layers = 3; max_n_nodes = 256; n_nodes_droprate = Float16(0.50); dropout_droprate = Float16(0.25); n_epochs = 10_000; use_cpu = false; seed=42;  verbose::Bool = true;
+    # activation = [sigmoid, sigmoid_fast, relu, tanh][3]; n_hidden_layers = 3; hidden_dims = 256; dropout_rate = Float16(0.50); n_epochs = 10_000; use_cpu = false; seed=42;  verbose::Bool = true;
     # Check arguments
     if !checkdims(trials)
         error("The Trials struct is corrupted ☹.")
@@ -736,10 +915,9 @@ function analyseviaNN(
             trait_id=trait_id,
             varex=varex,
             activation=activation,
-            n_layers=n_layers,
-            max_n_nodes=max_n_nodes,
-            n_nodes_droprate=n_nodes_droprate,
-            dropout_droprate=dropout_droprate,
+            n_hidden_layers=n_hidden_layers,
+            hidden_dims=hidden_dims,
+            dropout_rate=dropout_rate,
             n_epochs=n_epochs,
             use_cpu=use_cpu,
             seed=seed,
