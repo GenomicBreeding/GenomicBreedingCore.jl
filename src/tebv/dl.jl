@@ -229,7 +229,7 @@ function trainNN(
     optimiser = [
         Optimisers.Adam(),
         Optimisers.NAdam(),
-        Optimisers.RAdam(),
+        Optimisers.OAdam(),
         Optimisers.AdaMax(),
     ][1],
     n_hidden_layers::Int64 = 3,
@@ -240,7 +240,7 @@ function trainNN(
     seed::Int64 = 42,
     verbose::Bool = true,
 )
-    # genomes = simulategenomes(n=20, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3); df = tabularise(trials); trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries"];activation = [sigmoid, sigmoid_fast, relu, tanh][3]; n_hidden_layers = 3; hidden_dims = 256; dropout_rate = 0.00; n_epochs = 10_000; use_cpu = false; seed=42;  verbose::Bool = true; idx_training = sort(sample(1:nrow(df), Int(round(0.9*nrow(df))), replace=false)); idx_validation = filter(x -> !(x ∈ idx_training), 1:nrow(df)); optimiser = [Optimisers.Adam(),Optimisers.NAdam(),Optimisers.RAdam(),Optimisers.AdaMax(),][2]
+    # genomes = simulategenomes(n=20, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3); df = tabularise(trials); trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries"];activation = [sigmoid, sigmoid_fast, relu, tanh][3]; n_hidden_layers = 3; hidden_dims = 256; dropout_rate = 0.00; n_epochs = 10_000; use_cpu = false; seed=42;  verbose::Bool = true; idx_training = sort(sample(1:nrow(df), Int(round(0.9*nrow(df))), replace=false)); idx_validation = filter(x -> !(x ∈ idx_training), 1:nrow(df)); optimiser = [Optimisers.Adam(),Optimisers.NAdam(),Optimisers.OAdam(),Optimisers.AdaMax(),][2]
     # # y_orig, y_min_origin, y_max_orig, X_orig, X_vars_orig, X_labels_orig = prepinputs(df = df, varex = varex, trait_id = trait_id, verbose=verbose)
     # # n_orig = Int(size(X_orig, 1) / 3)
     # # b_orig = rand(Float64, size(X_orig, 2))
@@ -348,6 +348,9 @@ function trainNN(
         push!(training_loss, loss)
         push!(training_rmse, sqrt(mean(ϵt.^2)))
         push!(validation_rmse, sqrt(mean(ϵv.^2)))
+
+
+        # TODO: make this better...
         if length(validation_rmse) > 100
             if mean(validation_rmse[(end-100):(end-1)]) < validation_rmse[end]
                 println("Stopping early because validation RMSE is increasing!")
@@ -358,6 +361,9 @@ function trainNN(
                 break
             end
         end
+
+
+
     end
     if verbose
         ProgressMeter.finish!(pb)
@@ -531,7 +537,7 @@ function optimNN(
         [
             Optimisers.Adam(),
             Optimisers.NAdam(),
-            Optimisers.RAdam(),
+            Optimisers.OAdam(),
             Optimisers.AdaMax(),
         ]
     end
@@ -591,7 +597,7 @@ function optimNN(
     n = nrow(df)
     n_validation  = Int(round(validation_rate*n))
     for (i, params) in enumerate(params_drawn)
-        # i = 2; params = params_drawn[i]
+        # i = 19; params = params_drawn[i]
         @show i
         @show activation, optimiser, n_epochs, n_hidden_layers, hidden_dims, dropout_rate = params
         idx_validation = sort(sample(Random.seed!(i), 1:n, n_validation, replace=false))
