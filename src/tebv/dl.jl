@@ -134,10 +134,11 @@ function lossϵΣ(model, ps, st, (x, y))
     loss_y = ϵ' * ϵ
     # Calculate loss for covariance structure
     # using the square of the Mahalanobis distance: (y-μ)ᵀΣ⁻¹(y-μ)
-    # TODO: try to use the pdf of MVNormal instead of this seemingly simplistic distance metric because is can improve by reducing ϵ and without varying Σ
+    # TODO: try fitting μ separately and S as equal to (1/(n-1)) * (μ-E(μ)) * (μ-E(μ))'
     loss_S = begin
         S = (view(ŷ, 2:m, 1:n)' * view(ŷ, 2:m, 1:n)) + CuArray{Float32}(diagm(fill(0.1, n)))
-        ϵ' * inv(S) * ϵ
+        # ϵ' * inv(S) * ϵ
+        abs(det(S))
     end
     # Combine both losses
     loss = loss_y + loss_S
