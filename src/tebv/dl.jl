@@ -136,9 +136,11 @@ function lossϵΣ(model, ps, st, (x, y))
     # using the square of the Mahalanobis distance: (y-μ)ᵀΣ⁻¹(y-μ)
     # TODO: try fitting μ separately and S as equal to (1/(n-1)) * (μ-E(μ)) * (μ-E(μ))'
     loss_S = begin
-        S = (view(ŷ, 2:m, 1:n)' * view(ŷ, 2:m, 1:n)) + CuArray{Float32}(diagm(fill(0.1, n)))
-        # ϵ' * inv(S) * ϵ
-        abs(det(S))
+        μ = view(ŷ, 2, 1:n)
+        μ_hat = μ' * CuArray{Float32}(ones(n, 1))
+        S = (1/(n-1)) * (μ-μ_hat) * (μ-μ_hat)' + CuArray{Float32}(diagm(fill(0.1, n)))
+        ϵ_S = view(ŷ, 1, 1:n) - μ
+        ϵ_S' * inv(S) * ϵ_S
     end
     # Combine both losses
     loss = loss_y + loss_S
