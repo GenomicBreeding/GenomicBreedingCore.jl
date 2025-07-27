@@ -143,7 +143,7 @@ function lossϵΣ(model, ps, st, (x, y))
             n
         ))
         S = (1/(n-1)) * (μ-û) * (μ-û)' + CuArray{Float32}(diagm(fill(0.1, n)))
-        ϵ_S = view(ŷ, 1, 1:n) - μ
+        ϵ_S = view(y, 1, 1:n) - μ
         ϵ_S' * inv(S) * ϵ_S
     end
     # Combine both losses
