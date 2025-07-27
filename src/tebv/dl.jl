@@ -138,7 +138,7 @@ function lossϵΣ(model, ps, st, (x, y))
         μ = view(ŷ, 2, 1:n)
         û = CuArray{Float32}(fill(
             CUDA.allowscalar() do
-                (μ' * CuArray{Float32}(ones(n, 1)))[1]
+                (μ' * CuArray{Float32}(ones(n, 1)))[1]/n
             end,
             n
         ))
