@@ -93,7 +93,7 @@ function prepinputs(; df::DataFrame, varex::Vector{String}, trait_id::String, ve
     n, p = size(X)
     Y::Matrix{Float64} = hcat(
         (y .- y_min) ./ (y_max - y_min), 
-        zeros(n, p), 
+        zeros(n, 1), 
     )
     (Y, y_min, y_max, X, X_vars, X_labels)
 end
@@ -134,11 +134,15 @@ function lossϵΣ(model, ps, st, (x, y))
     loss_y = ϵ' * ϵ
     # Calculate loss for covariance structure
     # using the square of the Mahalanobis distance: (y-μ)ᵀΣ⁻¹(y-μ)
-    # TODO: try fitting μ separately and S as equal to (1/(n-1)) * (μ-E(μ)) * (μ-E(μ))'
     loss_S = begin
         μ = view(ŷ, 2, 1:n)
-        μ_hat = μ' * CuArray{Float32}(ones(n, 1))
-        S = (1/(n-1)) * (μ-μ_hat) * (μ-μ_hat)' + CuArray{Float32}(diagm(fill(0.1, n)))
+        û = CuArray{Float32}(fill(
+            CUDA.allowscalar() do
+                (μ' * CuArray{Float32}(ones(n, 1)))[1]
+            end,
+            n
+        ))
+        S = (1/(n-1)) * (μ-û) * (μ-û)' + CuArray{Float32}(diagm(fill(0.1, n)))
         ϵ_S = view(ŷ, 1, 1:n) - μ
         ϵ_S' * inv(S) * ϵ_S
     end
@@ -150,9 +154,10 @@ end
 function extractpredictions(Ŷ)
     n = size(Ŷ, 2)
     ŷ = Vector(Ŷ[1, :])
-    Ŝ = Matrix(Ŷ[2:end, :])
-    Ŝ = (Ŝ' * Ŝ) + diagm(fill(0.1, n))
-    (ŷ, Ŝ)
+    û = Matrix(Ŷ[2:end, :])[1, :]
+    ū = mean(û)
+    Ŝ = ((1/(n-1)) * (û .- ū) * (û .- ū)') + diagm(fill(0.1, n))
+    (ŷ, Ŝ, û)
 end
 
 function goodnessoffit(;
@@ -228,7 +233,7 @@ function trainNN(
     seed::Int64 = 42,
     verbose::Bool = true,
 )
-    # genomes = simulategenomes(n=20, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3); df = tabularise(trials); trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries"];activation = [sigmoid, sigmoid_fast, relu, tanh][3]; n_hidden_layers = 3; hidden_dims = 256; dropout_rate = 0.00; n_epochs = 10_000; use_cpu = false; seed=42;  verbose::Bool = true; idx_training = sort(sample(1:nrow(df), Int(round(0.9*nrow(df))), replace=false)); idx_validation = filter(x -> !(x ∈ idx_training), 1:nrow(df)); optimiser = [Optimisers.Adam(),Optimisers.NAdam(),Optimisers.OAdam(),Optimisers.AdaMax(),][2];
+    # genomes = simulategenomes(n=20, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3); df = tabularise(trials); trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries"];activation = [sigmoid, sigmoid_fast, relu, tanh][3]; n_hidden_layers = 3; hidden_dims = 256; dropout_rate = 0.00; n_epochs = 10_000; use_cpu = false; seed=42;  verbose::Bool = true; idx_training = sort(sample(1:nrow(df), Int(round(0.9*nrow(df))), replace=false)); idx_validation = filter(x -> !(x ∈ idx_training), 1:nrow(df)); optimiser = [Optimisers.Adam(),Optimisers.NAdam(),Optimisers.OAdam(),Optimisers.AdaMax(),][2]; n_patient_epochs=100;
     # # y_orig, y_min_origin, y_max_orig, X_orig, X_vars_orig, X_labels_orig = prepinputs(df = df, varex = varex, trait_id = trait_id, verbose=verbose)
     # # n_orig = Int(size(X_orig, 1) / 3)
     # # b_orig = rand(Float64, size(X_orig, 2))
@@ -363,7 +368,7 @@ function trainNN(
     # Fit stats
     validation_state = Lux.testmode(training_state.states)
     Ŷ, _ = Lux.apply(model, x_training, ps, validation_state)
-    ŷ, Ŝ = extractpredictions(Ŷ)
+    ŷ, Ŝ, û = extractpredictions(Ŷ)
     stats = goodnessoffit(
         ϕ_true=Y_training[:, 1],
         ϕ_pred=Float64.(ŷ),
@@ -371,6 +376,7 @@ function trainNN(
         y_min=y_min,
         Σ=Ŝ,
     )
+    @show cor(Y_training[:, 1], û)
     # Cross-validation
     stats_validation = if length(idx_validation) > 0
         Ŷ_validation, _ = Lux.apply(model, x_validation, ps, validation_state)
