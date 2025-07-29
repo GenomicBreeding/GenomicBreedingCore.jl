@@ -133,18 +133,19 @@ function lossϵΣ(model, ps, st, (x, y))
     # Calculate MSE loss for the trait predictions
     loss_y = ϵ' * ϵ
     # Calculate loss for covariance structure
-    # using the square of the Mahalanobis distance: (y-μ)ᵀΣ⁻¹(y-μ)
+    # using the Mahalanobis distance: (y-μ)ᵀΣ⁻¹(y-μ)
     loss_S = begin
-        μ = view(ŷ, 2, 1:n)
-        û = CuArray{Float32}(fill(
+        û = view(ŷ, 2, 1:n)
+        ū = CuArray{Float32}(fill(
             CUDA.allowscalar() do
-                (μ' * CuArray{Float32}(ones(n, 1)))[1]/n
+                (û' * CuArray{Float32}(ones(n, 1)))[1]/n
             end,
             n
         ))
-        S = (1/(n-1)) * (μ-û) * (μ-û)' + CuArray{Float32}(diagm(fill(0.1, n)))
-        ϵ_S = view(y, 1, 1:n) - μ
-        ϵ_S' * inv(S) * ϵ_S
+        Ŝ = (1/(n-1)) * (û-ū) * (û-ū)'
+        Ŝ = Ŝ + CuArray{Float32}(diagm(fill(maximum(Ŝ), n)))
+        ϵ_Ŝ = view(y, 1, 1:n) - û
+        sqrt(ϵ_Ŝ' * inv(Ŝ) * ϵ_Ŝ)
     end
     # Combine both losses
     loss = loss_y + loss_S
@@ -156,7 +157,8 @@ function extractpredictions(Ŷ)
     ŷ = Vector(Ŷ[1, :])
     û = Matrix(Ŷ[2:end, :])[1, :]
     ū = mean(û)
-    Ŝ = ((1/(n-1)) * (û .- ū) * (û .- ū)') + diagm(fill(0.1, n))
+    Ŝ = (1/(n-1)) * (û .- ū) * (û .- ū)'
+    Ŝ = Matrix(Symmetric(Ŝ + diagm(fill(maximum(Ŝ), n))))
     (ŷ, Ŝ, û)
 end
 
@@ -376,14 +378,13 @@ function trainNN(
         y_min=y_min,
         Σ=Ŝ,
     )
-    @show cor(Y_training[:, 1], û)
     # Cross-validation
     stats_validation = if length(idx_validation) > 0
         Ŷ_validation, _ = Lux.apply(model, x_validation, ps, validation_state)
-        ŷ_validaton, Ŝ_validation = extractpredictions(Ŷ_validation)
+        ŷ_validation, Ŝ_validation = extractpredictions(Ŷ_validation)
         goodnessoffit(
             ϕ_true=Y_validation[:, 1],
-            ϕ_pred=Float64.(ŷ_validaton),
+            ϕ_pred=Float64.(ŷ_validation),
             y_max=y_max,
             y_min=y_min,
             Σ=Ŝ_validation,
