@@ -49,7 +49,7 @@ function makex(; df::DataFrame, varex::Vector{String}, verbose::Bool=false)::Tup
 end
 
 function prepinputs(; df::DataFrame, varex::Vector{String}, trait_id::String, verbose::Bool=false)
-    # genomes = simulategenomes(n=5, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, sparsity=0.1, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3); df = tabularise(trials); trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries", "trait_3"]; verbose::Bool=false
+    # genomes = simulategenomes(n=5, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, sparsity=0.1, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3); df = tabularise(trials); trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries", "rows", "cols"]; verbose::Bool=false
     # Remove rows with missing, NaN or Inf values in the trait_id and varex
     if sum([!(v ∈ names(df)) for v in varex]) > 0
         throw(ArgumentError("The explanatory variable/s: `$(join(varex[[!(v ∈ names(df)) for v in varex]], "`, `"))` do not exist in the DataFrame."))
@@ -87,15 +87,20 @@ function prepinputs(; df::DataFrame, varex::Vector{String}, trait_id::String, ve
         ProgressMeter.finish!(pb)
     end
     y::Vector{Float64} = df[idx, trait_id]
-    y_min = minimum(y)
-    y_max = maximum(y)
+    μ_y = mean(y)
+    σ_y = std(y)
+    if σ_y < 1e-12
+        throw(ArgumentError("No variation in the input phenotype data."))
+    end
+    y = (y .- μ_y) ./ σ_y
     X, X_vars, X_labels = makex(df = df[idx, :], varex=varex, verbose=verbose)
     n, p = size(X)
     Y::Matrix{Float64} = hcat(
-        (y .- y_min) ./ (y_max - y_min), 
-        zeros(n, 1), 
+        y, 
+        zeros(n, 1),
     )
-    (Y, y_min, y_max, X, X_vars, X_labels)
+    # Output
+    (Y, μ_y, σ_y, X, X_vars, X_labels)
 end
 
 function prepmodel(;
@@ -125,37 +130,35 @@ function prepmodel(;
     end
 end
 
-function lossϵΣ(model, ps, st, (x, y))
+function GenomicBreedingCore.lossϵΣ(model, ps, st, (x, y))
+    m, n = size(y)
+    p, _ = size(x)
     # Forward pass through the model to get predictions
     ŷ, st = model(x, ps, st)
-    m, n = size(ŷ)
-    ϵ = view(ŷ - y, 1, 1:n)
+    Ε = ŷ - y
+
+    ϵ_y = view(Ε, 1, 1:n)
+    ϵ_Σ = CuArray(reshape(view(Ε, 3:m, 1:n), (m-2)*n))
+
     # Calculate MSE loss for the trait predictions
-    loss_y = ϵ' * ϵ
+    loss_y = (ϵ_y' * ϵ_y)/n
+    loss_Σ = (ϵ_Σ' * ϵ_Σ)/((m-2)*n)
     # Calculate loss for covariance structure
     # using the Mahalanobis distance: (y-μ)ᵀΣ⁻¹(y-μ)
     loss_S = begin
-        û = view(ŷ, 2, 1:n)
-        ū = CuArray{Float32}(fill(
-            CUDA.allowscalar() do
-                (û' * CuArray{Float32}(ones(n, 1)))[1]/n
-            end,
-            n
-        ))
-        Ŝ = (1/(n-1)) * (û-ū) * (û-ū)'
-        Ŝ = Ŝ + CuArray{Float32}(diagm(fill(maximum(Ŝ), n)))
-        ϵ_Ŝ = view(y, 1, 1:n) - û
-        sqrt(ϵ_Ŝ' * inv(Ŝ) * ϵ_Ŝ)
+        û = view(ŷ, 2, 1:p)
+        Ŝ = view(ŷ, 3:m, 1:p)
+        sqrt(abs(û' * inv(Ŝ) * û))/p
     end
     # Combine both losses
-    loss = loss_y + loss_S
+    loss = loss_y + loss_Σ + loss_S
     return loss, st, NamedTuple()
 end
 
 function extractpredictions(Ŷ)
     n = size(Ŷ, 2)
     ŷ = Vector(Ŷ[1, :])
-    û = Matrix(Ŷ[2:end, :])[1, :]
+    û = Vector(Ŷ[2, :])
     ū = mean(û)
     Ŝ = (1/(n-1)) * (û .- ū) * (û .- ū)'
     Ŝ = Matrix(Symmetric(Ŝ + diagm(fill(maximum(Ŝ), n))))
@@ -165,12 +168,12 @@ end
 function goodnessoffit(;
     ϕ_true::Vector{Float64},
     ϕ_pred::Vector{Float64},
-    y_max::Float64,
-    y_min::Float64,
+    σ_y::Float64,
+    μ_y::Float64,
     Σ::Matrix{Float64},
 )
-    ϕ_pred_remapped = Float64.(ϕ_pred) * (Float64(y_max) - Float64(y_min)) .+ Float64(y_min)
-    ϕ_true_remapped = Float64.(ϕ_true) * (Float64(y_max) - Float64(y_min)) .+ Float64(y_min)
+    ϕ_pred_remapped = Float64.(ϕ_pred) * Float64(σ_y) .+ Float64(μ_y)
+    ϕ_true_remapped = Float64.(ϕ_true) * Float64(σ_y) .+ Float64(μ_y)
     corr_pearson = cor(ϕ_true_remapped, ϕ_pred_remapped)
     corr_spearman = corspearman(ϕ_true_remapped, ϕ_pred_remapped)
     corr_lin = begin
@@ -236,7 +239,7 @@ function trainNN(
     verbose::Bool = true,
 )
     # genomes = simulategenomes(n=20, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3); df = tabularise(trials); trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries"];activation = [sigmoid, sigmoid_fast, relu, tanh][3]; n_hidden_layers = 3; hidden_dims = 256; dropout_rate = 0.00; n_epochs = 10_000; use_cpu = false; seed=42;  verbose::Bool = true; idx_training = sort(sample(1:nrow(df), Int(round(0.9*nrow(df))), replace=false)); idx_validation = filter(x -> !(x ∈ idx_training), 1:nrow(df)); optimiser = [Optimisers.Adam(),Optimisers.NAdam(),Optimisers.OAdam(),Optimisers.AdaMax(),][2]; n_patient_epochs=100;
-    # # y_orig, y_min_origin, y_max_orig, X_orig, X_vars_orig, X_labels_orig = prepinputs(df = df, varex = varex, trait_id = trait_id, verbose=verbose)
+    # # y_orig, μ_y_origin, σ_y_orig, X_orig, X_vars_orig, X_labels_orig = prepinputs(df = df, varex = varex, trait_id = trait_id, verbose=verbose)
     # # n_orig = Int(size(X_orig, 1) / 3)
     # # b_orig = rand(Float64, size(X_orig, 2))
     # # df[!, trait_id] = X_orig[1:n_orig, :] * b_orig
@@ -285,14 +288,21 @@ function trainNN(
     if length(errors) > 0
         throw(ArgumentError(string("\n\t‣ ", join(errors, "\n\t‣ "))))
     end
-    Y, y_min, y_max, X, X_vars, X_labels = prepinputs(df = df, varex = varex, trait_id = trait_id, verbose=verbose)
+    Y, μ_y, σ_y, X, X_vars, X_labels = prepinputs(df = df, varex = varex, trait_id = trait_id, verbose=verbose)
     Y_training = Y[idx_training, :]
     Y_validation = Y[idx_validation, :]
     X_training = X[idx_training, :]
     X_validation = X[idx_validation, :]
+    Σ_training = begin
+        Σ = cov(X_training .* Y_training[:, 1])
+        E = eigen(Σ)
+        E.values[E.values .< 1e-12] .= 1e-12
+        Matrix(Symmetric(E.vectors * diagm(E.values) * E.vectors'))
+    end
+    Φ_training = hcat(Y_training, vcat(Σ_training, zeros(size(Y_training, 1)-size(Σ_training, 1), size(Σ_training, 2))))
     model = prepmodel(
         X=X_training,
-        Y=Y_training,
+        Y=Φ_training,
         hidden_dims=hidden_dims,
         activation=activation,
         n_hidden_layers=n_hidden_layers,
@@ -306,10 +316,10 @@ function trainNN(
     else
         gpu_device()
     end
-    x_training = dev(X_training')
-    x_validation = dev(X_validation')
-    y_training = dev(Y_training')
-    y_validation = dev(Y_validation')
+    x_training = dev(Matrix(X_training'))
+    x_validation = dev(Matrix(X_validation'))
+    y_training = dev(Matrix(Φ_training'))
+    y_validation = dev(Matrix(Y_validation'))
     rng = Random.RandomDevice()
     Random.seed!(seed)
     ps, st = Lux.setup(rng, model) |> dev # ps => parameters => weights and biases; st => state variable
@@ -374,8 +384,8 @@ function trainNN(
     stats = goodnessoffit(
         ϕ_true=Y_training[:, 1],
         ϕ_pred=Float64.(ŷ),
-        y_max=y_max,
-        y_min=y_min,
+        σ_y=σ_y,
+        μ_y=μ_y,
         Σ=Ŝ,
     )
     # Cross-validation
@@ -385,8 +395,8 @@ function trainNN(
         goodnessoffit(
             ϕ_true=Y_validation[:, 1],
             ϕ_pred=Float64.(ŷ_validation),
-            y_max=y_max,
-            y_min=y_min,
+            σ_y=σ_y,
+            μ_y=μ_y,
             Σ=Ŝ_validation,
         )
     else
@@ -495,7 +505,7 @@ function trainNN(
         "parameters" => training_state.parameters,
         "state" => training_state.states,
         "training_progress" => DataFrame(epoch=time, training_loss=training_loss, training_rmse=training_rmse, validation_rmse=validation_rmse),
-        "values" => ŷ * (y_max - y_min) .+ y_min,
+        "values" => ŷ * σ_y .+ μ_y,
         "covariances" => Ŝ,
         "marginals" => marginals,
         "stats" => stats,
@@ -793,8 +803,8 @@ if false
                     stats = goodnessoffit(;
                         ϕ_true=Float64.(y_true),
                         ϕ_pred=Float64.(y_pred),
-                        y_max=Float64(1),
-                        y_min=Float64(0),
+                        σ_y=Float64(1),
+                        μ_y=Float64(0),
                         Σ=Float64.(diagm(ones(length(y_pred)))),
                     )
                     display(UnicodePlots.scatterplot(y_true, y_pred))
