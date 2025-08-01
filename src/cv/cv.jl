@@ -262,7 +262,7 @@ julia> df_per_entry[!, [:entry, :y_true, :y_pred]]
    2 │ entry_2      0.0      0.0
 ```
 """
-function tabularise(cvs::Vector{CV}; verbose::Bool=false)::Tuple{DataFrame,DataFrame}
+function tabularise(cvs::Vector{CV}; verbose::Bool = false)::Tuple{DataFrame,DataFrame}
     # genomes = GenomicBreedingCore.simulategenomes(n=300, verbose=false); genomes.populations = StatsBase.sample(string.("pop_", 1:3), length(genomes.entries), replace=true);
     # trials, _ = GenomicBreedingCore.simulatetrials(genomes=genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=1, verbose=false);
     # phenomes = extractphenomes(trials);
@@ -409,7 +409,7 @@ julia> size(df_summary_per_entry)
 (2, 9)
 ```
 """
-function summarise(cvs::Vector{CV}; verbose::Bool=false)::Tuple{DataFrame,DataFrame}
+function summarise(cvs::Vector{CV}; verbose::Bool = false)::Tuple{DataFrame,DataFrame}
     # fit_1 = Fit(n = 1, l = 2); fit_1.trait = "trait_1"
     # fit_1.metrics = Dict("cor" => 0.0, "rmse" => 1.0)
     # cv_1 = CV("replication_1", "fold_1", fit_1, ["population_1"], ["entry_1"], [0.0], [0.0], fit_1.metrics)
@@ -424,14 +424,14 @@ function summarise(cvs::Vector{CV}; verbose::Bool=false)::Tuple{DataFrame,DataFr
         end
     end
     # Tabularise
-    df_across_entries, df_per_entry = tabularise(cvs, verbose=verbose)
+    df_across_entries, df_per_entry = tabularise(cvs, verbose = verbose)
     # Summarise across entries, reps and folds
     df_summary = combine(
         groupby(df_across_entries, [:training_population, :validation_population, :trait, :model]),
         [
-            :cor => mean, 
-            :cor => std, 
-            :training_size => mean, 
+            :cor => mean,
+            :cor => std,
+            :training_size => mean,
             :validation_size => mean,
             :cor => (x -> length(unique(x))) => "n",
             :replication => (x -> length(unique(x))) => "n_replications",
