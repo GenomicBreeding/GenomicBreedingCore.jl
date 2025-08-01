@@ -77,6 +77,6 @@ export maskmissing!, divideintomockscaffolds, estimateld, estimatedistances, knn
 export inflatediagonals!, grmsimple, grmploidyaware
 # Experimental:
 export analyseviaBLR
-export makex, prepinputs, prepmodel, lossϵΣ, extractpredictions, goodnessoffit, trainNN, cvNN, htNN, analyseviaNN
+export makex, prepinputs, prepmodel, goodnessoffit, trainNN, cvNN, htNN, analyseviaNN
 
 end

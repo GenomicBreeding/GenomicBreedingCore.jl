@@ -94,13 +94,8 @@ function prepinputs(; df::DataFrame, varex::Vector{String}, trait_id::String, ve
     end
     y = (y .- μ_y) ./ σ_y
     X, X_vars, X_labels = makex(df = df[idx, :], varex=varex, verbose=verbose)
-    n, p = size(X)
-    Y::Matrix{Float64} = hcat(
-        y, 
-        zeros(n, 1),
-    )
     # Output
-    (Y, μ_y, σ_y, X, X_vars, X_labels)
+    (y, μ_y, σ_y, X, X_vars, X_labels)
 end
 
 function prepmodel(;
@@ -130,40 +125,15 @@ function prepmodel(;
     end
 end
 
-function GenomicBreedingCore.lossϵΣ(model, ps, st, (x, y))
-    m, n = size(y)
-    p, _ = size(x)
-    # Forward pass through the model to get predictions
-    ŷ, st = model(x, ps, st)
-    Ε = ŷ - y
-
-    ϵ_y = view(Ε, 1, 1:n)
-    ϵ_Σ = CuArray(reshape(view(Ε, 3:m, 1:n), (m-2)*n))
-
-    # Calculate MSE loss for the trait predictions
-    loss_y = (ϵ_y' * ϵ_y)/n
-    loss_Σ = (ϵ_Σ' * ϵ_Σ)/((m-2)*n)
-    # Calculate loss for covariance structure
-    # using the Mahalanobis distance: (y-μ)ᵀΣ⁻¹(y-μ)
-    loss_S = begin
-        û = view(ŷ, 2, 1:p)
-        Ŝ = view(ŷ, 3:m, 1:p)
-        sqrt(abs(û' * inv(Ŝ) * û))/p
-    end
-    # Combine both losses
-    loss = loss_y + loss_Σ + loss_S
-    return loss, st, NamedTuple()
-end
-
-function extractpredictions(Ŷ)
-    n = size(Ŷ, 2)
-    ŷ = Vector(Ŷ[1, :])
-    û = Vector(Ŷ[2, :])
-    ū = mean(û)
-    Ŝ = (1/(n-1)) * (û .- ū) * (û .- ū)'
-    Ŝ = Matrix(Symmetric(Ŝ + diagm(fill(maximum(Ŝ), n))))
-    (ŷ, Ŝ, û)
-end
+# function extractpredictions(Ŷ)
+#     n = size(Ŷ, 2)
+#     ŷ = Vector(Ŷ[1, :])
+#     û = Vector(Ŷ[2, :])
+#     ū = mean(û)
+#     Ŝ = (1/(n-1)) * (û .- ū) * (û .- ū)'
+#     Ŝ = Matrix(Symmetric(Ŝ + diagm(fill(maximum(Ŝ), n))))
+#     (ŷ, Ŝ, û)
+# end
 
 function goodnessoffit(;
     ϕ_true::Vector{Float64},
