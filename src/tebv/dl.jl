@@ -102,6 +102,7 @@ function prepinputs(; df::DataFrame, varex::Vector{String}, trait_id::String, ve
     if verbose
         ProgressMeter.finish!(pb)
     end
+    row_labels = [join(x, "|") for x in eachrow(df[idx, [x ∈ varex for x in names(df)]])]
     y::Vector{Float64} = df[idx, trait_id]
     μ_y = mean(y)
     σ_y = std(y)
@@ -112,7 +113,7 @@ function prepinputs(; df::DataFrame, varex::Vector{String}, trait_id::String, ve
     X, X_vars, X_labels = makex(df = df[idx, :], varex = varex, verbose = verbose)
     Y = hcat(y)
     # Output
-    (Y, μ_y, σ_y, X, X_vars, X_labels)
+    (Y, μ_y, σ_y, X, X_vars, X_labels, row_labels)
 end
 
 function prepmodel(;
@@ -141,16 +142,6 @@ function prepmodel(;
         @return out
     end
 end
-
-# function extractpredictions(Ŷ)
-#     n = size(Ŷ, 2)
-#     ŷ = Vector(Ŷ[1, :])
-#     û = Vector(Ŷ[2, :])
-#     ū = mean(û)
-#     Ŝ = (1/(n-1)) * (û .- ū) * (û .- ū)'
-#     Ŝ = Matrix(Symmetric(Ŝ + diagm(fill(maximum(Ŝ), n))))
-#     (ŷ, Ŝ, û)
-# end
 
 function goodnessoffit(; ϕ_true::Vector{Float64}, ϕ_pred::Vector{Float64}, σ_y::Float64, μ_y::Float64)
     ϕ_pred_remapped = Float64.(ϕ_pred) * Float64(σ_y) .+ Float64(μ_y)
@@ -196,10 +187,11 @@ function trainNN(
     n_patient_epochs::Int64 = 100,
     use_cpu::Bool = false,
     seed::Int64 = 42,
+    save_model::Bool = false,
     verbose::Bool = true,
 )
-    # genomes = simulategenomes(n=20, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3); df = tabularise(trials); trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries"];activation = [sigmoid, sigmoid_fast, relu, tanh][3]; n_hidden_layers = 3; hidden_dims = 256; dropout_rate = 0.00; n_epochs = 10_000; use_cpu = false; seed=42;  verbose::Bool = true; idx_training = sort(sample(1:nrow(df), Int(round(0.9*nrow(df))), replace=false)); idx_validation = filter(x -> !(x ∈ idx_training), 1:nrow(df)); optimiser = [Optimisers.Adam(),Optimisers.NAdam(),Optimisers.OAdam(),Optimisers.AdaMax(),][2]; n_patient_epochs=100;
-    # # y_orig, μ_y_origin, σ_y_orig, X_orig, X_vars_orig, X_labels_orig = prepinputs(df = df, varex = varex, trait_id = trait_id, verbose=verbose)
+    # genomes = simulategenomes(n=20, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3); df = tabularise(trials); trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries"];activation = [sigmoid, sigmoid_fast, relu, tanh][3]; n_hidden_layers = 3; hidden_dims = 256; dropout_rate = 0.00; n_epochs = 10_000; use_cpu = false; seed=42;  verbose::Bool = true; idx_training = sort(sample(1:nrow(df), Int(round(0.9*nrow(df))), replace=false)); idx_validation = filter(x -> !(x ∈ idx_training), 1:nrow(df)); optimiser = [Optimisers.Adam(),Optimisers.NAdam(),Optimisers.OAdam(),Optimisers.AdaMax(),][2]; n_patient_epochs=100; save_model::Bool = false;
+    # # y_orig, μ_y_origin, σ_y_orig, X_orig, X_vars_orig, X_labels_orig, row_labels_orig = prepinputs(df = df, varex = varex, trait_id = trait_id, verbose=verbose)
     # # n_orig = Int(size(X_orig, 1) / 3)
     # # b_orig = rand(Float64, size(X_orig, 2))
     # # df[!, trait_id] = X_orig[1:n_orig, :] * b_orig
@@ -254,7 +246,7 @@ function trainNN(
     if length(errors) > 0
         throw(ArgumentError(string("\n\t‣ ", join(errors, "\n\t‣ "))))
     end
-    Y, μ_y, σ_y, X, X_vars, X_labels = prepinputs(df = df, varex = varex, trait_id = trait_id, verbose = verbose)
+    Y, μ_y, σ_y, X, X_vars, X_labels, row_labels = prepinputs(df = df, varex = varex, trait_id = trait_id, verbose = verbose)
     Y_training = Y[idx_training, :]
     Y_validation = Y[idx_validation, :]
     X_training = X[idx_training, :]
@@ -342,12 +334,70 @@ function trainNN(
     Ŷ, _ = Lux.apply(model, x_training, ps, validation_state)
     stats = goodnessoffit(ϕ_true = Y_training[:, 1], ϕ_pred = Vector{Float64}(Ŷ[1, :]), σ_y = σ_y, μ_y = μ_y)
     # Cross-validation
-    stats_validation = if length(idx_validation) > 0
+    Ŷ_validation, stats_validation = if length(idx_validation) > 0
         Ŷ_validation, _ = Lux.apply(model, x_validation, ps, validation_state)
-        goodnessoffit(ϕ_true = Y_validation[:, 1], ϕ_pred = Vector{Float64}(Ŷ_validation[1, :]), σ_y = σ_y, μ_y = μ_y)
+        (
+            Ŷ_validation,
+            goodnessoffit(ϕ_true = Y_validation[:, 1], ϕ_pred = Vector{Float64}(Ŷ_validation[1, :]), σ_y = σ_y, μ_y = μ_y)
+        )
     else
         nothing
     end
+    # Extract "marginal" or "zero-context" effects
+    gxe_vars = filter(x -> x ∈ varex, ["years", "seasons", "harvests", "sites", "entries"])
+    _, p = size(X)
+    Φ = Dict()
+    for v in gxe_vars
+        # v = "seasons"
+        idx = findall(X_vars .== v)
+        m = length(idx)
+        X_new = zeros(m, p)
+        for (i, j) in enumerate(idx)
+            X_new[i, j] = 1.0
+        end
+        x_new = dev(X_new')
+        Ŷ_new, _ = Lux.apply(model, x_new, ps, validation_state)
+        # @show v
+        ẑ = Vector{Float64}(Ŷ_new[1, :])
+        ŷ = (ẑ .* σ_y) .+ μ_y
+        Φ[v] = (ŷ=ŷ, ẑ=ẑ, labels=X_labels[idx])
+    end
+    # Extract variance-covariance matrices
+    indexes = Dict()
+    for v in gxe_vars
+        idx = findall(X_vars .== v)
+        indexes[v] = idx
+    end
+    M = prod([length(x) for (_, x) in indexes])
+    m = M
+    X_new = zeros(m, p)
+    for (v, idx) in indexes
+        # v = string.(keys(indexes))[2]; idx = indexes[v]
+        rep_inner = Int(m/length(idx))
+        rep_outer = Int(M/(rep_inner*length(idx)))
+        m = rep_inner
+        println("rep_inner=$rep_inner; rep_outer=$rep_outer")
+        idx_cols = repeat(repeat(idx, inner=rep_inner), outer=rep_outer)
+        for (i, j) in enumerate(idx_cols)
+            X_new[i, j] = 1.0
+        end
+    end
+    # display(X_new)
+    x_new = dev(X_new')
+    Ŷ_new, _ = Lux.apply(model, x_new, ps, validation_state)
+    # @show v
+    ẑ = Vector{Float64}(Ŷ_new[1, :])
+    ŷ = (ẑ .* σ_y) .+ μ_y
+    # Â = X_new .* ẑ
+    Â = X_new .* ŷ
+    Σ = Dict()
+    for v in gxe_vars
+        # v = gxe_vars[2]
+        idx = findall(X_vars .== v)
+        B̂ = hcat([filter(x -> abs(x) > 1e-12, x) for x in eachcol(Â[:, idx])])
+        Σ[v] = (Σ=cov(B̂), labels=X_labels[idx])
+    end
+    # Messages/info
     if verbose
         # Plot the training loss
         println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
@@ -394,9 +444,15 @@ function trainNN(
         println("MAE: ", round(stats[:mae], digits = 4))
         println("RMSE: ", round(stats[:rmse], digits = 4))
         # println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
-        # println("FITTED MULTIVARIATE NORMAL DISTRIBUTION:")
-        # display(UnicodePlots.heatmap(Ŝ, title="Fitted variance-covariance matrix (Σ)"))
-        # println("Goodness of fit in log-likelihood: ", round(stats[:loglik], digits=4))
+        println("FITTED MULTIVARIATE NORMAL DISTRIBUTIONS:")
+        for (k, v) in Σ
+            println("--------------------------------------------------")
+            println(k)
+            T = DataFrame(hcat(v.labels, v.Σ), :auto)
+            rename!(T, vcat("ID", v.labels))
+            display(T)
+            display(UnicodePlots.heatmap(v.Σ))
+        end
         println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
         println("CROSS-VALIDATION:")
         if isnothing(stats_validation)
@@ -421,166 +477,39 @@ function trainNN(
             println("RMSE: ", round(stats_validation[:rmse], digits = 4))
         end
     end
-
-    # Extract marginal effects and estimate the variance-covariance matrix
-    # TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
-    # TODO: add higher-order effects excluding spatial effects, i.e. replications, blocks, rows and cols
-    # TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
-
-    gxe_vars = filter(x -> x ∈ varex, ["years", "seasons", "harvests", "sites", "entries"])
-    p = size(X, 2)
-    M = Dict() # marginal effects
-    S = Dict() # variance-covariance matrices of the standardised y
-    Σ = Dict() # variance-covariance matrices of the unstandardised y
-    for i = 1:length(gxe_vars)
-        for j = i:length(gxe_vars)
-            # i = 1; j = 2; 
-            v1 = gxe_vars[i]
-            v2 = gxe_vars[j]
-            idx1, idx2 = if v1 != v2
-                (findall(X_vars .== v1), findall(X_vars .== v2))
-            else
-                (findall(X_vars .== v1), [])
-            end
-            n1 = length(idx1)
-            n2 = maximum([length(idx2), 1])
-            m = n1 * n2
-            if m == 0
-                continue
-            end
-            X_new = zeros(m, p)
-            cols1 = repeat(idx1, inner = n2)
-            for (i1, j1) in enumerate(cols1)
-                X_new[i1, j1] = 1.0
-            end
-            cols2 = repeat(idx2, outer = n1)
-            for (i2, j2) in enumerate(cols2)
-                X_new[i2, j2] = 1.0
-            end
-            x_new = dev(X_new')
-            Ŷ_new, _ = Lux.apply(model, x_new, ps, validation_state)
-            p̂ = Vector{Float64}(Ŷ_new[1, :])
-            ŷ = (p̂ .* σ_y) .+ μ_y
-            UnicodePlots.histogram(ŷ)
-            UnicodePlots.histogram(p̂)
-            labels = [join(X_labels[x.>0], "|") for x in eachrow(X_new)]
-            key = v1 == v2 ? v1 : string(v1, "|", v2)
-            M[key] = (ŷ = ŷ, labels = labels)
-            # Variance and covariance estimation
-            println("$v1 x $v2")
-            tmp_idx = sort(vcat(idx1, idx2))
-            tmp_vars = X_vars[tmp_idx]
-            tmp_labels = X_labels[tmp_idx]
-            A = X_new[:, tmp_idx] .* p̂
-            for v in unique(tmp_vars)
-                # v = unique(tmp_vars)[1]
-                B = nothing
-                idx_v = findall(tmp_vars .== v)
-                for j in idx_v
-                    a = filter(x -> abs(x) > 1e-12, A[:, j])
-                    B = if isnothing(B)
-                        a
-                    else
-                        hcat(B, a)
-                    end
-                end
-                C = (B .* σ_y) .+ μ_y
-                if size(B, 1) == 1
-                    @assert v1 == v2 == v
-                    S[v1] = (varcovar = var(B), labels = tmp_labels[idx_v])
-                    Σ[v1] = (varcovar = var(C), labels = tmp_labels[idx_v])
-                else
-                    key = string(v1, "-x-", v2, "|", v)
-                    S[key] = (varcovar = cov(B), labels = tmp_labels[idx_v])
-                    Σ[key] = (varcovar = cov(C), labels = tmp_labels[idx_v])
-                end
-            end
+    # Model I/O
+    if save_model
+        fname_model = string("model-", trait_id, "-", hash(rand()), ".jld2")
+        @save fname_model training_state.parameters training_state.states
+        # @load fname_model training_state.parameters training_state.states
+        if verbose
+            println("Please find the model: '$(joinpath(pwd(), fname_model))'")
         end
     end
-    hcat(M["entries"]...)
-    hcat(M["years|entries"]...)
-    S1 = S["years-x-entries|entries"][1]
-    S2 = S["seasons-x-entries|entries"][1]
-    S3 = S["sites-x-entries|entries"][1]
-    display(UnicodePlots.heatmap(S1))
-    display(UnicodePlots.heatmap(S2))
-    display(UnicodePlots.heatmap(S3))
-
-
-
-
-    # # Marginal effects extraction, i.e. the effects of column in X keeping the other columns constant; all the while excluding the Σ variables
-    # if verbose
-    #     pb = ProgressMeter.Progress(length(varex) + 1, desc = "Extracting marginal effects")
-    # end
-    # marginals = Dict()
-    # # Per explanatory variable
-    # gxe_vars = ["years", "seasons", "harvests", "sites", "entries"]
-    # idx_varex = vcat([findall([x ∈ gxe_vars for x in varex])], [[x] for x in 1:length(varex)])
-    # p = size(X, 2)
-    # for idx_1 in idx_varex
-    #     # idx_1 = idx_varex[1]
-    #     # How many rows in the new X matrix do we need?
-    #     m = 1
-    #     for v in varex[idx_1]
-    #         # v = varex[idx_1][1]
-    #         m *= sum(X_vars .== v)
-    #     end
-    #     X_new = Float64.(zeros(m, p))
-    #     # Which column indexes correspond to the explanatory variables we wish to vary?
-    #     combins = []
-    #     for v in varex[idx_1]
-    #         # v = varex[idx_1][1]
-    #         idx_2 = findall(X_vars .== v)
-    #         push!(combins, idx_2)
-    #     end
-    #     # Define the new X matrix using all possible combinations of the explanatory variables
-    #     X_labels_new::Vector{String} = fill("", m)
-    #     for (i, idx_3) in enumerate(collect(Iterators.product(combins...)))
-    #         # @show idx_3
-    #         for j in idx_3
-    #             X_new[i, j] = 1
-    #             X_labels_new[i] = if X_labels_new[i] == ""
-    #                 X_labels[j]
-    #             else
-    #                 X_labels_new[i] * "|" * X_labels[j]
-    #             end
-    #         end
-    #     end
-    #     # Predict
-    #     x_new = dev(X_new')
-    #     Ŷ_marginals, _ = Lux.apply(model, x_new, ps, validation_state)
-    #     ŷ_marginals, Ŝ_marginals = extractpredictions(Ŷ_marginals)
-    #     z = ŷ_marginals ./ sqrt.(diag(Ŝ_marginals))
-    #     p_vals = 2 * (1 .- cdf(Normal(0.0, 1.0), abs.(z)))
-    #     marginals[join(varex[idx_1], "|")] = Dict(
-    #         "labels" => X_labels_new,
-    #         "ϕ_marginals" => ŷ_marginals,
-    #         "Σ_marginals" => Ŝ_marginals,
-    #         "z" => z,
-    #         "p_vals" => p_vals,
-    #     )
-    #     if verbose
-    #         ProgressMeter.next!(pb)
-    #     end
-    # end
-    # if verbose
-    #     ProgressMeter.finish!(pb)
-    # end
-    # # # Model I/O
-    # # @save "temp_model.jld2" training_state.parameters training_state.states
-    # # @load "temp_model.jld2" training_state.parameters training_state.states
-    # return Dict(
-    #     "model" => model,
-    #     "parameters" => training_state.parameters,
-    #     "state" => training_state.states,
-    #     "training_progress" => DataFrame(epoch=time, training_loss=training_loss, training_rmse=training_rmse, validation_rmse=validation_rmse),
-    #     "values" => ŷ * σ_y .+ μ_y,
-    #     "covariances" => Ŝ,
-    #     "marginals" => marginals,
-    #     "stats" => stats,
-    #     "stats_validation" => stats_validation,
-    # )
+    return Dict(
+        "model" => model,
+        "parameters" => training_state.parameters,
+        "state" => training_state.states,
+        "training_progress" => DataFrame(epoch=time, training_loss=training_loss, training_rmse=training_rmse, validation_rmse=validation_rmse),
+        "training_set" => Dict(
+            "observed" => Y_training[:, 1] .* σ_y .+ μ_y,
+            "predicted" => Vector{Float64}(Ŷ[1, :]) .* σ_y .+ μ_y,
+            "labels" => row_labels[idx_training],
+        ),
+        "validation_set" => if length(idx_validation) == 0
+            Dict()
+        else
+            Dict(
+                "observed" => Y_validation[:, 1] .* σ_y .+ μ_y,
+                "predicted" => Vector{Float64}(Ŷ_validation[1, :]) .* σ_y .+ μ_y,
+                "labels" => row_labels[idx_validation],
+            )
+        end,        
+        "covariances" => Σ,
+        "marginals" => Φ,
+        "stats_training" => stats,
+        "stats_validation" => stats_validation,
+    )
 end
 
 function optimNN(
