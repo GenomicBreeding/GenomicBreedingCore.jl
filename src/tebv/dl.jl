@@ -497,6 +497,9 @@ function trainNN(
     end
     DLModel(
         model,
+        dev,
+        μ_y,
+        σ_y,
         row_names,
         feature_groups,
         feature_names,
@@ -527,16 +530,16 @@ function extracteffects(model::DLModel)
         for (i, j) in enumerate(idx)
             X_new[i, j] = 1.0
         end
-        x_new = dev(X_new')
+        x_new = model.dev(X_new')
         Ŷ_new, _ = Lux.apply(model.model, x_new, model.training_state.parameters, validation_state)
         ẑ = Vector{Float64}(Ŷ_new[1, :])
-        ŷ = (ẑ .* σ_y) .+ μ_y
+        ŷ = (ẑ .* model.σ_y) .+ model.μ_y
         Φ[v] = (ŷ=ŷ, ẑ=ẑ, labels=model.feature_names[idx])
     end
     Φ
 end
 
-function extractcovariances(model::DLModel)
+function GenomicBreedingCore.extractcovariances(model::DLModel)
     # genomes = simulategenomes(n=20, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3); df = tabularise(trials); trait_id = "trait_1"; idx_training = sort(sample(1:nrow(df), Int(round(0.9*nrow(df))), replace=false)); idx_validation = filter(x -> !(x ∈ idx_training), 1:nrow(df)); varex = ["years", "seasons", "sites", "entries"]; model = trainNN(df, trait_id=trait_id, varex=varex, idx_training=idx_training, idx_validation=idx_validation)
     gxe_vars = filter(x -> x ∈ unique(model.feature_groups), ["years", "seasons", "harvests", "sites", "entries"])
     indexes = Dict()
@@ -544,6 +547,7 @@ function extractcovariances(model::DLModel)
         idx = findall(model.feature_groups .== v)
         indexes[v] = idx
     end
+    _, p = size(model.training_state.parameters.input.weight)
     M = prod([length(x) for (_, x) in indexes])
     m = M
     X_new = zeros(m, p)
@@ -552,18 +556,17 @@ function extractcovariances(model::DLModel)
         rep_inner = Int(m/length(idx))
         rep_outer = Int(M/(rep_inner*length(idx)))
         m = rep_inner
-        println("rep_inner=$rep_inner; rep_outer=$rep_outer")
+        # println("rep_inner=$rep_inner; rep_outer=$rep_outer")
         idx_cols = repeat(repeat(idx, inner=rep_inner), outer=rep_outer)
         for (i, j) in enumerate(idx_cols)
             X_new[i, j] = 1.0
         end
     end
     validation_state = Lux.testmode(model.training_state.states)
-    x_new = dev(X_new')
+    x_new = model.dev(X_new')
     Ŷ_new, _ = Lux.apply(model.model, x_new, model.training_state.parameters, validation_state)
     ẑ = Vector{Float64}(Ŷ_new[1, :])
-    ŷ = (ẑ .* σ_y) .+ μ_y
-    # Â = X_new .* ẑ
+    ŷ = (ẑ .* model.σ_y) .+ model.μ_y
     Â = X_new .* ŷ
     Σ = Dict()
     for v in gxe_vars

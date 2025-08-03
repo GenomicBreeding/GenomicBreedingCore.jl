@@ -420,7 +420,10 @@ end
 A mutable struct representing a deep learning model for genomic breeding analysis.
 
 # Fields
-- `model::Chain`: The Flux.jl neural network model.
+- `model::Any`: The neural network model (typically a Flux.jl Chain).
+- `dev::Any`: Device information (e.g., CPU or GPU).
+- `μ_y::Float64`: Mean of the target variable.
+- `σ_y::Float64`: Standard deviation of the target variable.
 - `row_names::Vector{String}`: Names of the rows in the dataset.
 - `feature_groups::Vector{String}`: Groups to which features belong.
 - `feature_names::Vector{String}`: Names of the features used in the model.
@@ -440,6 +443,9 @@ Create and manage deep learning models for genomic breeding tasks, including tra
 """
 mutable struct DLModel <: AbstractGB
     model::Any
+    dev::Any
+    μ_y::Float64
+    σ_y::Float64
     row_names::Vector{String}
     feature_groups::Vector{String}
     feature_names::Vector{String}
