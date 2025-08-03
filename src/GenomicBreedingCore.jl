@@ -52,7 +52,7 @@ include("simulations/simulate_genomes.jl")
 include("simulations/simulate_trials.jl")
 include("simulations/simulate_mating.jl")
 
-export AbstractGB, Genomes, Phenomes, Trials, SimulatedEffects, BLR, TEBV, Fit, CV, GRM
+export AbstractGB, Genomes, Phenomes, Trials, SimulatedEffects, DLModel, BLR, TEBV, Fit, CV, GRM
 export clone, hash, ==
 export checkdims, dimensions, loci_alleles, loci, distances, plot, tabularise, summarise, aggregateharvests
 export slice,
@@ -77,6 +77,6 @@ export maskmissing!, divideintomockscaffolds, estimateld, estimatedistances, knn
 export inflatediagonals!, grmsimple, grmploidyaware
 # Experimental:
 export analyseviaBLR
-export makex, prepinputs, prepmodel, goodnessoffit, trainNN, cvNN, htNN, analyseviaNN
+export makex, prepinputs, prepmodel, goodnessoffit, checkinputs, trainNN, extracteffects, extractcovariances, optimNN, analyseviaNN
 
 end

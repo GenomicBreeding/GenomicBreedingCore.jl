@@ -414,6 +414,46 @@ mutable struct SimulatedEffects <: AbstractGB
     end
 end
 
+"""
+    DLModel <: AbstractGB
+
+A mutable struct representing a deep learning model for genomic breeding analysis.
+
+# Fields
+- `model::Chain`: The Flux.jl neural network model.
+- `row_names::Vector{String}`: Names of the rows in the dataset.
+- `feature_groups::Vector{String}`: Groups to which features belong.
+- `feature_names::Vector{String}`: Names of the features used in the model.
+- `training_state::Any`: State information related to training (e.g., optimizer state).
+- `training_progress::DataFrame`: DataFrame tracking training progress metrics.
+- `training_observed::Vector{Float64}`: Observed values in the training set.
+- `training_predicted::Vector{Float64}`: Predicted values for the training set.
+- `training_labels::Vector{String}`: Labels for the training set samples.
+- `validation_observed::Vector{Float64}`: Observed values in the validation set.
+- `validation_predicted::Vector{Float64}`: Predicted values for the validation set.
+- `validation_labels::Vector{String}`: Labels for the validation set samples.
+- `stats_training::Dict`: Dictionary containing training statistics.
+- `stats_validation::Dict`: Dictionary containing validation statistics.
+
+# Usage
+Create and manage deep learning models for genomic breeding tasks, including tracking training and validation metrics.
+"""
+mutable struct DLModel <: AbstractGB
+    model::Any
+    row_names::Vector{String}
+    feature_groups::Vector{String}
+    feature_names::Vector{String}
+    training_state::Any
+    training_progress::DataFrame
+    training_observed::Vector{Float64}
+    training_predicted::Vector{Float64}
+    training_labels::Vector{String}
+    validation_observed::Vector{Float64}
+    validation_predicted::Vector{Float64}
+    validation_labels::Vector{String}
+    stats_training::Dict{Symbol, Any}
+    stats_validation::Dict{Symbol, Any}
+end
 
 """
 # Genomic prediction model fit
