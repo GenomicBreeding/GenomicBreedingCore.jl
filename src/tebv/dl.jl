@@ -539,7 +539,7 @@ function extracteffects(model::DLModel)
     Φ
 end
 
-function GenomicBreedingCore.extractcovariances(model::DLModel)
+function extractcovariances(model::DLModel)
     # genomes = simulategenomes(n=20, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3); df = tabularise(trials); trait_id = "trait_1"; idx_training = sort(sample(1:nrow(df), Int(round(0.9*nrow(df))), replace=false)); idx_validation = filter(x -> !(x ∈ idx_training), 1:nrow(df)); varex = ["years", "seasons", "sites", "entries"]; model = trainNN(df, trait_id=trait_id, varex=varex, idx_training=idx_training, idx_validation=idx_validation)
     gxe_vars = filter(x -> x ∈ unique(model.feature_groups), ["years", "seasons", "harvests", "sites", "entries"])
     indexes = Dict()
