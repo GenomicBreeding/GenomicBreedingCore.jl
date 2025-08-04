@@ -22,4 +22,4 @@ using JLD2
 using Lux, Optimisers
 using LuxCUDA, CUDA
 # using LuxCUDA, AMDGPU, oneAPI # GPU support (Metal is for MacOS)
-using ScatteredInterpolation
+using Combinatorics, ScatteredInterpolation

@@ -16,7 +16,7 @@ using Suppressor
 using Lux, Optimisers
 using LuxCUDA, CUDA
 # using LuxCUDA, AMDGPU, oneAPI # GPU support (Metal is for MacOS)
-using ScatteredInterpolation
+using Combinatorics, ScatteredInterpolation
 
 # Structs
 include("all_structs.jl")
