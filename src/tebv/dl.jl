@@ -597,22 +597,7 @@ function extractcovariances(model::DLModel)
         idx = findall(model.feature_groups .== v)
         indexes[v] = idx
     end
-    _, p = size(model.training_state.parameters.input.weight)
-    M = prod([length(x) for (_, x) in indexes])
-    m = M
     X_new = makexnew(model, gxe_vars)
-    # X_new = zeros(m, p)
-    # for (v, idx) in indexes
-    #     # v = string.(keys(indexes))[2]; idx = indexes[v]
-    #     rep_inner = Int(m/length(idx))
-    #     rep_outer = Int(M/(rep_inner*length(idx)))
-    #     m = rep_inner
-    #     # println("rep_inner=$rep_inner; rep_outer=$rep_outer")
-    #     idx_cols = repeat(repeat(idx, inner=rep_inner), outer=rep_outer)
-    #     for (i, j) in enumerate(idx_cols)
-    #         X_new[i, j] = 1.0
-    #     end
-    # end
     validation_state = Lux.testmode(model.training_state.states)
     x_new = model.dev(X_new')
     Ŷ_new, _ = Lux.apply(model.model, x_new, model.training_state.parameters, validation_state)
@@ -621,7 +606,7 @@ function extractcovariances(model::DLModel)
     Â = X_new .* ŷ
     Σ = Dict()
     for v in gxe_vars
-        # v = gxe_vars[2]
+        # v = gxe_vars[end]
         idx = findall(model.feature_groups .== v)
         B̂ = hcat([filter(x -> abs(x) > 1e-12, x) for x in eachcol(Â[:, idx])])
         Σ[v] = (Σ=cov(B̂), labels=model.feature_names[idx])
@@ -642,17 +627,18 @@ function optimNN(
     n_hidden_layers::Union{Nothing,Int64} = nothing,
     hidden_dims::Union{Nothing,Int64} = nothing,
     use_cpu::Bool = false,
-    n_random_searches::Int64 = 100,
+    n_random_searches::Int64 = 20,
     seed::Int64 = 42,
     verbose::Bool = true,
-)::Tuple{DataFrame,Int64}
+)::Dict{String,Any}
     # genomes = simulategenomes(n=20, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=2); df = tabularise(trials); trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries"]; validation_rate=0.25; activation = [sigmoid, sigmoid_fast, relu, tanh][3]; dropout_rate = 0.0; optimiser = nothing; use_cpu = false; seed=42;  verbose::Bool = true; n_hidden_layers = nothing; hidden_dims = nothing; n_patient_epochs = nothing; n_epochs = 10_000; seed = 42; n_random_searches=10
-    choices_activation = if !isnothing(activation)
+    # # @time fitted_nn = optimNN(df, trait_id=trait_id, varex=varex)
+    choices_activations = if !isnothing(activation)
         [activation]
     else
         [sigmoid, sigmoid_fast, relu, tanh]
     end
-    choices_optimiser = if !isnothing(optimiser)
+    choices_optimisers = if !isnothing(optimiser)
         [optimiser]
     else
         [Optimisers.Adam(), Optimisers.NAdam(), Optimisers.OAdam(), Optimisers.AdaMax()]
@@ -665,7 +651,7 @@ function optimNN(
     choices_n_patient_epochs = if !isnothing(n_patient_epochs)
         n_patient_epochs
     else
-        Int64.([0.10, 0.25, 0.50, 0.75, 0.90] .* minimum(choices_n_epochs))
+        Int64.([0.01, 0.05, 0.10, 0.15, 0.20] .* minimum(choices_n_epochs))
     end
     choices_n_hidden_layers = if !isnothing(n_hidden_layers)
         [n_hidden_layers]
@@ -683,14 +669,13 @@ function optimNN(
     else
         [0.0, 0.001, 0.01, 0.1, 0.5]
     end
-
     # Random search instead of grid search
     rng = Random.seed!(seed)
     params_all = collect(
         Iterators.product(
             [
-                choices_activation,
-                choices_optimiser,
+                choices_activations,
+                choices_optimisers,
                 choices_n_epochs,
                 choices_n_patient_epochs,
                 choices_n_hidden_layers,
@@ -702,8 +687,7 @@ function optimNN(
     params_drawn = sample(rng, params_all, n_random_searches, replace = false)
     stat_names = ["corr_pearson", "corr_spearman", "corr_lin", "R²", "mae", "rmse"]
     df_stats = DataFrame(
-        id = collect(1:n_random_searches),
-        activation = "",
+        activation = repeat([""], length(params_drawn)),
         optimiser = "",
         n_epochs = NaN,
         n_patient_epochs = NaN,
@@ -714,18 +698,18 @@ function optimNN(
     for s in stat_names
         df_stats[:, s] .= NaN
     end
+    n = nrow(df)
+    n_validation = Int(round(validation_rate * n))
+    idx_validation = sort(sample(rng, 1:n, n_validation, replace = false))
+    idx_training = sort(filter(x -> !(x ∈ idx_validation), 1:nrow(df)))
     if verbose
         pb = ProgressMeter.Progress(
             n_random_searches,
             desc = "Fine-tuning hyperparameters using $(length(params_drawn))/$(length(params_all)) randomly chosen paramater combinations: ",
         )
     end
-    n = nrow(df)
-    n_validation = Int(round(validation_rate * n))
-    idx_validation = sort(sample(rng, 1:n, n_validation, replace = false))
-    idx_training = sort(filter(x -> !(x ∈ idx_validation), 1:nrow(df)))
-    @time for (i, params) in enumerate(params_drawn)
-        # i = 1; params = params_drawn[i]
+    for (i, params) in enumerate(params_drawn)
+        # i = 2; params = params_drawn[i]
         # @show i
         # @show activation, optimiser, n_epochs, n_patient_epochs, n_hidden_layers, hidden_dims, dropout_rate = params
         activation, optimiser, n_epochs, n_patient_epochs, n_hidden_layers, hidden_dims, dropout_rate = params
@@ -783,8 +767,8 @@ function optimNN(
         # params = params_all[1]
         x = vcat(
             [
-                Float64(findall(string.(choices_activation) .== string(params[1]))[1]),
-                Float64(findall(string.(choices_optimiser) .== string(params[2]))[1]),
+                Float64(findall(string.(choices_activations) .== string(params[1]))[1]),
+                Float64(findall(string.(choices_optimisers) .== string(params[2]))[1]),
             ],
             vcat(params[3:end]...),
         )
@@ -794,8 +778,8 @@ function optimNN(
             hcat(xs_all, x)
         end
     end
-    x_activation = [Float64(findall(string.(choices_activation) .== x)[1]) for x in df_stats.activation]
-    x_optimiser = [Float64(findall(string.(choices_optimiser) .== x)[1]) for x in df_stats.optimiser]
+    x_activation = [Float64(findall(string.(choices_activations) .== x)[1]) for x in df_stats.activation]
+    x_optimiser = [Float64(findall(string.(choices_optimisers) .== x)[1]) for x in df_stats.optimiser]
     xs =
         hcat(
             x_activation,
@@ -820,8 +804,8 @@ function optimNN(
         varex = varex,
         idx_training=idx_training,
         idx_validation=idx_validation,
-        activation = choices_activation[Int(p_opt[1])],
-        optimiser = choices_optimiser[Int(p_opt[2])],
+        activation = choices_activations[Int(p_opt[1])],
+        optimiser = choices_optimisers[Int(p_opt[2])],
         n_epochs = Int64(p_opt[3]),
         n_patient_epochs = Int64(p_opt[4]),
         n_hidden_layers = Int64(p_opt[5]),
@@ -834,30 +818,38 @@ function optimNN(
     # Extract effects and variance-covariance matrices
     Φ = extracteffects(model)
     Σ = extractcovariances(model)
-    
-
-
+    # Include the interpolated values into df_stats
+    df_stats = DataFrame(
+        activations = choices_activations[Int.(xs_all[1, :])],
+        optimisers = choices_optimisers[Int.(xs_all[2, :])],
+        n_epochs = Int.(xs_all[3, :]),
+        n_patient_epochs = Int.(xs_all[4, :]),
+        n_hidden_layers = Int.(xs_all[5, :]),
+        hidden_dims = Int.(xs_all[6, :]),
+        dropout_rate = xs_all[7, :],
+        z = ẑ,
+    )
     # Output
-    # TODO: Include the interpolations into df_stats 
-    (df_stats, model, Φ, Σ)
+    Dict(
+        "model" => model,
+        "df_stats" => df_stats,
+        "Φ" => Φ,
+        "Σ" => Σ,
+    )
 end
 
-# Under construction...
+# genomes = simulategenomes(n=10, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, sparsity=0.1, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3); traits = ["trait_1", "trait_2"];
+# outNN = analyseviaNN(trails, traits)
 function analyseviaNN(
     trials::Trials,
     traits::Vector{String};
     other_covariates::Union{Vector{String},Nothing} = nothing,
-    activation = [sigmoid, sigmoid_fast, relu, tanh][3],
-    n_hidden_layers::Int64 = 3,
-    hidden_dims::Int64 = 256,
-    dropout_rate::Float64 = 0.50,
-    n_epochs::Int64 = 1_000,
+    validation_rate::Float64 = 0.25,
     use_cpu::Bool = false,
     seed::Int64 = 42,
     verbose::Bool = true,
-)::Nothing
-    # genomes = simulategenomes(n=10, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, sparsity=0.1, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3); traits = ["trait_1", "trait_2"]; other_covariates=["trait_3"]; 
-    # activation = [sigmoid, sigmoid_fast, relu, tanh][3]; n_hidden_layers = 3; hidden_dims = 256; dropout_rate = Float64(0.50); n_epochs = 10_000; use_cpu = false; seed=42;  verbose::Bool = true;
+)::Dict{String, Any}
+    # genomes = simulategenomes(n=10, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, sparsity=0.1, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3); traits = ["trait_1", "trait_2"]; other_covariates=["trait_3"]; validation_rate::Float64 = 0.25; use_cpu::Bool = false; seed::Int64 = 42; verbose::Bool = true;
     # Check arguments
     if !checkdims(trials)
         error("The Trials struct is corrupted ☹.")
@@ -911,77 +903,24 @@ function analyseviaNN(
         println("Number of levels for each variable: ", n_levels)
         println("Number of rows in the DataFrame: ", nrow(df))
     end
-    # for trait_id in traits
-    trait_id = traits[1]
-    if verbose
-        println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
-        println("Training neural network for trait: ", trait_id)
-    end
-    fitted_nn = trainNN(
-        df,
-        trait_id = trait_id,
-        varex = varex,
-        activation = activation,
-        n_hidden_layers = n_hidden_layers,
-        hidden_dims = hidden_dims,
-        dropout_rate = dropout_rate,
-        n_epochs = n_epochs,
-        use_cpu = use_cpu,
-        seed = seed,
-        verbose = verbose,
-    )
-    # fitted_nn["marginals"]
-    # fitted_nn["marginals"]["years"]
-    # fitted_nn["marginals"]["seasons"]
-    # fitted_nn["marginals"]["sites"]
-    # fitted_nn["marginals"]["trait_3"]
-    # fitted_nn["marginals"]["rows"]
-    # fitted_nn["marginals"]["cols"]
-    # fitted_nn["marginals"]["entries"]
-
-    effects_years = Dict()
-    for k in fitted_nn["marginals"]["years"]["labels"]
-        effects_years[k] = 0.0
-    end
-    effects_seasons = Dict()
-    for k in fitted_nn["marginals"]["seasons"]["labels"]
-        effects_seasons[k] = 0.0
-    end
-    effects_sites = Dict()
-    for k in fitted_nn["marginals"]["sites"]["labels"]
-        effects_sites[k] = 0.0
-    end
-    for (K, D) in Dict(:year => effects_years, :season => effects_seasons, :site => effects_sites)
-        # K = :additive_genetic; D = effects_entries
-        for (k, v) in D
-            # k = string.(keys(D))[1]
-            for x in simulated_effects
-                # x = simulated_effects[1]
-                if k ∈ x.id
-                    D[k] = getproperty(x, K)
-                    break
-                end
-            end
+    FITTED::Dict{String, Any} = Dict()
+    for (i, trait_id) in enumerate(traits)
+        # i = 1; trait_id = traits[i]
+        if verbose
+            println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+            println("Training neural network for trait: $trait_id ($i/$(length(traits)))")
         end
+        fitted_nn = optimNN(
+            df,
+            trait_id=trait_id,
+            varex=varex,
+            validation_rate=validation_rate,
+            use_cpu=use_cpu,
+            n_random_searches=n_random_searches,
+            seed=seed,
+            verbose=verbnse,
+        )
+        FITTED[trait_id] = fitted_nn
     end
-    effects_years
-    fitted_nn["marginals"]["years"]["ϕ_marginals"]
-    effects_seasons
-    fitted_nn["marginals"]["seasons"]["ϕ_marginals"]
-    effects_sites
-    fitted_nn["marginals"]["sites"]["ϕ_marginals"]
-
-
-    # y_valid = y[idx_valid][1:Int(length(idx_valid) / 3)]
-    # n = length(y_valid)
-    # x_valid = dev(X[idx_valid, :]')
-    # ϕ_hat, st = Lux.apply(model, x_valid, ps, st);
-    # y_hat::Vector{Float64} = ϕ_hat[1, 1:n]
-    # display(UnicodePlots.scatterplot(y_valid, y_hat))
-    # cor(y_hat, y_valid) |> println
-    # end
-
-    nothing
-
-
+    FITTED
 end
