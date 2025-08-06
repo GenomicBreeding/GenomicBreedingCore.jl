@@ -709,7 +709,7 @@ function optimNN(
         )
     end
     for (i, params) in enumerate(params_drawn)
-        # i = 2; params = params_drawn[i]
+        # i = 1; params = params_drawn[i]
         # @show i
         # @show activation, optimiser, n_epochs, n_patient_epochs, n_hidden_layers, hidden_dims, dropout_rate = params
         activation, optimiser, n_epochs, n_patient_epochs, n_hidden_layers, hidden_dims, dropout_rate = params
@@ -839,17 +839,18 @@ function optimNN(
 end
 
 # genomes = simulategenomes(n=10, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, sparsity=0.1, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3); traits = ["trait_1", "trait_2"];
-# outNN = analyseviaNN(trails, traits)
+# outNN = analyseviaNN(trials, traits)
 function analyseviaNN(
     trials::Trials,
     traits::Vector{String};
     other_covariates::Union{Vector{String},Nothing} = nothing,
     validation_rate::Float64 = 0.25,
+    n_random_searches::Int64 = 20,
     use_cpu::Bool = false,
     seed::Int64 = 42,
     verbose::Bool = true,
 )::Dict{String, Any}
-    # genomes = simulategenomes(n=10, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, sparsity=0.1, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3); traits = ["trait_1", "trait_2"]; other_covariates=["trait_3"]; validation_rate::Float64 = 0.25; use_cpu::Bool = false; seed::Int64 = 42; verbose::Bool = true;
+    # genomes = simulategenomes(n=10, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, sparsity=0.1, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3); traits = ["trait_1", "trait_2"]; other_covariates=["trait_3"]; validation_rate::Float64 = 0.25; n_random_searches::Int64 = 20; use_cpu::Bool = false; seed::Int64 = 42; verbose::Bool = true;
     # Check arguments
     if !checkdims(trials)
         error("The Trials struct is corrupted ☹.")
@@ -910,15 +911,22 @@ function analyseviaNN(
             println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
             println("Training neural network for trait: $trait_id ($i/$(length(traits)))")
         end
+        idx_non_missing = findall(.!ismissing.(df[!, trait_id]) .&& .!isnan.(df[!, trait_id]) .&& .!isinf.(df[!, trait_id]))
+        if length(idx_non_missing) < 2
+            if verbose
+                println("Skipping. Not enough non-missing (Missing, NaN and Inf) observations.")
+            end
+            continue
+        end
         fitted_nn = optimNN(
-            df,
+            df[idx_non_missing, :],
             trait_id=trait_id,
             varex=varex,
             validation_rate=validation_rate,
             use_cpu=use_cpu,
             n_random_searches=n_random_searches,
             seed=seed,
-            verbose=verbnse,
+            verbose=verbose,
         )
         FITTED[trait_id] = fitted_nn
     end
