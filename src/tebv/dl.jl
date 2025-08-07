@@ -839,6 +839,7 @@ function optimNN(
 end
 
 # genomes = simulategenomes(n=10, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, sparsity=0.1, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=3); traits = ["trait_1", "trait_2"];
+# genomes = simulategenomes(n=1_000, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, sparsity=0.1, f_add_dom_epi = rand(10,3), n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=3); traits = ["trait_1", "trait_2"];
 # outNN = analyseviaNN(trials, traits)
 function analyseviaNN(
     trials::Trials,
