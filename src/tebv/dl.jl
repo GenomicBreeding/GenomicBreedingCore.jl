@@ -265,7 +265,7 @@ function trainNN(
     optimiser = [Optimisers.Adam(), Optimisers.NAdam(), Optimisers.OAdam(), Optimisers.AdaMax()][1],
     n_hidden_layers::Int64 = 3,
     hidden_dims::Int64 = 256,
-    dropout_rate::Float64 = 0.01,
+    dropout_rate::Float64 = 0.00,
     n_epochs::Int64 = 10_000,
     n_patient_epochs::Int64 = 100,
     use_cpu::Bool = false,
@@ -644,7 +644,7 @@ function optimNN(
     seed::Int64 = 42,
     verbose::Bool = true,
 )::Dict{String,Any}
-    # genomes = simulategenomes(n=20, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=2); df = tabularise(trials); trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries"]; validation_rate=0.25; activation = relu; dropout_rate = 0.0; optimiser = Optimiser.Adam(); use_cpu = false; seed=42;  verbose::Bool = true; n_hidden_layers = 1; hidden_dims = 256; n_patient_epochs = 1_000; n_epochs = 10_000; seed = 42; n_random_searches=10
+    # genomes = simulategenomes(n=20, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=2); df = tabularise(trials); trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries"]; validation_rate=0.25; activation = relu; dropout_rate = 0.0; optimiser = Optimisers.Adam(); use_cpu = false; seed=42;  verbose::Bool = true; n_hidden_layers = 1; hidden_dims = 256; n_patient_epochs = 1_000; n_epochs = 10_000; seed = 42; n_random_searches=10
     # # @time fitted_nn = optimNN(df, trait_id=trait_id, varex=varex)
     # Prepare the search parameters
     activation = isa(activation, Vector) ? activation : [activation]
@@ -712,11 +712,12 @@ function optimNN(
             dropout_rate = dropout_rate_i,
             use_cpu = use_cpu,
             seed = i,
-            verbose = false,
+            verbose = (n_random_searches == 1),
         )
         df_stats.activation[i] = string(activation_i)
         df_stats.optimiser[i] = string(optimiser_i)
-        df_stats.n_epochs[i] = n_epochs_i
+        # df_stats.n_epochs[i] = n_epochs_i
+        df_stats.n_epochs[i] = nrow(stats.training_progress)
         df_stats.n_patient_epochs[i] = n_patient_epochs_i
         df_stats.n_hidden_layers[i] = Float64(n_hidden_layers_i)
         df_stats.hidden_dims[i] = Float64(hidden_dims_i)
@@ -844,9 +845,9 @@ function analyseviaNN(
     optimiser::Any = [Optimisers.Adam(), Optimisers.NAdam(), Optimisers.OAdam(), Optimisers.AdaMax()][1],
     n_hidden_layers::Union{Int64, Vector{Int64}} = 3,
     hidden_dims::Union{Int64, Vector{Int64}} = 256,
-    dropout_rate::Union{Float64, Vector{Float64}} = 0.01,
+    dropout_rate::Union{Float64, Vector{Float64}} = 0.00,
     n_epochs::Union{Int64, Vector{Int64}} = 10_000,
-    n_patient_epochs::Union{Int64, Vector{Int64}} = 100,
+    n_patient_epochs::Union{Int64, Vector{Int64}} = 1_000,
     n_random_searches::Int64 = 20,
     use_cpu::Bool = false,
     seed::Int64 = 42,
