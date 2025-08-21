@@ -754,6 +754,7 @@ function optimNN(
         display(df_stats)
         println("Best paramters given empirical stats (i.e. prior to interpolation):")
         display(df_stats[argmax(df_stats.z), :])
+        println("z = $(df_stats.z[argmax(df_stats.z)])")
     end
     # Find the optimum via interpolation
     xs_all = nothing
@@ -798,6 +799,7 @@ function optimNN(
         display(df_stats_interpolated)
         println("Best paramters given interpolated stats:")
         display(df_stats_interpolated[idx_opt, :])
+        println("z = $(df_stats_interpolated.z[idx_opt])")
     end
     # Final training
     idx_training = collect(1:nrow(df))
