@@ -644,7 +644,7 @@ function optimNN(
     seed::Int64 = 42,
     verbose::Bool = true,
 )::Dict{String,Any}
-    # genomes = simulategenomes(n=20, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=2); df = tabularise(trials); trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries"]; validation_rate=0.25; activation = relu; dropout_rate = 0.0; optimiser = Optimisers.Adam(); use_cpu = false; seed=42;  verbose::Bool = true; n_hidden_layers = 1; hidden_dims = 256; n_patient_epochs = 1_000; n_epochs = 10_000; seed = 42; n_random_searches=10
+    # genomes = simulategenomes(n=20, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, f_add_dom_epi = rand(10,3), n_years=3, n_seasons=4, n_harvests=1, n_sites=3, n_replications=2); df = tabularise(trials); trait_id = "trait_1"; varex = ["years", "seasons", "sites", "entries"]; validation_rate=0.25; activation = relu; dropout_rate = 0.0; optimiser = Optimisers.Adam(); use_cpu = false; seed=42;  verbose::Bool = true; n_hidden_layers = [1, 2]; hidden_dims = [128, 256]; n_patient_epochs = 1_000; n_epochs = 10_000; seed = 42; n_random_searches=10
     # # @time fitted_nn = optimNN(df, trait_id=trait_id, varex=varex)
     # Prepare the search parameters
     activation = isa(activation, Vector) ? activation : [activation]
@@ -789,6 +789,16 @@ function optimNN(
     ẑ = ScatteredInterpolation.evaluate(interpolations, xs_all)
     idx_opt = argmax(ẑ)
     p_opt = xs_all[:, idx_opt]
+    if verbose
+        println("Interpolated stats:")
+        df_stats_interpolated = DataFrames.DataFrame(xs_all', :auto)
+        rename!(df_stats_interpolated, DataFrames.names(df_stats)[1:size(xs_all, 1)])
+        df_stats_interpolated.optimiser = optimiser[Int64.(df_stats_interpolated.optimiser)]
+        df_stats_interpolated.z = ẑ
+        display(df_stats_interpolated)
+        println("Best paramters given interpolated stats:")
+        display(df_stats_interpolated[idx_opt, :])
+    end
     # Final training
     idx_training = collect(1:nrow(df))
     idx_validation = sort(filter(x -> !(x ∈ idx_training), 1:nrow(df)))
