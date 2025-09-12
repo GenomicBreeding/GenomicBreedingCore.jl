@@ -112,85 +112,76 @@ function Base.merge(
         end
         return out
     end
-
     # Instantiate the merged Genomes struct
     entries::Vector{String} = genomes.entries ∪ other.entries
-    populations::Vector{String} = fill("", length(entries))
     loci_alleles::Vector{String} = genomes.loci_alleles ∪ other.loci_alleles
-    allele_frequencies::Matrix{Union{Missing,Float64}} = fill(missing, (length(entries), length(loci_alleles)))
-    mask::Matrix{Bool} = fill(false, (length(entries), length(loci_alleles)))
-    out::Genomes = Genomes(n = length(entries), p = length(loci_alleles))
+    n = length(entries)
+    p = length(loci_alleles)
+    out::Genomes = Genomes(n=n, p=p)
+    out.entries = entries
+    out.loci_alleles = loci_alleles
+    # Vectors of booleans to speed up the merging process
+    bool_entries_1::Vector{Bool} = [x ∈ genomes.entries for x in entries]
+    bool_entries_2::Vector{Bool} = [x ∈ other.entries for x in entries]
+    bool_loci_alleles_1::Vector{Bool} = [x ∈ genomes.loci_alleles for x in loci_alleles]
+    bool_loci_alleles_2::Vector{Bool} = [x ∈ other.loci_alleles for x in loci_alleles]
+    # Vectors of indices in both genomes and counters to complements the vectors of booleans above during merging
+    idx_entries_1_in_1::Vector{Int} = findall([x ∈ entries for x in genomes.entries])
+    idx_entries_2_in_2::Vector{Int} = findall([x ∈ entries for x in other.entries])
+    idx_loci_alleles_1_in_1::Vector{Int} = findall([x ∈ loci_alleles for x in genomes.loci_alleles])
+    idx_loci_alleles_2_in_2::Vector{Int} = findall([x ∈ loci_alleles for x in other.loci_alleles])
+    counter_entries_1::Int64 = 0
+    counter_entries_2::Int64 = 0
     # Merge and resolve conflicts in allele frequencies and mask
     if verbose
         pb = ProgressMeter.Progress(length(entries) * length(loci_alleles); desc = "Merging 2 Genomes structs: ")
     end
-    idx_entry_1::Vector{Int} = []
-    idx_entry_2::Vector{Int} = []
-    bool_entry_1::Bool = false
-    bool_entry_2::Bool = false
-    idx_locus_allele_1::Vector{Int} = []
-    idx_locus_allele_2::Vector{Int} = []
-    bool_locus_allele_1::Bool = false
-    bool_locus_allele_2::Bool = false
-    for (i, entry) in enumerate(entries)
-        # entry = entries[i]
-        idx_entry_1 = findall(genomes.entries .== entry)
-        idx_entry_2 = findall(other.entries .== entry)
-        # We expect a maximum of 1 match per entry as we checked the Genomes structs
-        bool_entry_1 = length(idx_entry_1) > 0
-        bool_entry_2 = length(idx_entry_2) > 0
-        if bool_entry_1 && bool_entry_2
-            if genomes.populations[idx_entry_1[1]] == other.populations[idx_entry_2[1]]
-                populations[i] = genomes.populations[idx_entry_1[1]]
-            else
-                populations[i] = string(
-                    "CONFLICT (",
-                    genomes.populations[idx_entry_1[1]]...,
-                    ", ",
-                    other.populations[idx_entry_2[1]]...,
-                    ")",
-                )
-            end
-        elseif bool_entry_1
-            populations[i] = genomes.populations[idx_entry_1[1]]
-        elseif bool_entry_2
-            populations[i] = other.populations[idx_entry_2[1]]
+    @inbounds for i in 1:n
+        # i = 50
+        i_1 = if bool_entries_1[i]
+            counter_entries_1 += 1
+            idx_entries_1_in_1[counter_entries_1]
         else
-            continue # should never happen
+            0
         end
-        for (j, locus_allele) in enumerate(loci_alleles)
-            # locus_allele = loci_alleles[j]
-            # We expect 1 locus-allele match as we checked the Genomes structs
-            idx_locus_allele_1 = findall(genomes.loci_alleles .== locus_allele)
-            idx_locus_allele_2 = findall(other.loci_alleles .== locus_allele)
-            bool_locus_allele_1 = length(idx_locus_allele_1) > 0
-            bool_locus_allele_2 = length(idx_locus_allele_2) > 0
-            if bool_entry_1 && bool_locus_allele_1 && bool_entry_2 && bool_locus_allele_2
-                q_1 = genomes.allele_frequencies[idx_entry_1[1], idx_locus_allele_1[1]]
-                q_2 = other.allele_frequencies[idx_entry_2[1], idx_locus_allele_2[1]]
-                m_1 = genomes.mask[idx_entry_1[1], idx_locus_allele_1[1]]
-                m_2 = other.mask[idx_entry_2[1], idx_locus_allele_2[1]]
-                if skipmissing(q_1) == skipmissing(q_2)
-                    allele_frequencies[i, j] = q_1
-                    mask[i, j] = m_1
-                else
-                    if !ismissing(q_1) && !ismissing(q_2)
-                        allele_frequencies[i, j] = sum((q_1, q_2) .* conflict_resolution)
-                    elseif !ismissing(q_1)
-                        allele_frequencies[i, j] = q_1
-                    else
-                        allele_frequencies[i, j] = q_2
-                    end
-                    mask[i, j] = Bool(round(sum((m_1, m_2) .* conflict_resolution)))
-                end
-            elseif bool_entry_1 && bool_locus_allele_1
-                allele_frequencies[i, j] = genomes.allele_frequencies[idx_entry_1[1], idx_locus_allele_1[1]]
-                mask[i, j] = genomes.mask[idx_entry_1[1], idx_locus_allele_1[1]]
-            elseif bool_entry_2 && bool_locus_allele_2
-                allele_frequencies[i, j] = other.allele_frequencies[idx_entry_2[1], idx_locus_allele_2[1]]
-                mask[i, j] = other.mask[idx_entry_2[1], idx_locus_allele_2[1]]
+        i_2 = if bool_entries_2[i]
+            counter_entries_2 += 1
+            idx_entries_2_in_2[counter_entries_2]
+        else
+            0
+        end
+        out.populations[i] = if bool_entries_1[i] && bool_entries_2[i]
+            join(unique([genomes.populations[i_1] , other.populations[i_2]]), ", ")
+        elseif bool_entries_1[i]
+            genomes.populations[i_1]
+        else
+            other.populations[i_2]
+        end
+        counter_loci_alleles_1::Int64 = 0
+        counter_loci_alleles_2::Int64 = 0
+        @inbounds for j in 1:p
+            # j = 1
+            # j = 2_500
+            j_1 = if bool_loci_alleles_1[j]
+                counter_loci_alleles_1 += 1
+                idx_loci_alleles_1_in_1[counter_loci_alleles_1]
             else
-                continue
+                0
+            end
+            j_2 = if bool_loci_alleles_2[j]
+                counter_loci_alleles_2 += 1
+                idx_loci_alleles_2_in_2[counter_loci_alleles_2]
+            else
+                0
+            end
+            out.allele_frequencies[i, j] = if bool_entries_1[i] && bool_entries_2[i] && bool_loci_alleles_1[j] && bool_loci_alleles_2[j]
+                (genomes.allele_frequencies[i_1, j_1] * conflict_resolution[1]) + (other.allele_frequencies[i_2, j_2] * conflict_resolution[2])
+            elseif bool_entries_1[i] && bool_loci_alleles_1[j]
+                genomes.allele_frequencies[i_1, j_1]
+            elseif bool_entries_2[i] && bool_loci_alleles_2[j]
+                other.allele_frequencies[i_2, j_2]
+            else
+                missing
             end
             if verbose
                 next!(pb)
@@ -199,13 +190,7 @@ function Base.merge(
     end
     if verbose
         finish!(pb)
-    end
-    # Output
-    out.entries = entries
-    out.populations = populations
-    out.loci_alleles = loci_alleles
-    out.allele_frequencies = allele_frequencies
-    out.mask = mask
+    end         
     if !checkdims(out)
         throw(ErrorException("Error merging the 2 Genomes structs."))
     end
