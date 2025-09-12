@@ -457,8 +457,8 @@ mutable struct DLModel <: AbstractGB
     validation_observed::Vector{Float64}
     validation_predicted::Vector{Float64}
     validation_labels::Vector{String}
-    stats_training::Dict{Symbol, Any}
-    stats_validation::Dict{Symbol, Any}
+    stats_training::Dict{Symbol,Any}
+    stats_validation::Dict{Symbol,Any}
 end
 
 """
