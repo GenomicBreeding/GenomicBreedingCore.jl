@@ -98,7 +98,7 @@ end
 
 
 """
-    checkdims(trials::Trials)::Bool
+    checkdims(trials::Trials; verbose::Bool=false)::Bool
 
 Check dimension compatibility of all fields in a `Trials` struct.
 
@@ -122,6 +122,7 @@ Returns `true` if all dimensions are compatible, `false` otherwise.
 
 # Arguments
 - `trials::Trials`: A Trials struct containing trial data
+- `verbose::Bool=false`: If true, prints the dimensions of each field for debugging
 
 # Returns
 - `Bool`: `true` if dimensions are compatible, `false` otherwise
@@ -141,7 +142,21 @@ julia> checkdims(trials)
 false
 ```
 """
-function checkdims(trials::Trials)::Bool
+function checkdims(trials::Trials; verbose::Bool = false)::Bool
+    if verbose
+        @show size(trials.phenotypes)
+        @show length(trials.traits)
+        @show length(trials.years)
+        @show length(trials.seasons)
+        @show length(trials.harvests)
+        @show length(trials.sites)
+        @show length(trials.replications)
+        @show length(trials.blocks)
+        @show length(trials.rows)
+        @show length(trials.cols)
+        @show length(trials.entries)
+        @show length(trials.populations)
+    end
     n, t = size(trials.phenotypes)
     if (t != length(trials.traits)) ||
        (t != length(unique(trials.traits))) ||

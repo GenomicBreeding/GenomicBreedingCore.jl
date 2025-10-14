@@ -6,7 +6,7 @@ using LinearAlgebra
 using StatsBase, Clustering
 using Distributions, SparseArrays, PDMats
 using StatsModels, MixedModels
-using Turing, MCMCDiagnosticTools, Zygote, ReverseDiff
+# using Turing, MCMCDiagnosticTools, Zygote, ReverseDiff
 using MultivariateStats
 using Distances, CovarianceEstimation
 using UnicodePlots
@@ -32,15 +32,16 @@ include("phenomes/merge.jl")
 # Trials data: single- or multi- environments, years, seasons and harvests
 include("trials/trials.jl")
 include("trials/filter.jl")
+include("trials/merge.jl")
 # Trial-estimated breeding values
 include("tebv/tebv.jl")
 include("tebv/lmm.jl")
-include("tebv/bayes.jl")
+# include("tebv/bayes.jl")
 include("tebv/dl.jl")
 # Linear and non-linear genotype-to-phenotype models struct
 include("fit/fit.jl")
-# Bayesian linear regression fit struct
-include("blr/blr.jl")
+# # Bayesian linear regression fit struct
+# include("blr/blr.jl")
 # Genotype-to-phenotype model cross-validation struct
 include("cv/cv.jl")
 # Genomic relationship matrix struct
@@ -52,7 +53,8 @@ include("simulations/simulate_genomes.jl")
 include("simulations/simulate_trials.jl")
 include("simulations/simulate_mating.jl")
 
-export AbstractGB, Genomes, Phenomes, Trials, SimulatedEffects, DLModel, BLR, TEBV, Fit, CV, GRM
+export AbstractGB, Genomes, Phenomes, Trials, SimulatedEffects, DLModel, TEBV, Fit, CV, GRM
+# export BLR
 export clone, hash, ==
 export checkdims, dimensions, loci_alleles, loci, distances, plot, tabularise, summarise, aggregateharvests
 export slice,
@@ -70,13 +72,13 @@ export simulategenomes,
     simulatetrials
 export histallelefreqs, simulatemating
 export countlevels, @string2formula, trialsmodelsfomulae!, analyse, extractphenomes
-export extractXb,
-    checkandfocalterms, instantiateblr, turingblr, extractmodelinputs, turingblrmcmc!, removespatialeffects!
+export extractXb, checkandfocalterms, extractmodelinputs, removespatialeffects!
+# export instantiateblr, turingblr, turingblrmcmc!
 export @stringevaluation, addcompositetrait
 export maskmissing!, divideintomockscaffolds, estimateld, estimatedistances, knni, knnioptim, impute
 export inflatediagonals!, grmsimple, grmploidyaware
 # Experimental:
-export analyseviaBLR
+# export analyseviaBLR
 export makex,
     prepinputs,
     prepmodel,

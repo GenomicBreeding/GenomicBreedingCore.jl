@@ -113,7 +113,7 @@ end
 
 
 """
-    checkdims(genomes::Genomes)::Bool
+    checkdims(genomes::Genomes; verbose::Bool=false)::Bool
 
 Check dimension compatibility of the fields in a `Genomes` struct.
 
@@ -121,6 +121,7 @@ Returns `true` if all dimensions are compatible, `false` otherwise.
 
 # Arguments
 - `genomes::Genomes`: A Genomes struct containing genomic data
+- `verbose::Bool=false`: If true, prints the dimensions of each field for debugging
 
 # Details
 Verifies that:
@@ -146,7 +147,16 @@ julia> checkdims(genomes)
 true
 ```
 """
-function checkdims(genomes::Genomes)::Bool
+function checkdims(genomes::Genomes; verbose::Bool = false)::Bool
+    if verbose
+        @show size(genomes.allele_frequencies)
+        @show length(genomes.entries)
+        @show length(unique(genomes.entries))
+        @show length(genomes.populations)
+        @show length(genomes.loci_alleles)
+        @show length(unique(genomes.loci_alleles))
+        @show size(genomes.mask)
+    end
     n, p = size(genomes.allele_frequencies)
     if (n != length(genomes.entries)) ||
        (n != length(unique(genomes.entries))) ||

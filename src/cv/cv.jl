@@ -123,7 +123,7 @@ end
 
 
 """
-    checkdims(cv::CV)::Bool
+    checkdims(cv::CV; verbose::Bool=false)::Bool
 
 Check dimension compatibility of the fields of the CV struct.
 
@@ -133,7 +133,11 @@ The function verifies that:
 - The number of validation true values matches the number of validation predictions
 - The number of metrics matches the number of metrics in the fit object
 
-Returns:
+# Arguments
+- `blr::CV`: The CV struct to check dimensions for
+- `verbose::Bool=false`: If true, prints the dimensions of each field for debugging
+
+# Returns:
 - `true` if all dimensions are compatible
 - `false` if any dimension mismatch is found
 
@@ -152,7 +156,15 @@ julia> checkdims(cv)
 false
 ```
 """
-function checkdims(cv::CV)::Bool
+function checkdims(cv::CV; verbose::Bool = false)::Bool
+    if verbose
+        @show length(cv.validation_populations)
+        @show length(cv.validation_entries)
+        @show length(cv.validation_y_true)
+        @show length(cv.validation_y_pred)
+        @show length(cv.metrics)
+        @show length(cv.fit.metrics)
+    end
     n = length(cv.validation_populations)
     if !checkdims(cv.fit) ||
        (length(cv.validation_entries) != n) ||

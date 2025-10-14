@@ -97,12 +97,13 @@ end
 
 
 """
-    checkdims(grm::GRM)::Bool
+    checkdims(grm::GRM; verbose::Bool=false)::Bool
 
 Check dimension compatibility of the GRM (Genomic Relationship Matrix) struct fields.
 
 # Arguments
 - `grm::GRM`: A Genomic Relationship Matrix struct containing entries and relationship matrix
+- `verbose::Bool=false`: If true, prints the dimensions of each field for debugging
 
 # Returns
 - `true` if the number of entries matches the dimensions of the genomic relationship matrix
@@ -127,7 +128,11 @@ julia> checkdims(grm)
 false
 ```
 """
-function checkdims(grm::GRM)::Bool
+function checkdims(grm::GRM; verbose::Bool = false)::Bool
+    if verbose
+        @show length(grm.entries)
+        @show size(grm.genomic_relationship_matrix)
+    end
     n = length(grm.entries)
     if (n != size(grm.genomic_relationship_matrix, 1)) || (n != size(grm.genomic_relationship_matrix, 2))
         return false

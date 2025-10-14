@@ -201,9 +201,8 @@ function estimateld(
     LDs = Vector{Matrix{Float64}}(undef, length(chroms_uniq))
     # Check if we can resume previous run in the same directory
     fnames = readdir()
-    fnames = fnames[(.!isnothing.(
-        match.(Regex("^LD_matrix-"), fnames)
-    )).&&(.!isnothing.(match.(Regex(".tmp.jld2\$"), fnames)))]
+    fnames =
+        fnames[(.!isnothing.(match.(Regex("^LD_matrix-"), fnames))).&&(.!isnothing.(match.(Regex(".tmp.jld2\$"), fnames)))]
     # Define the chromosomes with previously estimated LD matrices
     chroms_finished::Vector{String} = if length(fnames) > 0
         # Resume
@@ -271,9 +270,8 @@ function estimateld(
     JLD2.save(fname_LD_matrix_final, Dict("LDs" => LDs))
     # Clean-up
     fnames = readdir()
-    fnames = fnames[(.!isnothing.(
-        match.(Regex("^LD_matrix-"), fnames)
-    )).&&(.!isnothing.(match.(Regex(".tmp.jld2\$"), fnames)))]
+    fnames =
+        fnames[(.!isnothing.(match.(Regex("^LD_matrix-"), fnames))).&&(.!isnothing.(match.(Regex(".tmp.jld2\$"), fnames)))]
     rm.(fnames)
     # Output
     (chroms_uniq, LDs)
@@ -654,9 +652,8 @@ function knnioptim(
             mae::Float64 = 0.0
             idx_entries_not_missing_and_sim_missing =
                 sample(idx_entries_not_missing, minimum([length(idx_entries_not_missing) - 1, n_reps]), replace = false)
-            idx_entries_not_missing_and_not_sim_missing = idx_entries_not_missing[.!(
-                x ∈ idx_entries_not_missing_and_sim_missing for x in idx_entries_not_missing
-            )]
+            idx_entries_not_missing_and_not_sim_missing =
+                idx_entries_not_missing[.!(x ∈ idx_entries_not_missing_and_sim_missing for x in idx_entries_not_missing)]
             for i in idx_entries_not_missing_and_sim_missing
                 # i = idx_entries_not_missing_and_sim_missing[1]
                 qs::Vector{Float64} = genomes.allele_frequencies[idx_entries_not_missing_and_not_sim_missing, j]

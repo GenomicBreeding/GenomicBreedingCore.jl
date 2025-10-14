@@ -605,7 +605,7 @@ function extracteffects(model::DLModel)
             labels = []
             for x in eachrow(X_new)
                 # x = X_new[1, :]
-                push!(labels, join(model.feature_names[x.==1.0], "|"))
+                push!(labels, join(model.feature_names[x .== 1.0], "|"))
             end
             labels
         end

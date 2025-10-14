@@ -117,7 +117,7 @@ end
 
 
 """
-    checkdims(y::TEBV)::Bool
+    checkdims(y::TEBV; verbose::Bool=false)::Bool
 
 Check if all fields in the TEBV struct have compatible dimensions. The function verifies that
 the length of all arrays in the TEBV struct match the number of traits.
@@ -125,6 +125,7 @@ the length of all arrays in the TEBV struct match the number of traits.
 # Arguments
 - `tebv::TEBV`: A TEBV (Trial-estimated Breeding Values) struct containing traits,
   formulae, models, BLUEs, BLUPs, and phenomes.
+- `verbose::Bool=false`: If true, prints the dimensions of each field for debugging
 
 # Returns
 - `Bool`: Returns `true` if all fields have matching dimensions (equal to the number of traits),
@@ -146,7 +147,15 @@ julia> checkdims(tebv)
 true
 ```
 """
-function checkdims(tebv::TEBV)::Bool
+function checkdims(tebv::TEBV; verbose::Bool = false)::Bool
+    if verbose
+        @show length(tebv.traits)
+        @show length(tebv.formulae)
+        @show length(tebv.models)
+        @show length(tebv.df_BLUEs)
+        @show length(tebv.df_BLUPs)
+        @show length(unique(tebv.phenomes))
+    end
     t = length(tebv.traits)
     if (t != length(tebv.formulae)) ||
        (t != length(tebv.models)) ||

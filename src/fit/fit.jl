@@ -119,7 +119,7 @@ end
 
 
 """
-    checkdims(fit::Fit)::Bool
+    checkdims(fit::Fit; verbose::Bool=false)::Bool
 
 Check dimension compatibility of the internal fields of a `Fit` struct.
 
@@ -131,6 +131,7 @@ Returns `true` if all dimensions are compatible, `false` otherwise.
 
 # Arguments
 - `fit::Fit`: The Fit struct to check dimensions for
+- `verbose::Bool=false`: If true, prints the dimensions of each field for debugging
 
 # Returns
 - `Bool`: `true` if dimensions are compatible, `false` otherwise
@@ -148,7 +149,15 @@ julia> checkdims(fit)
 false
 ```
 """
-function checkdims(fit::Fit)::Bool
+function checkdims(fit::Fit; verbose::Bool = false)::Bool
+    if verbose
+        @show length(fit.entries)
+        @show length(fit.populations)
+        @show length(fit.y_true)
+        @show length(fit.y_pred)
+        @show length(fit.b_hat)
+        @show length(fit.b_hat_labels)
+    end
     n = length(fit.entries)
     l = length(fit.b_hat)
     if (n != length(fit.populations)) ||

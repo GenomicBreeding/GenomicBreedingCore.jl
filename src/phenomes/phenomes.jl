@@ -105,7 +105,7 @@ end
 
 
 """
-    checkdims(y::Phenomes)::Bool
+    checkdims(y::Phenomes; verbose::Bool=false)::Bool
 
 Verify dimensional compatibility between all fields of a Phenomes struct.
 
@@ -119,6 +119,7 @@ Checks if:
 
 # Arguments
 - `y::Phenomes`: A Phenomes struct containing phenotypic data
+- `verbose::Bool=false`: If true, prints the dimensions of each field for debugging
 
 # Returns
 - `Bool`: `true` if all dimensions are compatible, `false` otherwise
@@ -138,7 +139,17 @@ julia> checkdims(y)
 true
 ```
 """
-function checkdims(y::Phenomes)::Bool
+function checkdims(y::Phenomes; verbose::Bool = false)::Bool
+    if verbose
+        @show size(y.phenotypes)
+        @show length(y.entries)
+        @show length(unique(y.entries))
+        @show length(y.populations)
+        @show length(unique(y.populations))
+        @show length(y.traits)
+        @show length(unique(y.traits))
+        @show size(y.mask)
+    end
     n, p = size(y.phenotypes)
     if (n != length(y.entries)) ||
        (n != length(unique(y.entries))) ||
