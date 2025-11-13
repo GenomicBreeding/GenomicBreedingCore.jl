@@ -58,7 +58,15 @@ export AbstractGB, Genomes, Phenomes, Trials, SimulatedEffects, DLModel, TEBV, F
 export clone, hash, ==
 export checkdims, dimensions, loci_alleles, loci, distances, plot, tabularise, summarise, aggregateharvests
 export slice,
-    sparsities, filter, filterbysparsity, filterbymaf, filterbymaxnalleles, filterbypca, filterbysnplist, removemissnaninf, extracteffects
+    sparsities,
+    filter,
+    filterbysparsity,
+    filterbymaf,
+    filterbymaxnalleles,
+    filterbypca,
+    filterbysnplist,
+    removemissnaninf,
+    extracteffects
 export simulatechromstruct,
     simulateposandalleles, simulatepopgroups, simulateldblocks, simulateperpopμΣ, simulateallelefreqs!
 export simulategenomes,

@@ -607,17 +607,17 @@ julia> length(genomes.loci_alleles) == length(filtered_genomes.loci_alleles)
 true
 ```
 """
-function filterbymaxnalleles(genomes::Genomes; max_n_alleles::Int64 = Inf, verbose::Bool = false)::Genomes
+function filterbymaxnalleles(genomes::Genomes; max_n_alleles::Int64 = typemax(Int64), verbose::Bool = false)::Genomes
     # genomes = simulategenomes(n=100, l=1_000, n_alleles=4, sparsity=0.25, verbose=true); max_n_alleles = Inf; verbose = true;
     # Check arguments
     if !checkdims(genomes)
         throw(ArgumentError("Genomes struct is corrupted ☹."))
     end
     if max_n_alleles < 1
-        throw(ArgumentError("We accept `max_n_alleles` from 1 to Inf."))
+        throw(ArgumentError("We accept `max_n_alleles` from 1 to $(typemax(Int64))."))
     end
-    # Return early if max_n_alleles = Inf
-    if isinf(max_n_alleles)
+    # Return early if max_n_alleles = typemax(Int64)
+    if max_n_alleles == typemax(Int64)
         if verbose
             println("No filtering necessary. Maximum number of alleles = $max_n_alleles.")
         end
@@ -627,15 +627,21 @@ function filterbymaxnalleles(genomes::Genomes; max_n_alleles::Int64 = Inf, verbo
     # Return early if we are not filtering any loci
     if length(idx_loci_alleles) == length(genomes.loci_alleles)
         if verbose
-            println("No filtering by maximum number of alleles necessary. All loci passed the max_n_alleles threshold ($max_n_alleles).")
+            println(
+                "No filtering by maximum number of alleles necessary. All loci passed the max_n_alleles threshold ($max_n_alleles).",
+            )
         end
         return genomes
     end
     # Check if we are retaining any entries and loci
     if length(idx_loci_alleles) == 0
-        throw(ErrorException(string("All loci filtered out at maximum number of alleles (max_n_alleles) = ", max_n_alleles, ".")))
+        throw(
+            ErrorException(
+                string("All loci filtered out at maximum number of alleles (max_n_alleles) = ", max_n_alleles, "."),
+            ),
+        )
     end
-    slice(genomes, idx_loci_alleles=idx_loci_alleles, verbose=verbose)
+    slice(genomes, idx_loci_alleles = idx_loci_alleles, verbose = verbose)
 end
 
 """
@@ -1030,7 +1036,7 @@ true
 function Base.filter(
     genomes::Genomes,
     maf::Float64;
-    max_n_alleles::Int64 = Inf,
+    max_n_alleles::Int64 = typemax(Int64),
     max_entry_sparsity::Float64 = 0.0,
     max_locus_sparsity::Float64 = 0.0,
     max_prop_pc_varexp::Float64 = 0.90,
@@ -1061,7 +1067,7 @@ function Base.filter(
         throw(ArgumentError("We accept `maf` from 0.0 to 1.0."))
     end
     if max_n_alleles < 1
-        throw(ArgumentError("We accept `max_n_alleles` from 1 to Inf."))
+        throw(ArgumentError("We accept `max_n_alleles` from 1 to $(typemax(Int64))."))
     end
     if max_prop_pc_varexp < 0.0
         throw(ArgumentError("We accept `max_prop_pc_varexp` from 0.0 to Inf."))
