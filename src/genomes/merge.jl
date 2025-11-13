@@ -112,6 +112,78 @@ function Base.merge(
         end
         return out
     end
+    # If quick merging is not possible, proceed with full merging.
+    # But first we merge the loci alleles, i.e. identify same loci with different alleles and merge them
+    # Build a unified list of loci_alleles across both Genomes, making sure each  entry is a canonical "chromosome\tposition\tall_alleles\talleles" string.
+    # We split on tab, take the first three fields (chrom, pos, all_alleles) and rejoin to ensure consistent sorting and uniqueness.
+    loci_all_alleles =
+        unique(sort([join(x[1:3], "\t") for x in split.(vcat(genomes.loci_alleles, other.loci_alleles), "\t")]))
+    # Extract the "all_alleles" (3rd field) and the locus identifier (chrom\tpos)
+    all_alleles = [x[3] for x in split.(loci_all_alleles, "\t")]
+    loci = [join(x[1:2], "\t") for x in split.(loci_all_alleles, "\t")]
+    # Count how many times each locus (chrom\tpos) appears. If >1, the same locus has multiple allele sets that need to be merged.
+    loci_counts = countmap(loci)
+    loci_duplicated = String.(keys(filter(x -> x[2] > 1, loci_counts)))
+    genomes, other = if length(loci_duplicated) > 0
+        # idx_1: indices in `loci` that correspond to duplicated loci (may contain duplicates)
+        # idx_x: boolean positions (1..length(loci)) where loci are duplicated (used to collect groups)
+        idx_0 = []
+        idx_1 = filter(x -> !isnothing(x), indexin(loci, loci_duplicated))
+        idx_x = findall(.!isnothing.(indexin(loci, loci_duplicated)))
+        # For each unique duplicated locus, merge the allele lists across its occurrences.
+        # We collect indices for the current duplicated locus (idx_3), remember them in idx_0 and update all_alleles at those positions with the union of alleles separated by "|".
+        if verbose
+            pb = ProgressMeter.Progress(length(unique(idx_1)); desc = "Merging loci alleles: ")
+        end
+        @inbounds for idx_2 in unique(idx_1)
+            # idx_3: positions in `loci` corresponding to this particular duplicated locus
+            idx_3 = idx_x[findall(idx_1 .== idx_2)]
+            # remember these positions for later mapping back to original loci_alleles vectors
+            push!(idx_0, idx_3...)
+            # split each all_alleles string by "|" and take the unique union, then rejoin with "|"
+            all_alleles[idx_3] .= join(unique(vcat([x for x in split.(all_alleles[idx_3], "|")]...)), "|")
+            if verbose
+                ProgressMeter.next!(pb)
+            end
+        end
+        if verbose
+            ProgressMeter.finish!(pb)
+        end
+        # loci_updated & all_alleles_updated correspond to the merged locus identifiers and their merged allele lists for all duplicated occurrences.
+        loci_updated = loci[idx_0]
+        all_alleles_updated = all_alleles[idx_0]
+        # Update genomes.loci_alleles in-place: split each original loci_alleles string, identify positions that match duplicated loci, replace the locus and all_alleles fields with the merged versions, and then reconstruct the full loci_alleles strings.
+        genomes.loci_alleles = begin
+            split_loci_alleles_genomes = split.(genomes.loci_alleles, "\t")
+            loci_genomes = [join(x[1:2], "\t") for x in split_loci_alleles_genomes]
+            all_alleles_genomes = [x[3] for x in split_loci_alleles_genomes]
+            alleles_genomes = [x[4] for x in split_loci_alleles_genomes]
+            # idx_a: indices into loci_updated for matches; idx_b: positions in genomes where matches occur
+            idx_a = filter(x -> !isnothing(x), indexin(loci_genomes, loci_updated))
+            idx_b = findall(.!isnothing.(indexin(loci_genomes, loci_updated)))
+            # replace locus id and all_alleles at the matched positions with the merged values
+            loci_genomes[idx_b] = loci_updated[idx_a]
+            all_alleles_genomes[idx_b] = all_alleles_updated[idx_a]
+            # reconstruct the full loci_alleles strings: "chrom\tpos\tall_alleles\talleles"
+            string.(loci_genomes, "\t", all_alleles_genomes, "\t", alleles_genomes)
+        end
+        # Do the same update for other.loci_alleles so both Genomes structs refer to the
+        # same merged locus identifiers and merged allele lists.
+        other.loci_alleles = begin
+            split_loci_alleles_other = split.(other.loci_alleles, "\t")
+            loci_other = [join(x[1:2], "\t") for x in split_loci_alleles_other]
+            all_alleles_other = [x[3] for x in split_loci_alleles_other]
+            alleles_other = [x[4] for x in split_loci_alleles_other]
+            idx_a = filter(x -> !isnothing(x), indexin(loci_other, loci_updated))
+            idx_b = findall(.!isnothing.(indexin(loci_other, loci_updated)))
+            loci_other[idx_b] = loci_updated[idx_a]
+            all_alleles_other[idx_b] = all_alleles_updated[idx_a]
+            string.(loci_other, "\t", all_alleles_other, "\t", alleles_other)
+        end
+        (genomes, other)
+    else
+        (genomes, other)
+    end
     # Instantiate the merged Genomes struct
     entries::Vector{String} = genomes.entries ∪ other.entries
     loci_alleles::Vector{String} = genomes.loci_alleles ∪ other.loci_alleles
