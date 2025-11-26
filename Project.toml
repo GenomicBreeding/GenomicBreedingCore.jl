@@ -1,6 +1,6 @@
 name = "GenomicBreedingCore"
 uuid = "50d95318-1838-4cfa-a614-3543b4bb0509"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["jeffersonparil@gmail.com"]
 
 [deps]
@@ -60,7 +60,7 @@ StatsBase = "0.34.5"
 StatsModels = "0.7.4"
 Suppressor = "0.2.8"
 UnicodePlots = "3.7.1"
-julia = "1.11"
+julia = "1.12"
 
 [extras]
 CUDA_Runtime_jll = "76a88914-d11a-5bdc-97e0-2f5a05c973a2"
