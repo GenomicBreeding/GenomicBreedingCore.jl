@@ -6,16 +6,13 @@ using LinearAlgebra
 using StatsBase, Clustering
 using Distributions, SparseArrays, PDMats
 using StatsModels, MixedModels
-# using Turing, MCMCDiagnosticTools, Zygote, ReverseDiff
 using MultivariateStats
 using Distances, CovarianceEstimation
 using UnicodePlots
 using JLD2
 using ProgressMeter
 using Suppressor
-using Lux, Optimisers
-using LuxCUDA, CUDA
-# using LuxCUDA, AMDGPU, oneAPI # GPU support (Metal is for MacOS)
+using Optimisers
 using Combinatorics, ScatteredInterpolation
 
 # Structs
@@ -37,7 +34,7 @@ include("trials/merge.jl")
 include("tebv/tebv.jl")
 include("tebv/lmm.jl")
 # include("tebv/bayes.jl")
-include("tebv/dl.jl")
+# include("tebv/dl.jl")
 # Linear and non-linear genotype-to-phenotype models struct
 include("fit/fit.jl")
 # # Bayesian linear regression fit struct

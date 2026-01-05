@@ -223,6 +223,7 @@ Filter genomic data by removing entries and loci with high sparsity.
 - `max_locus_sparsity::Float64`: The maximum allowable sparsity for loci. Default is 0.0.
 - `max_entry_sparsity_percentile::Float64`: The percentile threshold for entry sparsity used in iteratively filtering out the sparsest entries. Default is 0.90.
 - `max_locus_sparsity_percentile::Float64`: The percentile threshold for locus sparsity used in iteratively filtering out sparsest loci. Default is 0.50.
+- `max_iter::Int64`: The maximum number of iterations to perform during filtering. Default is 10.
 - `verbose::Bool`: If `true`, prints detailed progress information during the filtering process. Default is `false`.
 
 # Returns
@@ -237,6 +238,7 @@ This function filters genomic data by iteratively removing entries and loci with
 4. **Iterative Filtering**: Iteratively removes the sparsest loci and entries until the maximum allowable sparsity thresholds are met:
    - **Remove Sparsest Loci**: Removes loci with sparsity above the specified percentile threshold or maximum loci sparsity, whichever is higher.
    - **Remove Sparsest Entries**: Removes entries with sparsity above the specified percentile threshold or maximum entries sparsity, whichever is higher.
+   - **Check for Convergence**: If the maximum sparsity levels are not improving, the function may terminate early to avoid infinite loops.
 5. **Verbose Output**: If `verbose` is `true`, prints detailed progress information during each iteration.
 6. **Final Check**: Ensures that there are remaining entries and loci after filtering. Throws an `ErrorException` if all entries or loci are filtered out.
 7. **Output**: Returns the filtered `Genomes` struct.
@@ -256,7 +258,7 @@ This function filters genomic data by iteratively removing entries and loci with
 
 # Examples
 ```jldoctest; setup = :(using GenomicBreedingCore)
-julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, sparsity=0.01, verbose=false);
+julia> genomes = simulategenomes(n=100, l=1_000, n_alleles=4, sparsity=0.02, verbose=false);
 
 julia> filtered_genomes = filterbysparsity(genomes);
 
@@ -264,14 +266,22 @@ julia> size(genomes.allele_frequencies)
 (100, 3000)
 
 julia> size(filtered_genomes.allele_frequencies)
-(92, 1239)
+(73, 785)
 
 julia> entry_sparsities, locus_sparsities = sparsities(filtered_genomes);
 
 julia> maximum(entry_sparsities) == maximum(locus_sparsities) == 0.0
 true
 
-julia> filtered_genomes_2 = filterbysparsity(genomes, max_entry_sparsity=1.00, max_locus_sparsity=0.00);
+julia> filtered_genomes_2 = filterbysparsity(genomes, max_entry_sparsity=0.05, max_locus_sparsity=0.05);
+
+julia> prod(size(filtered_genomes_2.allele_frequencies)) > prod(size(filtered_genomes.allele_frequencies))
+true
+
+julia> entry_sparsities, locus_sparsities = sparsities(filtered_genomes_2);
+
+julia> (maximum(entry_sparsities) <= 0.05) && (maximum(locus_sparsities) <= 0.05)
+true
 ```
 """
 function filterbysparsity(
@@ -280,6 +290,7 @@ function filterbysparsity(
     max_locus_sparsity::Float64 = 0.0,
     max_entry_sparsity_percentile::Float64 = 0.90,
     max_locus_sparsity_percentile::Float64 = 0.50,
+    max_iter::Int64 = 10,
     verbose::Bool = false,
 )::Genomes
     # genomes = simulategenomes(n=100, l=1_000, n_alleles=4, sparsity=0.25, verbose=true); max_entry_sparsity = 0.0; max_locus_sparsity = 0.0; max_entry_sparsity_percentile = 0.90; max_locus_sparsity_percentile = 0.50; verbose = true;
@@ -349,15 +360,10 @@ function filterbysparsity(
         iter += 1
         # Start every iteration by removing the sparsest loci
         genomes = begin
-            q = (1.00 - max_locus_sparsity) * max_locus_sparsity_percentile
-            m = maximum([max_locus_sparsity, quantile(locus_sparsities, q)])
-
-            # m = if maximum(entry_sparsities) < max_entry_sparsity
-            #     max_locus_sparsity
-            # else
-
-            # end
-
+            # q = (1.00 - max_locus_sparsity) * max_locus_sparsity_percentile
+            # m = maximum([max_locus_sparsity, quantile(locus_sparsities, q)])
+            q = ceil(length(genomes.loci_alleles) * max_locus_sparsity_percentile) / length(genomes.loci_alleles)
+            m = quantile(locus_sparsities, q)
             slice(genomes, idx_loci_alleles = findall(locus_sparsities .<= m))
         end
         entry_sparsities, locus_sparsities = sparsities(genomes)
@@ -389,8 +395,10 @@ function filterbysparsity(
         end
         # Finish each iteration by removing the sparsest entries
         genomes = begin
-            q = (1.00 - max_entry_sparsity) * max_entry_sparsity_percentile
-            m = maximum([max_entry_sparsity, quantile(entry_sparsities, q)])
+            # q = (1.00 - max_entry_sparsity) * max_entry_sparsity_percentile
+            # m = maximum([max_entry_sparsity, quantile(entry_sparsities, q)])
+            q = ceil(length(genomes.entries) * max_entry_sparsity_percentile) / length(genomes.entries)
+            m = quantile(entry_sparsities, q)
             slice(genomes, idx_entries = findall(entry_sparsities .<= m))
         end
         entry_sparsities, locus_sparsities = sparsities(genomes)
@@ -420,12 +428,27 @@ function filterbysparsity(
                 ),
             )
         end
-        if data_size == collect(size(genomes.allele_frequencies))
+        if (iter > max_iter) && (data_size == collect(size(genomes.allele_frequencies)))
             if verbose
                 n, p = data_size
                 println(
                     "Dimensions fixed at $(n) entries and $(p) loci-alleles for the filtering thresholds (max_entry_sparsity=$max_entry_sparsity, max_locus_sparsity=$max_locus_sparsity, max_entry_sparsity_percentile=$max_entry_sparsity_percentile, and max_locus_sparsity_percentile=$max_locus_sparsity_percentile.",
                 )
+                if (
+                    (maximum(entry_sparsities) > max_entry_sparsity) ||
+                    (maximum(locus_sparsities) > max_locus_sparsity)
+                )
+                    println("Unable to achieve the targeted sparsity levels after $iter iterations:")
+                    println(
+                        "\t- Target maximum entry sparsity level = $(max_entry_sparsity)  < Current maximum entry sparsity level = $(maximum(entry_sparsities))",
+                    )
+                    println(
+                        "\t- Target maximum locus sparsity level = $(max_locus_sparsity)  < Current maximum locus sparsity level = $(maximum(locus_sparsities))",
+                    )
+                    println(
+                        "Continuing would lead to an infinite loop or zero entries/loci remaining. Consider adjusting the maximum sparsity levels or percentiles.",
+                    )
+                end
             end
             break
         else
