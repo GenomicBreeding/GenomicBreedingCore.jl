@@ -475,8 +475,8 @@ Contains genomic prediction model fit details.
 - `populations`: names of the populations used in the current cross-validation replication and fold
 - `y_true`: corresponding observed phenotype values
 - `y_pred`: corresponding predicted phenotype values
-- `metrics`: dictionary of genomic prediction accuracy metrics, inluding Pearson's correlation, mean absolute error and root mean-squared error
-- `lux_model`: Nothing or a trained Lux neural network model
+- `metrics`: dictionary of genomic prediction accuracy metrics, including Pearson's correlation, mean absolute error and root mean-squared error
+- `lux_model`: Pending(Nothing or a trained Lux neural network model)
 
 ## Constructor
 ```julia
@@ -496,7 +496,8 @@ mutable struct Fit <: AbstractGB
     y_true::Vector{Float64}
     y_pred::Vector{Float64}
     metrics::Dict{String,Float64}
-    lux_model::Union{Nothing,Chain}
+    # lux_model::Union{Nothing,Chain}
+    lux_model::Any
     function Fit(; n::Int64, l::Int64)
         new(
             "",
