@@ -1,6 +1,6 @@
 name = "GenomicBreedingCore"
 uuid = "50d95318-1838-4cfa-a614-3543b4bb0509"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["jeffersonparil@gmail.com"]
 
 [deps]
