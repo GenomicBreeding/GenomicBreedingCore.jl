@@ -282,6 +282,16 @@ julia> entry_sparsities, locus_sparsities = sparsities(filtered_genomes_2);
 
 julia> (maximum(entry_sparsities) <= 0.05) && (maximum(locus_sparsities) <= 0.05)
 true
+
+julia> filtered_genomes_3 = filterbysparsity(genomes, max_entry_sparsity=1.0, max_locus_sparsity=0.0);
+
+julia> size(filtered_genomes_3.allele_frequencies)
+(100, 419)
+
+julia> filtered_genomes_4 = filterbysparsity(genomes, max_entry_sparsity=0.02, max_locus_sparsity=1.0);
+
+julia> size(filtered_genomes_4.allele_frequencies)
+(45, 3000)
 ```
 """
 function filterbysparsity(
@@ -293,7 +303,7 @@ function filterbysparsity(
     max_iter::Int64 = 10,
     verbose::Bool = false,
 )::Genomes
-    # genomes = simulategenomes(n=100, l=1_000, n_alleles=4, sparsity=0.25, verbose=true); max_entry_sparsity = 0.0; max_locus_sparsity = 0.0; max_entry_sparsity_percentile = 0.90; max_locus_sparsity_percentile = 0.50; verbose = true;
+    # genomes = simulategenomes(n=100, l=1_000, n_alleles=4, sparsity=0.5, verbose=true); max_entry_sparsity = 0.0; max_locus_sparsity = 0.0; max_entry_sparsity_percentile = 0.90; max_locus_sparsity_percentile = 0.50; verbose = true;
     # Check arguments
     if !checkdims(genomes)
         throw(ArgumentError("Genomes struct is corrupted ☹."))
@@ -330,6 +340,39 @@ function filterbysparsity(
             ),
         )
     end
+    # Return early if no filtering needed
+    if (max_entry_sparsity == 1.0) && (max_locus_sparsity == 1.0)
+        if verbose
+            println(
+                "No filtering necessary. Maximum entry sparsity = $max_entry_sparsity and maximum locus sparsity = $max_locus_sparsity.",
+            )
+            @show dimensions(genomes)
+        end
+        return genomes
+    end
+    # Filter by max_locus_sparsity only
+    if (max_entry_sparsity == 1.0) && (max_locus_sparsity >= 0.0)
+        idx_loci_alleles = findall(locus_sparsities .<= max_locus_sparsity)
+        if length(idx_loci_alleles) == 0
+            throw(ErrorException(string("All loci filtered out at maximum locus sparsity = ", max_locus_sparsity, ".")))
+        end
+        genomes = slice(genomes, idx_loci_alleles = idx_loci_alleles)
+        return genomes
+    end
+    # Filter by max_entry_sparsity only
+    if (max_entry_sparsity >= 0.0) && (max_locus_sparsity == 1.0)
+        idx_entries = findall(entry_sparsities .<= max_entry_sparsity)
+        if length(idx_entries) == 0
+            throw(
+                ErrorException(
+                    string("All entries filtered out at maximum entry sparsity = ", max_entry_sparsity, "."),
+                ),
+            )
+        end
+        genomes = slice(genomes, idx_entries = idx_entries)
+        return genomes
+    end
+    # If both max_entry_sparsity and max_locus_sparsity are less than 1.0, proceed with iterative filtering
     # Instantiate the boolean vector for the while-loop to iteratively filter the Genomes struct
     bool::Vector{Bool} = [
         (length(entry_sparsities) > 0) &&
@@ -445,9 +488,12 @@ function filterbysparsity(
                     println(
                         "\t- Target maximum locus sparsity level = $(max_locus_sparsity)  < Current maximum locus sparsity level = $(maximum(locus_sparsities))",
                     )
-                    println(
-                        "Continuing would lead to an infinite loop or zero entries/loci remaining. Consider adjusting the maximum sparsity levels or percentiles.",
-                    )
+                    println("Continuing would lead to an infinite loop or zero entries/loci remaining.")
+                    println("Consider increasing the:")
+                    println("\t - maximum entry percentile (set to 1.00 if desired)")
+                    println("\t- maximum locus percentile (set to 1.00 if desired)")
+                    println("\t- maximum entry sparsity percentile")
+                    println("\t- maximum locus sparsity percentile")
                 end
             end
             break
