@@ -41,7 +41,7 @@ a proper `Formula` object that can be used in statistical modelling.
 - `Formula`: A Formula object representing the parsed expression
 """
 macro string2formula(x)
-    @eval(@formula($(Meta.parse(x))))
+    :(@formula($(Meta.parse(x))))
 end
 
 
