@@ -17,13 +17,14 @@ abstract type AbstractGB end
 """
 # Genomes struct 
 
-Containes unique entries and loci_alleles where allele frequencies can have missing values
+Contains unique entries and loci_alleles where allele frequencies can have missing values
 
 ## Fields
 - `entries`: names of the `n` entries or samples
 - `populations`: name/s of the population/s each entries or samples belong to
-- `loci_alleles`: names of the `p` loci-alleles combinations (`p` = `l` loci x `a-1` alleles) including the chromsome or scaffold name, position, all alleles and current allele separated by tabs ("\\t")
+- `loci_alleles`: names of the `p` loci-alleles combinations (`p` = `l` loci x `a-1` alleles) including the chromosome or scaffold name, position, all alleles and current allele separated by tabs ("\\t")
 - `allele_frequencies`: `n x p` matrix of allele frequencies between 0 and 1 which can have missing values
+- `allele_frequencies_homologous_chroms`: `n x p` matrix of allele frequencies for homologous chromosomes which can be `Nothing` or have missing values. We largely ignore this field for most functions/methods and is used primarily for [GenomicBreedingCrossing.jl](https://github.com/GenomicBreeding/GenomicBreedingCrossing.jl).
 - `mask`: `n x p` matrix of boolean mask for selective analyses and slicing
 
 ## Constructor
@@ -37,10 +38,10 @@ where:
 ## Examples
 ```jldoctest; setup = :(using GenomicBreedingCore)
 julia> genomes = Genomes(n=2, p=2)
-Genomes(["", ""], ["", ""], ["", ""], Union{Missing, Float64}[missing missing; missing missing], Bool[1 1; 1 1])
+Genomes(["", ""], ["", ""], ["", ""], Union{Missing, Float64}[missing missing; missing missing], nothing, Bool[1 1; 1 1])
 
 julia> fieldnames(Genomes)
-(:entries, :populations, :loci_alleles, :allele_frequencies, :mask)
+(:entries, :populations, :loci_alleles, :allele_frequencies, :allele_frequencies_homologous_chroms, :mask)
 
 julia> genomes.entries = ["entry_1", "entry_2"];
 
@@ -50,10 +51,12 @@ julia> genomes.loci_alleles = ["chr1\\t12345\\tA|T\\tA", "chr2\\t678910\\tC|D\\t
 
 julia> genomes.allele_frequencies = [0.5 0.25; 0.9 missing];
 
+julia> genomes.allele_frequencies_homologous_chroms = [0.5 0.75; 0.1 missing];
+
 julia> genomes.mask = [true true; true false];
 
 julia> genomes
-Genomes(["entry_1", "entry_2"], ["pop_1", "pop_1"], ["chr1\\t12345\\tA|T\\tA", "chr2\\t678910\\tC|D\\tD"], Union{Missing, Float64}[0.5 0.25; 0.9 missing], Bool[1 1; 1 0])
+Genomes(["entry_1", "entry_2"], ["pop_1", "pop_1"], ["chr1\\t12345\\tA|T\\tA", "chr2\\t678910\\tC|D\\tD"], Union{Missing, Float64}[0.5 0.25; 0.9 missing], Union{Missing, Float64}[0.5 0.75; 0.1 missing], Bool[1 1; 1 0])
 ```
 """
 mutable struct Genomes <: AbstractGB
@@ -61,9 +64,10 @@ mutable struct Genomes <: AbstractGB
     populations::Vector{String}
     loci_alleles::Vector{String}
     allele_frequencies::Matrix{Union{Float64,Missing}}
+    allele_frequencies_homologous_chroms::Union{Nothing,Matrix{Union{Float64,Missing}}}
     mask::Matrix{Bool}
     function Genomes(; n::Int64 = 1, p::Int64 = 2)
-        return new(fill("", n), fill("", n), fill("", p), fill(missing, n, p), fill(true, n, p))
+        return new(fill("", n), fill("", n), fill("", p), fill(missing, n, p), nothing, fill(true, n, p))
     end
 end
 

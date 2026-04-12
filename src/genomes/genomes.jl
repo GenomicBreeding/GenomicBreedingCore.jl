@@ -23,7 +23,7 @@ Returns a new `Genomes` instance with identical but independent data.
 julia> genomes = Genomes(n=2, p=2);
 
 julia> copy_genomes = clone(genomes)
-Genomes(["", ""], ["", ""], ["", ""], Union{Missing, Float64}[missing missing; missing missing], Bool[1 1; 1 1])
+Genomes(["", ""], ["", ""], ["", ""], Union{Missing, Float64}[missing missing; missing missing], nothing, Bool[1 1; 1 1])
 ```
 """
 function clone(x::Genomes)::Genomes
@@ -150,6 +150,7 @@ true
 function checkdims(genomes::Genomes; verbose::Bool = false)::Bool
     if verbose
         @show size(genomes.allele_frequencies)
+        @show size(genomes.allele_frequencies_homologous_chroms)
         @show length(genomes.entries)
         @show length(unique(genomes.entries))
         @show length(genomes.populations)
@@ -163,6 +164,10 @@ function checkdims(genomes::Genomes; verbose::Bool = false)::Bool
        (n != length(genomes.populations)) ||
        (p != length(genomes.loci_alleles)) ||
        (p != length(unique(genomes.loci_alleles))) ||
+       (
+           !isnothing(genomes.allele_frequencies_homologous_chroms) ?
+           ((n, p) != size(genomes.allele_frequencies_homologous_chroms)) : false
+       ) ||
        ((n, p) != size(genomes.mask))
         return false
     end
