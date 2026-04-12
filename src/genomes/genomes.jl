@@ -390,7 +390,7 @@ end
 """
     distances(
         genomes::Genomes; 
-        distance_metrics::Vector{String}=["euclidean", "correlation", "mad", "rmsd", "χ²"],
+        distance_metrics::Vector{String}=["euclidean", "correlation", "covariance", "mad", "rmsd", "χ²"],
         idx_loci_alleles::Union{Nothing, Vector{Int64}} = nothing,
         include_loci_alleles::Bool = true,
         include_entries::Bool = true,
@@ -405,6 +405,7 @@ Calculate pairwise distances/similarity metrics between loci-alleles and entries
 - `distance_metrics::Vector{String}`: Vector of distance metrics to calculate. Valid options:
   - "euclidean": Euclidean distance
   - "correlation": Pearson correlation coefficient 
+  - "covariance": Variance-covariance between loci-alleles
   - "mad": Mean absolute deviation
   - "rmsd": Root mean square deviation 
   - "χ²": Chi-square distance
@@ -448,7 +449,7 @@ true
 """
 function distances(
     genomes::Genomes;
-    distance_metrics::Vector{String} = ["euclidean", "correlation", "mad", "rmsd", "χ²"],
+    distance_metrics::Vector{String} = ["euclidean", "correlation", "covariance", "mad", "rmsd", "χ²"],
     idx_loci_alleles::Union{Nothing,Vector{Int64}} = nothing,
     include_loci_alleles::Bool = true,
     include_entries::Bool = true,
@@ -548,6 +549,9 @@ function distances(
                         elseif metric == "correlation"
                             (var(y1[idx]) < 1e-7) || (var(y2[idx]) < 1e-7) ? continue : nothing
                             cor(y1[idx], y2[idx])
+                        elseif metric == "covariance"
+                            (var(y1[idx]) < 1e-7) || (var(y2[idx]) < 1e-7) ? continue : nothing
+                            cov(y1[idx], y2[idx])
                         elseif metric == "mad"
                             mean(abs.(y1[idx] - y2[idx]))
                         elseif metric == "rmsd"
