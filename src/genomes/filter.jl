@@ -106,6 +106,10 @@ function slice(
                 sliced_genomes.loci_alleles[j1] = genomes.loci_alleles[j2]
             end
             sliced_genomes.allele_frequencies[i1, j1] = genomes.allele_frequencies[i2, j2]
+            if !isnothing(genomes.allele_frequencies_homologous_chroms)
+                sliced_genomes.allele_frequencies_homologous_chroms[i1, j1] =
+                    genomes.allele_frequencies_homologous_chroms[i2, j2]
+            end
             sliced_genomes.mask[i1, j1] = genomes.mask[i2, j2]
         end
         if verbose

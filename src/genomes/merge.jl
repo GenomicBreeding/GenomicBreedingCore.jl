@@ -86,6 +86,13 @@ function Base.merge(
         idx_2 = sortperm(other.loci_alleles)
         out.loci_alleles = genomes.loci_alleles[idx_1]
         out.allele_frequencies = vcat(genomes.allele_frequencies[:, idx_1], other.allele_frequencies[:, idx_2])
+        if !isnothing(genomes.allele_frequencies_homologous_chroms) &&
+           !isnothing(other.allele_frequencies_homologous_chroms)
+            out.allele_frequencies_homologous_chroms = vcat(
+                genomes.allele_frequencies_homologous_chroms[:, idx_1],
+                other.allele_frequencies_homologous_chroms[:, idx_2],
+            )
+        end
         out.mask = vcat(genomes.mask[:, idx_1], other.mask[:, idx_2])
         if !checkdims(out)
             throw(ErrorException("Error merging the 2 Genomes structs."))
@@ -106,6 +113,13 @@ function Base.merge(
         idx_2 = sortperm(other.entries)
         out.entries = genomes.entries
         out.allele_frequencies = hcat(genomes.allele_frequencies[idx_1, :], other.allele_frequencies[idx_2, :])
+        if !isnothing(genomes.allele_frequencies_homologous_chroms) &&
+           !isnothing(other.allele_frequencies_homologous_chroms)
+            out.allele_frequencies_homologous_chroms = hcat(
+                genomes.allele_frequencies_homologous_chroms[idx_1, :],
+                other.allele_frequencies_homologous_chroms[idx_2, :],
+            )
+        end
         out.mask = hcat(genomes.mask[idx_1, :], other.mask[idx_2, :])
         if !checkdims(out)
             throw(ErrorException("Error merging the 2 Genomes structs."))
@@ -273,6 +287,20 @@ function Base.merge(
                 else
                     missing
                 end
+            if !isnothing(genomes.allele_frequencies_homologous_chroms) &&
+               !isnothing(other.allele_frequencies_homologous_chroms)
+                out.allele_frequencies_homologous_chroms[i, j] =
+                    if bool_entries_1[i] && bool_entries_2[i] && bool_loci_alleles_1[j] && bool_loci_alleles_2[j]
+                        (genomes.allele_frequencies_homologous_chroms[i_1, j_1] * conflict_resolution[1]) +
+                        (other.allele_frequencies_homologous_chroms[i_2, j_2] * conflict_resolution[2])
+                    elseif bool_entries_1[i] && bool_loci_alleles_1[j]
+                        genomes.allele_frequencies_homologous_chroms[i_1, j_1]
+                    elseif bool_entries_2[i] && bool_loci_alleles_2[j]
+                        other.allele_frequencies_homologous_chroms[i_2, j_2]
+                    else
+                        missing
+                    end
+            end
             if verbose
                 next!(pb)
             end
@@ -389,12 +417,20 @@ function Base.merge(genomes::Genomes, phenomes::Phenomes; keep_all::Bool = true)
                     )
             end
             out_genomes.allele_frequencies[i, :] = genomes.allele_frequencies[idx_1, :]
+            if !isnothing(genomes.allele_frequencies_homologous_chroms)
+                out_genomes.allele_frequencies_homologous_chroms[i, :] =
+                    genomes.allele_frequencies_homologous_chroms[idx_1, :]
+            end
             out_genomes.mask[i, :] = genomes.mask[idx_1, :]
             out_phenomes.phenotypes[i, :] = phenomes.phenotypes[idx_2, :]
             out_phenomes.mask[i, :] = phenomes.mask[idx_2, :]
         elseif bool_1
             out_genomes.populations[i] = out_phenomes.populations[i] = genomes.populations[idx_1[1]]
             out_genomes.allele_frequencies[i, :] = genomes.allele_frequencies[idx_1, :]
+            if !isnothing(genomes.allele_frequencies_homologous_chroms)
+                out_genomes.allele_frequencies_homologous_chroms[i, :] =
+                    genomes.allele_frequencies_homologous_chroms[idx_1, :]
+            end
             out_genomes.mask[i, :] = genomes.mask[idx_1, :]
         elseif bool_2
             out_genomes.populations[i] = out_phenomes.populations[i] = phenomes.populations[idx_2[1]]
