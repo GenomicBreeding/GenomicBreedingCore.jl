@@ -93,6 +93,9 @@ function slice(
     end
     n, p = length(idx_entries), length(idx_loci_alleles)
     sliced_genomes::Genomes = Genomes(n = n, p = p)
+    if !isnothing(genomes.allele_frequencies_homologous_chroms)
+        sliced_genomes.allele_frequencies_homologous_chroms = 1.00 .- sliced_genomes.allele_frequencies
+    end
     if verbose
         pb = ProgressMeter.Progress(length(idx_entries), desc = "Slicing genomes")
     end
