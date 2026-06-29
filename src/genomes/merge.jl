@@ -342,7 +342,7 @@ Merge `Genomes` and `Phenomes` structs based on their entries, combining genomic
 ```jldoctest; setup = :(using GenomicBreedingCore)
 julia> genomes = simulategenomes(n=10, verbose=false);
 
-julia> trials, effects = simulatetrials(genomes=slice(genomes, idx_entries=collect(1:5), idx_loci_alleles=collect(1:length(genomes.loci_alleles))), f_add_dom_epi=[0.90 0.05 0.05;], n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=2, verbose=false);
+julia> trials, effects = simulatetrials(genomes=slice(genomes, idx_entries=collect(1:5), idx_loci_alleles=collect(1:length(genomes.loci_alleles))), f_add_dom_epi=[0.90 0.05 0.05;], n_years=1, n_seasons=1, n_measurements=1, n_sites=1, n_replications=2, verbose=false);
 
 julia> phenomes = Phenomes(n=5, t=1);
 
@@ -369,7 +369,7 @@ julia> size(genomes_merged_2.allele_frequencies), size(phenomes_merged_2.phenoty
 """
 function Base.merge(genomes::Genomes, phenomes::Phenomes; keep_all::Bool = true)::Tuple{Genomes,Phenomes}
     # genomes = simulategenomes(n=10, verbose=false);
-    # trials, effects = simulatetrials(genomes=slice(genomes, idx_entries=collect(1:5), idx_loci_alleles=collect(1:length(genomes.loci_alleles))), f_add_dom_epi=[0.90 0.05 0.05;], n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=2, verbose=false);
+    # trials, effects = simulatetrials(genomes=slice(genomes, idx_entries=collect(1:5), idx_loci_alleles=collect(1:length(genomes.loci_alleles))), f_add_dom_epi=[0.90 0.05 0.05;], n_years=1, n_seasons=1, n_measurements=1, n_sites=1, n_replications=2, verbose=false);
     # phenomes = analyse(trials, max_levels=20, max_time_per_model=10, verbose=false).phenomes[1]; keep_all::Bool = false
     # Check input arguments
     if !checkdims(genomes) && !checkdims(phenomes)

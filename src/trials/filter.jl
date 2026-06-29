@@ -5,7 +5,7 @@
         populations::Union{Nothing, Vector{String}} = nothing,
         entries::Union{Nothing, Vector{String}} = nothing,
         years::Union{Nothing, Vector{String}} = nothing,
-        harvests::Union{Nothing, Vector{String}} = nothing,
+        measurements::Union{Nothing, Vector{String}} = nothing,
         seasons::Union{Nothing, Vector{String}} = nothing,
         sites::Union{Nothing, Vector{String}} = nothing,
         replications::Union{Nothing, Vector{String}} = nothing,
@@ -22,7 +22,7 @@ Create a subset of a `Trials` struct by filtering its components based on specif
 - `populations::Vector{String}`: Selected population names to include
 - `entries::Vector{String}`: Selected entry names to include
 - `years::Vector{String}`: Selected years to include
-- `harvests::Vector{String}`: Selected harvest identifiers to include
+- `measurements::Vector{String}`: Selected measurement identifiers to include
 - `seasons::Vector{String}`: Selected seasons to include
 - `sites::Vector{String}`: Selected site names to include
 - `replications::Vector{String}`: Selected replication identifiers to include
@@ -50,16 +50,16 @@ julia> sliced_trials = slice(trials, traits=trials.traits[2:3], years=[unique(tr
 julia> dimensions(sliced_trials)
 Dict{String, Int64} with 16 entries:
   "n_zeroes"       => 0
-  "n_harvests"     => 2
   "n_nan"          => 0
   "n_entries"      => 100
   "n_traits"       => 2
   "n_seasons"      => 2
   "n_blocks"       => 10
+  "n_measurements" => 2
   "n_rows"         => 10
   "n_missing"      => 0
-  "n_inf"          => 0
   "n_total"        => 6400
+  "n_inf"          => 0
   "n_replications" => 2
   "n_years"        => 1
   "n_sites"        => 4
@@ -73,7 +73,7 @@ function slice(
     populations::Union{Nothing,Vector{String}} = nothing,
     entries::Union{Nothing,Vector{String}} = nothing,
     years::Union{Nothing,Vector{String}} = nothing,
-    harvests::Union{Nothing,Vector{String}} = nothing,
+    measurements::Union{Nothing,Vector{String}} = nothing,
     seasons::Union{Nothing,Vector{String}} = nothing,
     sites::Union{Nothing,Vector{String}} = nothing,
     replications::Union{Nothing,Vector{String}} = nothing,
@@ -82,7 +82,7 @@ function slice(
     cols::Union{Nothing,Vector{String}} = nothing,
 )::Trials
     # trials, _ = simulatetrials(genomes = simulategenomes())
-    # populations = entries = traits = years = harvests = seasons = sites = replications = blocks = rows = cols = nothing
+    # populations = entries = traits = years = measurements = seasons = sites = replications = blocks = rows = cols = nothing
     # Check arguments
     if !checkdims(trials)
         throw(ArgumentError("Phenomes struct is corrupted ☹."))
@@ -92,7 +92,7 @@ function slice(
         all_populations = sort(unique(trials.populations))
         all_entries = sort(unique(trials.entries))
         all_years = sort(unique(trials.years))
-        all_harvests = sort(unique(trials.harvests))
+        all_measurements = sort(unique(trials.measurements))
         all_seasons = sort(unique(trials.seasons))
         all_sites = sort(unique(trials.sites))
         all_replications = sort(unique(trials.replications))
@@ -126,14 +126,14 @@ function slice(
             end
             unique(sort(years))
         end
-        harvests = if isnothing(harvests)
-            all_harvests
+        measurements = if isnothing(measurements)
+            all_measurements
         else
-            wrong_names = setdiff(harvests, all_harvests)
+            wrong_names = setdiff(measurements, all_measurements)
             if length(wrong_names) > 0
-                throw(ArgumentError("Wrong harvests provided:\n\t‣ " * join(wrong_names, "\n\t‣ ")))
+                throw(ArgumentError("Wrong measurements provided:\n\t‣ " * join(wrong_names, "\n\t‣ ")))
             end
-            unique(sort(harvests))
+            unique(sort(measurements))
         end
         seasons = if isnothing(seasons)
             all_seasons
@@ -194,7 +194,7 @@ function slice(
             if (trials.populations[i] ∈ populations) &&
                (trials.entries[i] ∈ entries) &&
                (trials.years[i] ∈ years) &&
-               (trials.harvests[i] ∈ harvests) &&
+               (trials.measurements[i] ∈ measurements) &&
                (trials.seasons[i] ∈ seasons) &&
                (trials.sites[i] ∈ sites) &&
                (trials.replications[i] ∈ replications) &&
@@ -225,7 +225,7 @@ function slice(
     sliced_trials.populations = trials.populations[idx]
     sliced_trials.entries = trials.entries[idx]
     sliced_trials.years = trials.years[idx]
-    sliced_trials.harvests = trials.harvests[idx]
+    sliced_trials.measurements = trials.measurements[idx]
     sliced_trials.seasons = trials.seasons[idx]
     sliced_trials.sites = trials.sites[idx]
     sliced_trials.replications = trials.replications[idx]
@@ -310,7 +310,7 @@ function removemissnaninf(trials::Trials)::Trials
     trials_filtered.populations = trials.populations[idx_rows]
     trials_filtered.entries = trials.entries[idx_rows]
     trials_filtered.years = trials.years[idx_rows]
-    trials_filtered.harvests = trials.harvests[idx_rows]
+    trials_filtered.measurements = trials.measurements[idx_rows]
     trials_filtered.seasons = trials.seasons[idx_rows]
     trials_filtered.sites = trials.sites[idx_rows]
     trials_filtered.replications = trials.replications[idx_rows]

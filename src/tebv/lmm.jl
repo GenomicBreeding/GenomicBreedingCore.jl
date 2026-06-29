@@ -105,7 +105,7 @@ function trialsmodelsfomulae!(
 )::Tuple{Vector{String},Vector{Int64}}
     # trials, simulated_effects = simulatetrials(genomes = simulategenomes()); df::DataFrame = tabularise(trials); trait::String=trials.traits[1]; max_levels::Int64=100;
     # Define the totality of all expected variables
-    nester_variables = ["years", "seasons", "harvests", "sites"]
+    nester_variables = ["years", "seasons", "measurements", "sites"]
     spatial_variables = ["blocks", "rows", "cols"]
     target_variables = ["entries", "populations"]
     residual_variable = ["replications"]
@@ -284,7 +284,7 @@ function trialsmodelsfomulae!(
     end
     # Remove models with redundant nesters in the main and residual terms
     idx = findall([
-        (sum(match.(r"years_x_seasons_x_harvests_x_sites", x) .!= nothing) < 2) &&
+        (sum(match.(r"years_x_seasons_x_measurements_x_sites", x) .!= nothing) < 2) &&
         (sum(match.(r"years_x_seasons_x_sites", x) .!= nothing) < 2) for x in split.(formulae, " + (")
     ])
     formulae = formulae[idx]
@@ -353,7 +353,7 @@ julia> formula_string, model, df_BLUEs, df_BLUPs, phenomes = analyse(df, formula
 julia> length(phenomes.entries) == length(unique(df.entries))
 true
 
-julia> df_2 = df[(df.years .== df.years[1]) .&& (df.harvests .== df.harvests[1]) .&& (df.seasons .== df.seasons[1]) .&& (df.sites .== df.sites[1]) .&& (df.replications .== df.replications[1]), :];
+julia> df_2 = df[(df.years .== df.years[1]) .&& (df.measurements .== df.measurements[1]) .&& (df.seasons .== df.seasons[1]) .&& (df.sites .== df.sites[1]) .&& (df.replications .== df.replications[1]), :];
 
 julia> formula_string_2, model_2, df_BLUEs_2, df_BLUPs_2, phenomes_2 = analyse(df_2, formulae=["trait_1 ~ 1 + 1|entries"]);
 
@@ -642,7 +642,7 @@ The function implements a mixed model fitting strategy with the following princi
 
 # Examples
 ```jldoctest; setup = :(using GenomicBreedingCore, StatsBase, Suppressor)
-julia> trials, _simulated_effects = simulatetrials(genomes = simulategenomes(n=10, verbose=false), n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=10, verbose=false);
+julia> trials, _simulated_effects = simulatetrials(genomes = simulategenomes(n=10, verbose=false), n_years=1, n_seasons=1, n_measurements=1, n_sites=1, n_replications=10, verbose=false);
 
 julia> tebv_1 = analyse(trials, "trait_1 ~ 1 + (1|entries)", max_levels=50, verbose=false);
 
@@ -680,8 +680,8 @@ function analyse(
     verbose::Bool = true,
 )::TEBV
     # trials, simulated_effects = simulatetrials(genomes = simulategenomes()); formula_string="y ~ 1 + (1|entries)"; max_levels::Int64=100; max_time_per_model::Int64=60; verbose::Bool = true;
-    # trials, simulated_effects = simulatetrials(genomes = simulategenomes(n=5), n_years=2, n_seasons=2, n_harvests=1, n_sites=2, n_replications=10); formula_string=""; max_levels::Int64=100; max_time_per_model::Int64=60; verbose::Bool = true;
-    # trials, simulated_effects = simulatetrials(genomes = simulategenomes(n=5), n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=10); formula_string=""; max_levels::Int64=100; max_time_per_model::Int64=60; verbose::Bool = true;
+    # trials, simulated_effects = simulatetrials(genomes = simulategenomes(n=5), n_years=2, n_seasons=2, n_measurements=1, n_sites=2, n_replications=10); formula_string=""; max_levels::Int64=100; max_time_per_model::Int64=60; verbose::Bool = true;
+    # trials, simulated_effects = simulatetrials(genomes = simulategenomes(n=5), n_years=1, n_seasons=1, n_measurements=1, n_sites=1, n_replications=10); formula_string=""; max_levels::Int64=100; max_time_per_model::Int64=60; verbose::Bool = true;
     # fname = "/mnt/c/Users/jp3h/Downloads/Lucerne-2024-10-leaf_to_stem_ratio.txt"; using GenomicBreedingIO; trials = GenomicBreedingIO.readdelimited(Trials, fname=fname, sep="\t"); formula_string=""; max_levels::Int64=10; max_time_per_model::Int64=2; verbose::Bool = true;
     # Check Arguments
     if !checkdims(trials)
@@ -720,7 +720,7 @@ function analyse(
         println(string("\t ‣ traits = ", length(trials.traits)))
         println(string("\t ‣ years = ", length(unique(trials.years))))
         println(string("\t ‣ seasons = ", length(unique(trials.seasons))))
-        println(string("\t ‣ harvests = ", length(unique(trials.harvests))))
+        println(string("\t ‣ measurements = ", length(unique(trials.measurements))))
         println(string("\t ‣ sites = ", length(unique(trials.sites))))
         println(string("\t ‣ replications = ", length(unique(trials.replications))))
         println(string("\t ‣ blocks = ", length(unique(trials.blocks))))

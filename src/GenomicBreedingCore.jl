@@ -26,7 +26,7 @@ include("genomes/impute.jl")
 include("phenomes/phenomes.jl")
 include("phenomes/filter.jl")
 include("phenomes/merge.jl")
-# Trials data: single- or multi- environments, years, seasons and harvests
+# Trials data: single- or multi- environments, years, seasons and measurements
 include("trials/trials.jl")
 include("trials/filter.jl")
 include("trials/merge.jl")
@@ -53,7 +53,7 @@ include("simulations/simulate_mating.jl")
 export AbstractGB, Genomes, Phenomes, Trials, SimulatedEffects, DLModel, TEBV, Fit, CV, GRM
 # export BLR
 export clone, hash, ==
-export checkdims, dimensions, loci_alleles, loci, distances, plot, tabularise, summarise, aggregateharvests
+export checkdims, dimensions, loci_alleles, loci, distances, plot, tabularise, summarise, aggregatemeasurements
 export slice,
     sparsities,
     filter,

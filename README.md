@@ -19,3 +19,9 @@ julia --threads 2,1 --load test/interactive_prelude.jl
 ```shell
 time julia --threads 2,1 test/cli_tester.jl
 ```
+
+### Quick search and replace across the projects
+
+```shell
+find GenomicBreeding*/ -type f -name "*.jl" -exec sed -i 's/harvest/measurement/g' {} +
+```

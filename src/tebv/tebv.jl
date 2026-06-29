@@ -269,7 +269,7 @@ and merging multiple phenomes if present. It performs the following operations:
 
 # Examples
 ```jldoctest; setup = :(using GenomicBreedingCore)
-julia> trials, _simulated_effects = simulatetrials(genomes = simulategenomes(n=10, verbose=false), n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=10, verbose=false);
+julia> trials, _simulated_effects = simulatetrials(genomes = simulategenomes(n=10, verbose=false), n_years=1, n_seasons=1, n_measurements=1, n_sites=1, n_replications=10, verbose=false);
 
 julia> tebv = analyse(trials, max_levels=50, verbose=false);
 
@@ -280,7 +280,7 @@ true
 ```
 """
 function extractphenomes(tebv::TEBV)::Phenomes
-    # trials, _simulated_effects = simulatetrials(genomes = simulategenomes(n=10, verbose=false), n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=10, verbose=false);
+    # trials, _simulated_effects = simulatetrials(genomes = simulategenomes(n=10, verbose=false), n_years=1, n_seasons=1, n_measurements=1, n_sites=1, n_replications=10, verbose=false);
     # tebv = analyse(trials, max_levels=50, verbose=false);
     if !checkdims(tebv)
         throw(ArgumentError("The TEBV struct is corrupted ☹."))
@@ -357,7 +357,7 @@ the breeding value estimates.
 - A plot object representing the visualization of the phenomes data
 """
 function plot(tebv::TEBV)
-    # trials, _simulated_effects = simulatetrials(genomes = simulategenomes(n=10, verbose=false), n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=10, verbose=false);
+    # trials, _simulated_effects = simulatetrials(genomes = simulategenomes(n=10, verbose=false), n_years=1, n_seasons=1, n_measurements=1, n_sites=1, n_replications=10, verbose=false);
     # tebv = analyse(trials, max_levels=50, verbose=false);
     phenomes = extractphenomes(tebv)
     plot(phenomes)
