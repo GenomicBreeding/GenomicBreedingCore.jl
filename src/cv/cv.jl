@@ -276,7 +276,7 @@ julia> df_per_entry[!, [:entry, :y_true, :y_pred]]
 """
 function tabularise(cvs::Vector{CV}; verbose::Bool = false)::Tuple{DataFrame,DataFrame}
     # genomes = GenomicBreedingCore.simulategenomes(n=300, verbose=false); genomes.populations = StatsBase.sample(string.("pop_", 1:3), length(genomes.entries), replace=true);
-    # trials, _ = GenomicBreedingCore.simulatetrials(genomes=genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=1, verbose=false);
+    # trials, _ = GenomicBreedingCore.simulatetrials(genomes=genomes, n_years=1, n_seasons=1, n_measurements=1, n_sites=1, n_replications=1, verbose=false);
     # phenomes = extractphenomes(trials);
     # cvs, notes = cvbulk(genomes=genomes, phenomes=phenomes, models = [ols, ridge, lasso], n_replications=2, n_folds=2); verbose::Bool=true;
     # Check arguments

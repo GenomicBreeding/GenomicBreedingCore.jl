@@ -15,7 +15,7 @@ Merge two `Trials` structs into a single combined `Trials` struct.
 
 # Details
 The function performs an outer join of the two trial datasets, combining them based on their identifying columns 
-(years, seasons, harvests, sites, replications, blocks, rows, cols, entries, populations).
+(years, seasons, measurements, sites, replications, blocks, rows, cols, entries, populations).
 
 For traits that exist in both trials:
 - If a measurement exists in only one trial, that value is used
@@ -88,7 +88,7 @@ function Base.merge(
         df_2[:, findall(names(df_2) .!= "id")]
     end
     id_cols =
-        ["years", "seasons", "harvests", "sites", "replications", "blocks", "rows", "cols", "entries", "populations"]
+        ["years", "seasons", "measurements", "sites", "replications", "blocks", "rows", "cols", "entries", "populations"]
     ids_1 = [join(x, "|") for x in eachrow(df_1[:, id_cols])]
     ids_2 = [join(x, "|") for x in eachrow(df_2[:, id_cols])]
     common_ids = intersect(ids_1, ids_2)
@@ -135,7 +135,7 @@ function Base.merge(
     trials_merged.traits = filter(x -> !(x ∈ id_cols), names(df_merged))
     trials_merged.years = df_merged.years
     trials_merged.seasons = df_merged.seasons
-    trials_merged.harvests = df_merged.harvests
+    trials_merged.measurements = df_merged.measurements
     trials_merged.sites = df_merged.sites
     trials_merged.replications = df_merged.replications
     trials_merged.blocks = df_merged.blocks

@@ -30,7 +30,7 @@ The function performs several tasks:
 ```jldoctest; setup = :(using GenomicBreedingCore, StatsBase, DataFrames)
 julia> genomes = simulategenomes(n=5, l=1_000, verbose=false);
 
-julia> trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=3, verbose=false);
+julia> trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_measurements=1, n_sites=1, n_replications=3, verbose=false);
 
 julia> df = tabularise(trials);
 
@@ -54,7 +54,7 @@ function checkandfocalterms(;
     df::DataFrame,
     other_covariates::Union{Vector{String},Nothing} = nothing,
 )::Vector{String}
-    # genomes = simulategenomes(n=500, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_harvests=1, n_sites=2, n_replications=3);
+    # genomes = simulategenomes(n=500, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_measurements=1, n_sites=2, n_replications=3);
     # trait = "trait_1"; factors = ["rows", "cols"]; df = tabularise(trials); other_covariates::Union{Vector{String}, Nothing} = ["trait_2", "trait_3"]; saturated_model = false; verbose = true;
     # Check arguments
     if !(trait ∈ names(df))
@@ -111,7 +111,7 @@ function checkandfocalterms(;
     else
         nothing
     end
-    # Site-specific spatial effects per harvest (i.e. stage-1 effects per year-site-season-harvest combination)
+    # Site-specific spatial effects per measurement (i.e. stage-1 effects per year-site-season-measurement combination)
     spatial_effects = begin
         spatial_terms = if ("rows" ∈ factors) && ("cols" ∈ factors)
             # Regardless of whether or not the blocks are present, use only the rows and columns for parsimony
@@ -236,7 +236,7 @@ Creates design matrices for hierarchical factorial experiments with:
 ```jldoctest; setup = :(using GenomicBreedingCore)
 julia> genomes = simulategenomes(n=5, l=1_000, verbose=false);
 
-julia> trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=3, verbose=false);
+julia> trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_measurements=1, n_sites=1, n_replications=3, verbose=false);
 
 julia> df = tabularise(trials);
 
@@ -265,7 +265,7 @@ function instantiateblr(;
     saturated_model::Bool = false,
     verbose::Bool = false,
 )::BLR
-    # genomes = simulategenomes(n=500, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_harvests=1, n_sites=2, n_replications=3);
+    # genomes = simulategenomes(n=500, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_measurements=1, n_sites=2, n_replications=3);
     # trait = "trait_1"; factors = ["rows", "cols"]; df = tabularise(trials); other_covariates::Union{Vector{String}, Nothing} = ["trait_2", "trait_3"]; saturated_model = false; verbose = true;
     # Check arguments and extract focal terms
     focal_terms = checkandfocalterms(trait = trait, factors = factors, df = df, other_covariates = other_covariates)
@@ -458,7 +458,7 @@ A dictionary containing:
 ```jldoctest; setup = :(using GenomicBreedingCore, StatsBase)
 julia> genomes = simulategenomes(n=5, l=1_000, verbose=false);
 
-julia> trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=3, verbose=false);
+julia> trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_measurements=1, n_sites=1, n_replications=3, verbose=false);
 
 julia> df = tabularise(trials);
 
@@ -601,7 +601,7 @@ Perform MCMC sampling for Bayesian Linear Regression on a BLR model using NUTS s
 ```jldoctest; setup = :(using GenomicBreedingCore, StatsBase, DataFrames)
 julia> genomes = simulategenomes(n=5, l=1_000, verbose=false);
 
-julia> trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=3, verbose=false);
+julia> trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_measurements=1, n_sites=1, n_replications=3, verbose=false);
 
 julia> df = tabularise(trials);
 
@@ -640,7 +640,7 @@ function turingblrmcmc!(
     verbose::Bool = true,
 )::Nothing
     # genomes = simulategenomes(n=500, l=1_000, verbose=false); 
-    # trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=3, verbose=false);
+    # trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_measurements=1, n_sites=1, n_replications=3, verbose=false);
     # df = tabularise(trials);
     # blr = instantiateblr(trait = trials.traits[1], factors = ["rows", "cols"], df = df, other_covariates = trials.traits[2:end], verbose = false);
     # # multiple_σs::Union{Nothing, Dict{String, Bool}} = nothing
@@ -792,7 +792,7 @@ end
 Remove spatial effects from trait measurements in field trials using Bayesian linear regression.
 
 # Arguments
-- `df::DataFrame`: DataFrame containing trial data with columns for traits, spatial factors, and harvests
+- `df::DataFrame`: DataFrame containing trial data with columns for traits, spatial factors, and measurements
 - `factors::Vector{String}`: Vector of factor names to be considered in the model 
 - `traits::Vector{String}`: Vector of trait names to be spatially adjusted
 - `other_covariates::Union{Vector{String},Nothing}`: Optional vector of additional covariates
@@ -807,13 +807,13 @@ Remove spatial effects from trait measurements in field trials using Bayesian li
 In addition to mutating `df` by adding the spatially adjusted traits as new columns with the prefix "SPATADJ-",
 it returns a tuple containing:
 1. Vector of remaining significant factors after spatial adjustment
-2. Dictionary mapping harvest-trait combinations to diagnostic DataFrame results
+2. Dictionary mapping measurement-trait combinations to diagnostic DataFrame results
 
 # Details
 This function performs spatial adjustment for traits measured in field trials by:
 
 1. Identifying spatial factors (blocks, rows, columns) and creating design matrices
-2. Fitting Bayesian linear model per harvest to account for:
+2. Fitting Bayesian linear model per measurement to account for:
    - Spatial effects (blocks, rows, columns and interactions) 
    - Choice of covariance structure:
      + Empirical: Estimated using linear shrinkage with unequal variances
@@ -824,7 +824,7 @@ This function performs spatial adjustment for traits measured in field trials by
 4. Removing redundant factors and retaining only unique design matrices
 
 The spatial adjustment is only performed if blocks, rows or columns are present.
-Each harvest is treated separately to allow for year and site-specific spatial effects.
+Each measurement is treated separately to allow for year and site-specific spatial effects.
 
 Variance component scalers are specified as follows:
 - Rows, columns and other covariates use unique variance scalers (multiple_σs = true)
@@ -832,7 +832,7 @@ Variance component scalers are specified as follows:
 - This improves model tractability while allowing for flexible variance structures where needed
 
 # Notes
-- Requires "entries" and "harvests" columns in input DataFrame 
+- Requires "entries" and "measurements" columns in input DataFrame 
 - Uses Bayesian linear regression via MCMC for spatial modeling
 - Creates new columns with "SPATADJ-" prefix for adjusted traits
 - Returns original DataFrame if no spatial factors present
@@ -844,7 +844,7 @@ Variance component scalers are specified as follows:
 ```jldoctest; setup = :(using GenomicBreedingCore, StatsBase, DataFrames)
 julia> genomes = simulategenomes(n=5, l=1_000, verbose=false);
 
-julia> trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=3, verbose=false);
+julia> trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_measurements=1, n_sites=1, n_replications=3, verbose=false);
 
 julia> df = tabularise(trials);
 
@@ -870,7 +870,7 @@ function removespatialeffects!(
     verbose::Bool = false,
 )::Tuple{Vector{String},Dict{String,DataFrame}}
     # genomes = simulategenomes(n=500, l=1_000, verbose=false); 
-    # trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_harvests=1, n_sites=1, n_replications=3, verbose=false);
+    # trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=1, n_measurements=1, n_sites=1, n_replications=3, verbose=false);
     # df = tabularise(trials);
     # factors = ["rows", "cols"]; traits = ["trait_1", "trait_2"]; other_covariates=["trait_3"]; Σ_type::Symbol = [:empirical, :autoregressive][1]; ρs::Dict{String, Float64} = Dict("rows" => 0.5, "cols" => 0.5); n_iter=1_000; n_burnin=200; seed=123;  verbose = true;
     # Check arguments
@@ -934,14 +934,14 @@ function removespatialeffects!(
     end
     # Define spatial factors
     spatial_factors = filter(x -> !isnothing(match(Regex("blocks|rows|cols"), x)), factors)
-    # Make sure that each harvest is year- and site-specific
-    harvests = unique(df.harvests)
-    # Instantiate the diagnostics dictionary for each harvest-by-trait combination
+    # Make sure that each measurement is year- and site-specific
+    measurements = unique(df.measurements)
+    # Instantiate the diagnostics dictionary for each measurement-by-trait combination
     spatial_diagnostics::Dict{String,DataFrame} = Dict()
-    # Loop through each harvest
-    for harvest in harvests
-        # harvest = harvests[1]
-        idx_rows = findall(df.harvests .== harvest)
+    # Loop through each measurement
+    for measurement in measurements
+        # measurement = measurements[1]
+        idx_rows = findall(df.measurements .== measurement)
         if length(idx_rows) == 0
             continue
         end
@@ -952,7 +952,7 @@ function removespatialeffects!(
             if verbose
                 println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
                 println(
-                    " ($(1 + length(spatial_diagnostics))/$(length(harvests) * length(traits))) Spatial modelling for harvest: $harvest; and trait: $trait",
+                    " ($(1 + length(spatial_diagnostics))/$(length(measurements) * length(traits))) Spatial modelling for measurement: $measurement; and trait: $trait",
                 )
                 println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
             end
@@ -1034,7 +1034,7 @@ function removespatialeffects!(
             # cor(df[idx_rows, new_spat_adj_trait_name], blr.coefficients["intercept"] .+ blr.ϵ)
             df[idx_rows, new_spat_adj_trait_name] = blr.coefficients["intercept"] .+ blr.ϵ
             # Update the spatial_diagnostics
-            spatial_diagnostics[string(harvest, "|", new_spat_adj_trait_name)] = blr.diagnostics
+            spatial_diagnostics[string(measurement, "|", new_spat_adj_trait_name)] = blr.diagnostics
             # Clean-up
             blr = nothing
             Base.GC.gc()
@@ -1109,7 +1109,7 @@ A tuple containing:
 # Details
 Performs a two-stage analysis:
 
-1. Stage-1: Spatial analysis per harvest-site-year combination
+1. Stage-1: Spatial analysis per measurement-site-year combination
 - Creates temporary JLD2 file with spatially adjusted data to manage memory
 - Corrects for spatial effects:
     + With rows and columns regardless of whether blocks are present:
@@ -1171,7 +1171,7 @@ julia> genomes = simulategenomes(n=5, l=1_000, verbose=false);
 
 julia> grm = grmploidyaware(genomes, ploidy=2, max_iter=10);
 
-julia> trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_harvests=1, n_sites=3, n_replications=3, verbose=false);
+julia> trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_measurements=1, n_sites=3, n_replications=3, verbose=false);
 
 julia> tebv_1, spatial_diagnostics_1 = analyseviaBLR(trials, ["trait_1"], n_iter = 1_000, n_burnin = 100);
 
@@ -1201,7 +1201,7 @@ function analyseviaBLR(
     seed::Int64 = 1234,
     verbose::Bool = false,
 )::Tuple{TEBV,Dict{String,DataFrame}}
-    # genomes = simulategenomes(n=5, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_harvests=1, n_sites=3, n_replications=3); grm::Union{GRM, Nothing} = grmploidyaware(genomes; ploidy = 2, max_iter = 10, verbose = true); traits::Vector{String} = ["trait_1"]; other_covariates::Union{Vector{String}, Nothing} = ["trait_2"]; empirical_Σs::Bool = true; multiple_σs_threshold = 500; n_iter::Int64 = 1_000; n_burnin::Int64 = 100; seed::Int64 = 1234; verbose::Bool = true;
+    # genomes = simulategenomes(n=5, l=1_000); trials, simulated_effects = simulatetrials(genomes = genomes, n_years=1, n_seasons=2, n_measurements=1, n_sites=3, n_replications=3); grm::Union{GRM, Nothing} = grmploidyaware(genomes; ploidy = 2, max_iter = 10, verbose = true); traits::Vector{String} = ["trait_1"]; other_covariates::Union{Vector{String}, Nothing} = ["trait_2"]; empirical_Σs::Bool = true; multiple_σs_threshold = 500; n_iter::Int64 = 1_000; n_burnin::Int64 = 100; seed::Int64 = 1234; verbose::Bool = true;
     # Check arguments
     if !checkdims(trials)
         error("The Trials struct is corrupted ☹.")
@@ -1236,10 +1236,10 @@ function analyseviaBLR(
     end
     # Tabularise the trials data
     df = tabularise(trials)
-    # Make sure the harvests are year- and site-specific
-    df.harvests = string.(df.years, "|", df.seasons, "|", df.sites, "|", df.harvests)
+    # Make sure the measurements are year- and site-specific
+    df.measurements = string.(df.years, "|", df.seasons, "|", df.sites, "|", df.measurements)
     # Identify non-fixed factors
-    factors_all::Vector{String} = ["years", "seasons", "sites", "harvests", "blocks", "rows", "cols", "entries"]
+    factors_all::Vector{String} = ["years", "seasons", "sites", "measurements", "blocks", "rows", "cols", "entries"]
     factors::Vector{String} = []
     for f in factors_all
         # f = factors_all[4]
@@ -1262,8 +1262,8 @@ function analyseviaBLR(
     if verbose && (total_X_size_in_Gb > 0.9 * total_system_RAM_in_GB)
         @warn "The size of the design matrix is ~$(round(total_X_size_in_Gb)) GB. This may cause out-of-memory errors."
     end
-    # Spatial analyses per harvest-site-year
-    # This is to prevent OOM errors, we will perform spatial analyses per harvest per site per year, i.e. remove spatial effects per harvest-site-year
+    # Spatial analyses per measurement-site-year
+    # This is to prevent OOM errors, we will perform spatial analyses per measurement per site per year, i.e. remove spatial effects per measurement-site-year
     # as well as remove the effects of continuous numeric covariate/s.
     factors, spatial_diagnostics = removespatialeffects!(
         df,
@@ -1289,12 +1289,12 @@ function analyseviaBLR(
             println("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
         end
         # Instantiate the BLR struct for GxE analysis
-        # Note that the covariate is now excluded as we should have controlled for them in the per harvest-site-year spatial analyses
-        # - Stage-1 effects (spatial effects per year-season-site-harvest combination):
+        # Note that the covariate is now excluded as we should have controlled for them in the per measurement-site-year spatial analyses
+        # - Stage-1 effects (spatial effects per year-season-site-measurement combination):
         #     + rows
         #     + cols
         #     + rows:cols
-        # - Stage-2 effects (GxE effects after spatial corrections per year-season-site-harvest combination):
+        # - Stage-2 effects (GxE effects after spatial corrections per year-season-site-measurement combination):
         #     + entries
         #     + sites
         #     + seasons

@@ -10,7 +10,7 @@ Documenter.doctest(GenomicBreedingCore)
         genomes = genomes,
         n_years = 1,
         n_seasons = 1,
-        n_harvests = 1,
+        n_measurements = 1,
         n_sites = 1,
         n_replications = 3,
         f_add_dom_epi = [0.1 0.01 0.01;],

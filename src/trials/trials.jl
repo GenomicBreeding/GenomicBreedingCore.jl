@@ -109,7 +109,7 @@ consistent with the size of the phenotypes matrix. Specifically, it checks:
 - Number of entries (`n`) matches number of rows in phenotypes and length of:
   * years
   * seasons
-  * harvests
+  * measurements
   * sites
   * replications
   * blocks
@@ -148,7 +148,7 @@ function checkdims(trials::Trials; verbose::Bool = false)::Bool
         @show length(trials.traits)
         @show length(trials.years)
         @show length(trials.seasons)
-        @show length(trials.harvests)
+        @show length(trials.measurements)
         @show length(trials.sites)
         @show length(trials.replications)
         @show length(trials.blocks)
@@ -162,7 +162,7 @@ function checkdims(trials::Trials; verbose::Bool = false)::Bool
        (t != length(unique(trials.traits))) ||
        (n != length(trials.years)) ||
        (n != length(trials.seasons)) ||
-       (n != length(trials.harvests)) ||
+       (n != length(trials.measurements)) ||
        (n != length(trials.sites)) ||
        (n != length(trials.replications)) ||
        (n != length(trials.blocks)) ||
@@ -188,7 +188,7 @@ A `Dict{String, Int64}` with the following keys:
 - `"n_traits"`: Number of unique traits
 - `"n_years"`: Number of unique years
 - `"n_seasons"`: Number of unique seasons
-- `"n_harvests"`: Number of unique harvests
+- `"n_measurements"`: Number of unique measurements
 - `"n_sites"`: Number of unique sites
 - `"n_replications"`: Number of unique replications
 - `"n_blocks"`: Number of unique blocks
@@ -214,16 +214,16 @@ julia> trials.entries = ["entry_1"]; trials.traits = ["trait_1", "trait_2"];
 julia> dimensions(trials)
 Dict{String, Int64} with 16 entries:
   "n_zeroes"       => 0
-  "n_harvests"     => 1
   "n_nan"          => 0
   "n_entries"      => 1
   "n_traits"       => 2
   "n_seasons"      => 1
   "n_rows"         => 1
   "n_blocks"       => 1
+  "n_measurements" => 1
   "n_missing"      => 2
-  "n_inf"          => 0
   "n_total"        => 2
+  "n_inf"          => 0
   "n_replications" => 1
   "n_years"        => 1
   "n_sites"        => 1
@@ -240,7 +240,7 @@ function dimensions(trials::Trials)::Dict{String,Int64}
         "n_traits" => length(unique(trials.traits)),
         "n_years" => length(unique(trials.years)),
         "n_seasons" => length(unique(trials.seasons)),
-        "n_harvests" => length(unique(trials.harvests)),
+        "n_measurements" => length(unique(trials.measurements)),
         "n_sites" => length(unique(trials.sites)),
         "n_replications" => length(unique(trials.replications)),
         "n_blocks" => length(unique(trials.blocks)),
@@ -269,7 +269,7 @@ Convert a Trials struct into a DataFrame representation for easier data manipula
   - `id`: Unique identifier for each trial observation
   - `years`: Year of the trial
   - `seasons`: Season identifier
-  - `harvests`: Harvest identifier
+  - `measurements`: Harvest identifier
   - `sites`: Location/site identifier
   - `replications`: Replication number
   - `blocks`: Block identifier
@@ -301,7 +301,7 @@ function tabularise(trials::Trials)::DataFrame
         id = 1:length(trials.years),
         years = trials.years,
         seasons = trials.seasons,
-        harvests = trials.harvests,
+        measurements = trials.measurements,
         sites = trials.sites,
         replications = trials.replications,
         blocks = trials.blocks,
@@ -325,7 +325,7 @@ Convert a `Trials` struct into a `Phenomes` struct by extracting phenotypic valu
 # Details
 - Combines trait measurements with their environmental contexts
 - Creates unique trait identifiers by combining trait names with environment variables
-- Environment variables include: years, harvests, seasons, sites, and replications
+- Environment variables include: years, measurements, seasons, sites, and replications
 - For single environment scenarios, trait names remain without environmental suffixes
 
 # Arguments
@@ -339,7 +339,7 @@ Convert a `Trials` struct into a `Phenomes` struct by extracting phenotypic valu
   - `traits`: Vector of trait names (with environmental contexts)
 
 # Throws
-- `ArgumentError`: If duplicate entries exist within year-harvest-season-site-replication combinations
+- `ArgumentError`: If duplicate entries exist within year-measurement-season-site-replication combinations
 - `ErrorException`: If dimensional validation fails during Phenomes construction
 
 # Examples
@@ -359,7 +359,7 @@ function extractphenomes(trials::Trials)::Phenomes
     ids = sort(unique(df.id))
     entries = [x[1] for x in split.(ids, "---X---")]
     populations = [x[2] for x in split.(ids, "---X---")]
-    df.grouping = string.(df.years, "-", df.harvests, "-", df.seasons, "-", df.sites, "-", df.replications)
+    df.grouping = string.(df.years, "-", df.measurements, "-", df.seasons, "-", df.sites, "-", df.replications)
     base_traits = names(df)[12:(end-1)]
     traits::Vector{String} = []
     for trait_base in base_traits
@@ -378,7 +378,7 @@ function extractphenomes(trials::Trials)::Phenomes
         catch
             throw(
                 ArgumentError(
-                    "You may have duplicate entries within year-harvest-season-site-replication combinations. " *
+                    "You may have duplicate entries within year-measurement-season-site-replication combinations. " *
                     "These may possibly be controls. " *
                     "Please make sure each entry appears only once within these combinations.",
                 ),
@@ -409,42 +409,42 @@ function extractphenomes(trials::Trials)::Phenomes
 end
 
 """
-    aggregateharvests(
+    aggregatemeasurements(
         trials::Trials; 
         traits::Union{Vector{String}, Nothing} = nothing,
         grouping::Vector{String} = ["years", "seasons", "sites", "replications", "blocks", "rows", "cols", "entries", "populations"],
         f::Function=x -> sum(skipmissing(x))
     )::Tuple{Trials, DataFrame}
 
-Aggregate harvest data from a `Trials` struct by specified grouping variables.
+Aggregate measurement data from a `Trials` struct by specified grouping variables.
 
 # Arguments
-- `trials::Trials`: Input trials struct containing harvest data
+- `trials::Trials`: Input trials struct containing measurement data
 - `traits::Union{Vector{String}, Nothing}`: Vector of trait names to aggregate (default: all traits)
 - `grouping::Vector{String}`: Vector of column names to group by (default: ["years", "seasons", "sites", "replications", "blocks", "rows", "cols", "entries", "populations"])
 - `f::Function`: Aggregation function to apply (default: sum of non-missing values)
 
 # Returns
 - `Tuple{Trials, DataFrame}`: A tuple containing:
-  - Aggregated trials struct with combined harvest data
-  - DataFrame with harvest counts per year, season, and site
+  - Aggregated trials struct with combined measurement data
+  - DataFrame with measurement counts per year, season, and site
 
 # Examples
 ```jldoctest; setup = :(using GenomicBreedingCore)
 julia> trials, _ = simulatetrials(genomes = simulategenomes(n=5, l=1000, verbose=false), verbose=false);
 
-julia> trials_agg_1, df_n_harvests_1 = aggregateharvests(trials);
+julia> trials_agg_1, df_n_measurements_1 = aggregatemeasurements(trials);
 
 julia> length(trials.entries) > length(trials_agg_1.entries)
 true
 
-julia> trials_agg_2, df_n_harvests_2 = aggregateharvests(trials, traits=["trait_1"]);
+julia> trials_agg_2, df_n_measurements_2 = aggregatemeasurements(trials, traits=["trait_1"]);
 
 julia> length(trials.traits) > length(trials_agg_2.traits)
 true
 ```
 """
-function aggregateharvests(
+function aggregatemeasurements(
     trials::Trials;
     traits::Union{Vector{String},Nothing} = nothing,
     grouping::Vector{String} = [
@@ -476,9 +476,9 @@ function aggregateharvests(
     end
     # Aggregate
     df = tabularise(trials)
-    df_n_harvests = begin
-        df_counts = combine(groupby(df, grouping), nrow => "n_harvests")
-        combine(groupby(df_counts, [:years, :seasons, :sites]), :n_harvests => maximum => "n_harvests")
+    df_n_measurements = begin
+        df_counts = combine(groupby(df, grouping), nrow => "n_measurements")
+        combine(groupby(df_counts, [:years, :seasons, :sites]), :n_measurements => maximum => "n_measurements")
     end
     df_agg = combine(groupby(df, grouping), Symbol(traits[1]) => f => traits[1])
     if length(traits) > 1
@@ -495,7 +495,7 @@ function aggregateharvests(
         trials_agg.populations = df_agg.populations
         trials_agg.years = df_agg.years
         trials_agg.seasons = df_agg.seasons
-        # trials_agg.harvests .= ""
+        # trials_agg.measurements .= ""
         trials_agg.sites = df_agg.sites
         trials_agg.replications = df_agg.replications
         trials_agg.blocks = df_agg.blocks
@@ -510,7 +510,7 @@ function aggregateharvests(
     if !checkdims(trials_agg)
         throw(ErrorException("Error aggregating the trials."))
     end
-    (trials_agg, df_n_harvests)
+    (trials_agg, df_n_measurements)
 end
 
 
@@ -690,7 +690,7 @@ function plot(trials::Trials; nbins::Int64 = 10)
         )
         display(plt)
     end
-    # Mean trait values across years, seasons, harvests, sites, replications, row, column, and populations
+    # Mean trait values across years, seasons, measurements, sites, replications, row, column, and populations
     df = tabularise(trials)
     for trait in trials.traits
         # trait = trials.traits[1]
@@ -701,7 +701,7 @@ function plot(trials::Trials; nbins::Int64 = 10)
             println("All values are missing, NaN and/or infinities.")
             continue
         end
-        for class in ["years", "seasons", "harvests", "sites", "replications", "rows", "cols", "populations"]
+        for class in ["years", "seasons", "measurements", "sites", "replications", "rows", "cols", "populations"]
             # class = "years"
             agg = DataFrames.combine(DataFrames.groupby(df[idx, :], class), trait => mean)
             if sum(agg[!, 2] .>= 0) == 0

@@ -81,16 +81,16 @@ Verifies that:
 - `id` has length 6
 - `field_layout` has 4 columns 
 - All following vectors have the same length (n):
-  - `replications_x_site_x_harvest_x_season_x_year`
-  - `blocks_x_site_x_harvest_x_season_x_year`
-  - `rows_x_site_x_harvest_x_season_x_year`
-  - `cols_x_site_x_harvest_x_season_x_year`
+  - `replications_x_site_x_measurement_x_season_x_year`
+  - `blocks_x_site_x_measurement_x_season_x_year`
+  - `rows_x_site_x_measurement_x_season_x_year`
+  - `cols_x_site_x_measurement_x_season_x_year`
   - `additive_genetic`
   - `dominance_genetic`
   - `epistasis_genetic`
-  - `additive_allele_x_site_x_harvest_x_season_x_year`
-  - `dominance_allele_x_site_x_harvest_x_season_x_year`
-  - `epistasis_allele_x_site_x_harvest_x_season_x_year`
+  - `additive_allele_x_site_x_measurement_x_season_x_year`
+  - `dominance_allele_x_site_x_measurement_x_season_x_year`
+  - `epistasis_allele_x_site_x_measurement_x_season_x_year`
 
 # Examples
 ```jldoctest; setup = :(using GenomicBreedingCore)
@@ -111,18 +111,18 @@ false
 ```
 """
 function checkdims(effects::SimulatedEffects)::Bool
-    n::Int64 = length(effects.replications_x_site_x_harvest_x_season_x_year)
+    n::Int64 = length(effects.replications_x_site_x_measurement_x_season_x_year)
     if (length(effects.id) != 6) ||
        (size(effects.field_layout, 2) != 4) ||
-       (n != length(effects.blocks_x_site_x_harvest_x_season_x_year)) ||
-       (n != length(effects.rows_x_site_x_harvest_x_season_x_year)) ||
-       (n != length(effects.cols_x_site_x_harvest_x_season_x_year)) ||
+       (n != length(effects.blocks_x_site_x_measurement_x_season_x_year)) ||
+       (n != length(effects.rows_x_site_x_measurement_x_season_x_year)) ||
+       (n != length(effects.cols_x_site_x_measurement_x_season_x_year)) ||
        (n != length(effects.additive_genetic)) ||
        (n != length(effects.dominance_genetic)) ||
        (n != length(effects.epistasis_genetic)) ||
-       (n != length(effects.additive_allele_x_site_x_harvest_x_season_x_year)) ||
-       (n != length(effects.dominance_allele_x_site_x_harvest_x_season_x_year)) ||
-       (n != length(effects.epistasis_allele_x_site_x_harvest_x_season_x_year))
+       (n != length(effects.additive_allele_x_site_x_measurement_x_season_x_year)) ||
+       (n != length(effects.dominance_allele_x_site_x_measurement_x_season_x_year)) ||
+       (n != length(effects.epistasis_allele_x_site_x_measurement_x_season_x_year))
         return false
     end
     return true

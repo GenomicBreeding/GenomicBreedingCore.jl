@@ -129,21 +129,21 @@ end
 """
 # Trials struct 
     
-Contains phenotype data across years, seasons, harvest, sites, populations, replications, blocks, rows, and columns
+Contains phenotype data across years, seasons, measurement, sites, populations, replications, blocks, rows, and columns
 
 ## Fields
 - `phenotypes`: `n x t` matrix of numeric phenotype data which can have missing values
-- `traits`: names of the traits `t` traits
-- `years`: names of the years corresponding to each row in the phenotype matrix
-- `seasons`: names of the seasons corresponding to each row in the phenotype matrix
-- `harvests`: names of the harvests corresponding to each row in the phenotype matrix
-- `sites`: names of the sites corresponding to each row in the phenotype matrix
-- `replications`: names of the replications corresponding to each row in the phenotype matrix
-- `blocks`: names of the blocks corresponding to each row in the phenotype matrix
-- `rows`: names of the rows corresponding to each row in the phenotype matrix
-- `cols`: names of the cols corresponding to each row in the phenotype matrix
-- `entries`: names of the entries corresponding to each row in the phenotype matrix
-- `populations`: names of the populations corresponding to each row in the phenotype matrix
+- `traits`: names of the traits `t` traits (e.g. DryWeight_kg_per_ha, Protein_perc, MilkYield_L_per_day)
+- `years`: names of the years corresponding to each row in the phenotype matrix (e.g. 2025, 2026, 2027)
+- `seasons`: names of the seasons corresponding to each row in the phenotype matrix (e.g. summer, autumn, winter)
+- `measurements`: names of the measurements corresponding to each row in the phenotype matrix (e.g. harvest_1, flight_3, visit_2)
+- `sites`: names of the sites corresponding to each row in the phenotype matrix (e.g. Melbourne, Hamilton-lowN, Tatura-drought)
+- `replications`: names of the replications corresponding to each row in the phenotype matrix (e.g. rep_1, rep_2, rep_3)
+- `blocks`: names of the blocks corresponding to each row in the phenotype matrix (e.g. blk_1, blk_2, blk_3)
+- `rows`: names of the rows corresponding to each row in the phenotype matrix (e.g. row_1, row_2, row_3)
+- `cols`: names of the cols corresponding to each row in the phenotype matrix (e.g. col_1, col_2, col_3)
+- `entries`: names of the entries corresponding to each row in the phenotype matrix (e.g. G001, G002, G003)
+- `populations`: names of the populations corresponding to each row in the phenotype matrix (e.g. P001, P002, P003)
 
 ## Constructor
 ```julia
@@ -159,7 +159,7 @@ julia> trials = Trials(n=1, t=2)
 Trials(Union{Missing, Float64}[missing missing], ["", ""], [""], [""], [""], [""], [""], [""], [""], [""], [""], [""])
 
 julia> fieldnames(Trials)
-(:phenotypes, :traits, :years, :seasons, :harvests, :sites, :replications, :blocks, :rows, :cols, :entries, :populations)
+(:phenotypes, :traits, :years, :seasons, :measurements, :sites, :replications, :blocks, :rows, :cols, :entries, :populations)
 ```
 """
 mutable struct Trials <: AbstractGB
@@ -167,7 +167,7 @@ mutable struct Trials <: AbstractGB
     traits::Vector{String}
     years::Vector{String}
     seasons::Vector{String}
-    harvests::Vector{String}
+    measurements::Vector{String}
     sites::Vector{String}
     replications::Vector{String}
     blocks::Vector{String}
@@ -352,19 +352,19 @@ Contains the various simulated genetic, environmental and GxE effects.
 - `season::Float64`: Season effect
 - `site::Float64`: Site effect
 - `seasons_x_year::Float64`: Interaction effect between seasons and years
-- `harvests_x_season_x_year::Float64`: Interaction effect between harvests, seasons and years
-- `sites_x_harvest_x_season_x_year::Float64`: Interaction effect between sites, harvests, seasons and years
+- `measurements_x_season_x_year::Float64`: Interaction effect between measurements, seasons and years
+- `sites_x_measurement_x_season_x_year::Float64`: Interaction effect between sites, measurements, seasons and years
 - `field_layout::Matrix{Int64}`: 2D matrix representing field layout
-- `replications_x_site_x_harvest_x_season_x_year::Vector{Float64}`: Replication interaction effects
-- `blocks_x_site_x_harvest_x_season_x_year::Vector{Float64}`: Block interaction effects
-- `rows_x_site_x_harvest_x_season_x_year::Vector{Float64}`: Row interaction effects
-- `cols_x_site_x_harvest_x_season_x_year::Vector{Float64}`: Column interaction effects
+- `replications_x_site_x_measurement_x_season_x_year::Vector{Float64}`: Replication interaction effects
+- `blocks_x_site_x_measurement_x_season_x_year::Vector{Float64}`: Block interaction effects
+- `rows_x_site_x_measurement_x_season_x_year::Vector{Float64}`: Row interaction effects
+- `cols_x_site_x_measurement_x_season_x_year::Vector{Float64}`: Column interaction effects
 - `additive_genetic::Vector{Float64}`: Additive genetic effects
 - `dominance_genetic::Vector{Float64}`: Dominance genetic effects
 - `epistasis_genetic::Vector{Float64}`: Epistasis genetic effects
-- `additive_allele_x_site_x_harvest_x_season_x_year::Vector{Float64}`: Additive allele interaction effects
-- `dominance_allele_x_site_x_harvest_x_season_x_year::Vector{Float64}`: Dominance allele interaction effects
-- `epistasis_allele_x_site_x_harvest_x_season_x_year::Vector{Float64}`: Epistasis allele interaction effects
+- `additive_allele_x_site_x_measurement_x_season_x_year::Vector{Float64}`: Additive allele interaction effects
+- `dominance_allele_x_site_x_measurement_x_season_x_year::Vector{Float64}`: Dominance allele interaction effects
+- `epistasis_allele_x_site_x_measurement_x_season_x_year::Vector{Float64}`: Epistasis allele interaction effects
 
 # Constructor
     SimulatedEffects()
@@ -381,19 +381,19 @@ mutable struct SimulatedEffects <: AbstractGB
     season::Float64
     site::Float64
     seasons_x_year::Float64
-    harvests_x_season_x_year::Float64
-    sites_x_harvest_x_season_x_year::Float64
+    measurements_x_season_x_year::Float64
+    sites_x_measurement_x_season_x_year::Float64
     field_layout::Matrix{Int64}
-    replications_x_site_x_harvest_x_season_x_year::Vector{Float64}
-    blocks_x_site_x_harvest_x_season_x_year::Vector{Float64}
-    rows_x_site_x_harvest_x_season_x_year::Vector{Float64}
-    cols_x_site_x_harvest_x_season_x_year::Vector{Float64}
+    replications_x_site_x_measurement_x_season_x_year::Vector{Float64}
+    blocks_x_site_x_measurement_x_season_x_year::Vector{Float64}
+    rows_x_site_x_measurement_x_season_x_year::Vector{Float64}
+    cols_x_site_x_measurement_x_season_x_year::Vector{Float64}
     additive_genetic::Vector{Float64}
     dominance_genetic::Vector{Float64}
     epistasis_genetic::Vector{Float64}
-    additive_allele_x_site_x_harvest_x_season_x_year::Vector{Float64}
-    dominance_allele_x_site_x_harvest_x_season_x_year::Vector{Float64}
-    epistasis_allele_x_site_x_harvest_x_season_x_year::Vector{Float64}
+    additive_allele_x_site_x_measurement_x_season_x_year::Vector{Float64}
+    dominance_allele_x_site_x_measurement_x_season_x_year::Vector{Float64}
+    epistasis_allele_x_site_x_measurement_x_season_x_year::Vector{Float64}
     function SimulatedEffects()
         return new(
             repeat([""]; inner = 6),
