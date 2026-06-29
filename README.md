@@ -11,13 +11,13 @@ Core library for GenomicBreeding.jl which includes simulation functions.
 ### REPL prelude
 
 ```shell
-julia --threads 2,1 --load test/interactive_prelude.jl
+julia --project=. --threads=2,1 --load test/interactive_prelude.jl
 ```
 
 ### Format and test
 
 ```shell
-time julia --threads 2,1 test/cli_tester.jl
+time julia --project=. --threads=2 test/cli_tester.jl
 ```
 
 ### Quick search and replace across the projects
