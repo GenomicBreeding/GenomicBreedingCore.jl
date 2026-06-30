@@ -30,7 +30,7 @@ Suppressor = "fd094767-a336-5f1f-9728-57cf17d0bbfb"
 UnicodePlots = "b8865327-cd53-5732-bb35-84acbb429228"
 
 [compat]
-Bijectors = "0.15.6"
+Bijectors = "0.15.6, 0.16"
 Clustering = "0.15.8"
 Combinatorics = "1.0.3"
 CovarianceEstimation = "0.2.13"
