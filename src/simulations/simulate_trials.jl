@@ -487,15 +487,18 @@ function simulatetrials(;
                             effects.seasons_x_year =
                                 θ_seasons_x_year[idx_season, idx_year] * (σ²_environmental_interactions / 3)
                             effects.measurements_x_season_x_year =
-                                θ_measurements_x_season_x_year[idx_measurement, idx_ys] * (σ²_environmental_interactions / 3)
+                                θ_measurements_x_season_x_year[idx_measurement, idx_ys] *
+                                (σ²_environmental_interactions / 3)
                             effects.sites_x_measurement_x_season_x_year =
                                 θ_sites_x_measurement_x_season_x_year[idx_site, idx_ysh] *
                                 (σ²_environmental_interactions / 3)
                             # Note that the layout of the entries remain constant across traits because we have defined field_layout outside these nested for-loops
                             effects.field_layout = field_layout
                             effects.replications_x_site_x_measurement_x_season_x_year =
-                                θ_replications_x_site_x_measurement_x_season_x_year[field_layout[idx_field_layout, 1][idx_randomised_entries]] *
-                                (σ²_spatial_interactions / 4)
+                                θ_replications_x_site_x_measurement_x_season_x_year[field_layout[
+                                    idx_field_layout,
+                                    1,
+                                ][idx_randomised_entries]] * (σ²_spatial_interactions / 4)
                             effects.blocks_x_site_x_measurement_x_season_x_year =
                                 θ_blocks_x_site_x_measurement_x_season_x_year[field_layout[idx_field_layout, 2][idx_randomised_entries]] .*
                                 (σ²_spatial_interactions / 4)
@@ -509,11 +512,14 @@ function simulatetrials(;
                             effects.dominance_genetic = G[:, 2] * σ²_dominance
                             effects.epistasis_genetic = G[:, 3] * σ²_epistasis
                             effects.additive_allele_x_site_x_measurement_x_season_x_year =
-                                θ_additive_allele_x_site_x_measurement_x_season_x_year[:, 1] .* (σ²_GxE_interactions / 3)
+                                θ_additive_allele_x_site_x_measurement_x_season_x_year[:, 1] .*
+                                (σ²_GxE_interactions / 3)
                             effects.dominance_allele_x_site_x_measurement_x_season_x_year =
-                                θ_dominance_allele_x_site_x_measurement_x_season_x_year[:, 1] .* (σ²_GxE_interactions / 3)
+                                θ_dominance_allele_x_site_x_measurement_x_season_x_year[:, 1] .*
+                                (σ²_GxE_interactions / 3)
                             effects.epistasis_allele_x_site_x_measurement_x_season_x_year =
-                                θ_epistasis_allele_x_site_x_measurement_x_season_x_year[:, 1] .* (σ²_GxE_interactions / 3)
+                                θ_epistasis_allele_x_site_x_measurement_x_season_x_year[:, 1] .*
+                                (σ²_GxE_interactions / 3)
                             if !checkdims(effects)
                                 throw(ErrorException("Error simulating effects."))
                             end
@@ -529,19 +535,19 @@ function simulatetrials(;
                                 trials.sites[idx_out_ini:idx_out_fin] = repeat([effects.id[5]]; outer = n)
                                 trials.replications[idx_out_ini:idx_out_fin] = repeat([effects.id[6]]; outer = n)
                                 trials.blocks[idx_out_ini:idx_out_fin] =
-                                    "Block_" .* lpad.(
+                                    "block_" .* lpad.(
                                         field_layout[idx_field_layout, 2][idx_randomised_entries],
                                         length(string(n_blocks)),
                                         "0",
                                     )
                                 trials.rows[idx_out_ini:idx_out_fin] =
-                                    "Row_" .* lpad.(
+                                    "row_" .* lpad.(
                                         field_layout[idx_field_layout, 3][idx_randomised_entries],
                                         length(string(n_rows)),
                                         "0",
                                     )
                                 trials.cols[idx_out_ini:idx_out_fin] =
-                                    "Col_" .* lpad.(
+                                    "col_" .* lpad.(
                                         field_layout[idx_field_layout, 4][idx_randomised_entries],
                                         length(string(n_cols)),
                                         "0",

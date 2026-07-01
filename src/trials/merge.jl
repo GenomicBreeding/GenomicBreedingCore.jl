@@ -87,8 +87,18 @@ function Base.merge(
         df_2 = tabularise(other)
         df_2[:, findall(names(df_2) .!= "id")]
     end
-    id_cols =
-        ["years", "seasons", "measurements", "sites", "replications", "blocks", "rows", "cols", "entries", "populations"]
+    id_cols = [
+        "years",
+        "seasons",
+        "measurements",
+        "sites",
+        "replications",
+        "blocks",
+        "rows",
+        "cols",
+        "entries",
+        "populations",
+    ]
     ids_1 = [join(x, "|") for x in eachrow(df_1[:, id_cols])]
     ids_2 = [join(x, "|") for x in eachrow(df_2[:, id_cols])]
     common_ids = intersect(ids_1, ids_2)
