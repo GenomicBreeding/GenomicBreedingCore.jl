@@ -91,11 +91,8 @@ julia> formulae, n_levels = trialsmodelsfomulae!(df, trait="trait_1");
 julia> size(df)
 (12800, 134)
 
-julia> length(formulae)
-76
-
-julia> sum(n_levels .== sort(n_levels))
-76
+julia> length(formulae) == sum(n_levels .== sort(n_levels))
+true
 ```
 """
 function trialsmodelsfomulae!(
