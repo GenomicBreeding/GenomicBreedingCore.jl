@@ -473,11 +473,30 @@ function simulatetrials(;
                             idx_ysh::Int = (idx_ys - 1) * n_measurements + idx_measurement
                             # Define the effects
                             effects::SimulatedEffects = SimulatedEffects()
+                            year_id = string(2025 + idx_year)
                             effects.id = [
                                 trials.traits[idx_trait],
-                                string("year_", idx_year),
-                                string("season_", lpad(idx_season, length(string(n_seasons)), "0")),
-                                string("measurement_", lpad(idx_measurement, length(string(n_measurements)), "0")),
+                                year_id,
+                                if n_seasons > 5
+                                    string("season_", lpad(idx_season, length(string(n_seasons)), "0"))
+                                elseif n_seasons == 5
+                                    ["Autumn", "Winter", "Early Spring", "Late Spring", "Summer"][idx_season]
+                                else
+                                    ["Autumn", "Winter", "Spring", "Summer"][idx_season]
+                                end,
+                                if n_measurements > 5
+                                    string("measurement_", lpad(idx_measurement, length(string(n_measurements)), "0"))
+                                elseif n_measurements == 5
+                                    [
+                                        "$year_id/04/15",
+                                        "$year_id/06/30",
+                                        "$year_id/08/31",
+                                        "$year_id/10/31",
+                                        "$year_id/01/15",
+                                    ][idx_measurement]
+                                else
+                                    ["$year_id/04/15", "$year_id/06/30", "$year_id/09/30", "$year_id/01/15"][idx_measurement]
+                                end,
                                 string("site_", lpad(idx_site, length(string(n_sites)), "0")),
                                 string("replication_", lpad(idx_replication, length(string(n_replications)), "0")),
                             ]
