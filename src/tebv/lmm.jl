@@ -345,6 +345,8 @@ julia> idx_parallel_models::Vector{Int64} = findall(n_levels .<= (15));
 
 julia> idx_iterative_models::Vector{Int64} = findall((n_levels .<= (15)) .!= true);
 
+julia> formulae = formulae[1:2]; idx_iterative_models = idx_iterative_models[1:2];
+
 julia> formula_string, model, df_BLUEs, df_BLUPs, phenomes = analyse(df, formulae=formulae, idx_parallel_models=idx_parallel_models, idx_iterative_models=idx_iterative_models);
 
 julia> length(phenomes.entries) == length(unique(df.entries))
