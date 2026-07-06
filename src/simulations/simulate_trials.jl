@@ -1,4 +1,257 @@
 """
+    parsetrialsimargs(
+        genomes::Genomes;
+        f_add_dom_epi::Matrix{Float64} = [
+            0.01 0.25 0.10
+            0.05 0.50 0.25
+            0.10 0.25 0.00
+        ],
+        n_years::Int64 = 2,
+        n_seasons::Int64 = 4,
+        n_measurements::Int64 = 2,
+        n_sites::Int64 = 4,
+        n_replications::Int64 = 2,
+        n_blocks::Union{Missing,Int64} = missing,
+        n_rows::Union{Missing,Int64} = missing,
+        n_cols::Union{Missing,Int64} = missing,
+        proportion_of_variance::Union{Missing,Matrix{Float64}} = missing,
+        sparsity::Float64 = 0.0,
+        seed::Int64 = 42,
+    )::Tuple{Int64, Int64, Int64, Int64, Int64, Matrix{Int64}, TaskLocalRNG, Matrix{Float64}}
+
+# Arguments
+- `genomes::Genomes`: A Genomes struct containing genetic information for entries.
+- `f_add_dom_epi::Matrix{Float64}`: 3-column matrix with proportions of loci with additive, dominance, and epistasis effects per trait. Default: 3×3 matrix with predefined values.
+- `n_years::Int64`: Number of years in simulation. Default: 2. Must be ∈ [1, 1e6].
+- `n_seasons::Int64`: Number of seasons per year. Default: 4. Must be ∈ [1, 1e6].
+- `n_measurements::Int64`: Number of measurements per plot. Default: 2. Must be ∈ [1, 1e6].
+- `n_sites::Int64`: Number of trial sites. Default: 4. Must be ∈ [1, 1e6].
+- `n_replications::Int64`: Number of replications per site. Default: 2. Must be ∈ [1, 1e6].
+- `n_blocks::Union{Missing, Int64}`: Number of blocks per replication. Default: missing (automatic). Must divide `n_cols` evenly.
+- `n_rows::Union{Missing, Int64}`: Number of field rows. Default: missing (automatic). Must divide `n*n_replications` evenly.
+- `n_cols::Union{Missing, Int64}`: Number of field columns. Default: missing (automatic). Must divide `n*n_replications` evenly.
+- `proportion_of_variance::Union{Missing, Matrix{Float64}}`: 9×n_traits matrix specifying variance proportions for genetic and environmental effects. Default: missing (random generation).
+- `sparsity::Float64`: Sparsity parameter for effects. Default: 0.0. Must be ∈ [0.0, 1.0].
+- `seed::Int64`: Random seed for reproducibility. Default: 42.
+
+# Returns
+- `Tuple{Int64, Int64, Matrix{Int64}, TaskLocalRNG, Matrix{Float64}}`: 
+  - `n`: Number of entries
+  - `n_traits`: Number of traits
+  - `n_blocks`: Number of blocks in the field layout
+  - `n_rows`: Number of rows in the field layout
+  - `n_cols`: Number of columns in the field layout
+  - `field_layout`: Matrix of dimensions (n_rows × n_cols, 4) with columns [replication, block, row, col]
+  - `rng`: Seeded random number generator
+  - `proportion_of_variance`: Validated variance proportion matrix
+
+# Throws
+- `ArgumentError`: If genomes contain missing data, invalid dimensions, or argument constraints are violated.
+
+# Notes
+- Genomes struct must not contain missing data.
+- `f_add_dom_epi` values must be ∈ [0.0, 1.0].
+- Field layout is automatically computed to satisfy constraints when rows/cols/blocks are missing.
+- Blocks divide the field along columns; row count ≤ column count preferred.
+"""
+function parsetrialsimargs(
+    genomes::Genomes;
+    f_add_dom_epi::Matrix{Float64} = [
+        0.01 0.25 0.10
+        0.05 0.50 0.25
+        0.10 0.25 0.00
+    ],
+    n_years::Int64 = 2,
+    n_seasons::Int64 = 4,
+    n_measurements::Int64 = 2,
+    n_sites::Int64 = 4,
+    n_replications::Int64 = 2,
+    n_blocks::Union{Missing,Int64} = missing,
+    n_rows::Union{Missing,Int64} = missing,
+    n_cols::Union{Missing,Int64} = missing,
+    proportion_of_variance::Union{Missing,Matrix{Float64}} = missing,
+    sparsity::Float64 = 0.0,
+    seed::Int64 = 42,
+)::Tuple{Int64,Int64,Int64,Int64,Int64,Matrix{Int64},TaskLocalRNG,Matrix{Float64}}
+    if !checkdims(genomes)
+        throw(ArgumentError("Error in the genomes input"))
+    end
+    # Genomes dimensions
+    genomes_dims::Dict{String,Int64} = dimensions(genomes)
+    n::Int64 = genomes_dims["n_entries"]
+    # n_populations::Int64 = genomes_dims["n_populations"]
+    # p::Int64 = genomes_dims["n_loci_alleles"]
+    # l::Int64 = genomes_dims["n_loci"]
+    # max_n_alleles::Int64 = genomes_dims["max_n_alleles"]
+    n_missing::Int64 = genomes_dims["n_missing"]
+    if n_missing > 0
+        throw(
+            ArgumentError(
+                "We do not accept a Genomes struct with missing data to simulate trials data. Please consider filtering them out or imputing.",
+            ),
+        )
+    end
+    n_traits::Int64 = size(f_add_dom_epi, 1)
+    if (n_traits < 1) || (n_traits > 1e6)
+        throw(ArgumentError("We accept `n_traits` from 1 to 1 million."))
+    end
+    if size(f_add_dom_epi, 2) != 3
+        throw(
+            ArgumentError(
+                "We expect `f_add_dom_epi` to have exactly 3 columns corresponding to the proportion of loci with additive effects, then the poportion of additive loci with dominance and epistasis effects.",
+            ),
+        )
+    end
+    if sum((f_add_dom_epi .< 0.0) .&& (f_add_dom_epi .> 1.0)) != 0
+        throw(ArgumentError("We expect `f_add_dom_epi` values to range from 0.0 to 1.0."))
+    end
+    if (n_years < 1) || (n_years > 1e6)
+        throw(ArgumentError("We accept `n_years` from 1 to 1 million."))
+    end
+    if (n_seasons < 1) || (n_seasons > 1e6)
+        throw(ArgumentError("We accept `n_seasons` from 1 to 1 million."))
+    end
+    if (n_measurements < 1) || (n_measurements > 1e6)
+        throw(ArgumentError("We accept `n_measurements` from 1 to 1 million."))
+    end
+    if (n_sites < 1) || (n_sites > 1e6)
+        throw(ArgumentError("We accept `n_sites` from 1 to 1 million."))
+    end
+    if (n_replications < 1) || (n_replications > 1e6)
+        throw(ArgumentError("We accept `n_replications` from 1 to 1 million."))
+    end
+    # Argument checks (continued...)
+    if !ismissing(n_blocks)
+        if (n * n_replications % n_blocks) > 0
+            throw(
+                ArgumentError(
+                    "`n_blocks` does not evenly divide the `n*n_replications`. Please revise or use `missing` for automatic `n_blocks` setting.",
+                ),
+            )
+        end
+    end
+    if !ismissing(n_rows)
+        if (n * n_replications % n_rows) > 0
+            throw(
+                ArgumentError(
+                    "`n_rows` does not evenly divide the `n*n_replications`. Please revise or use `missing` for automatic `n_rows` setting.",
+                ),
+            )
+        end
+    end
+    if !ismissing(n_cols)
+        if (n * n_replications % n_cols) > 0
+            throw(
+                ArgumentError(
+                    "`n_cols` does not evenly divide the `n*n_replications`. Please revise or use `missing` for automatic `n_cols` setting.",
+                ),
+            )
+        end
+    end
+    if !ismissing(n_rows) && !ismissing(n_cols)
+        if (n * n_replications) != (n_rows * n_cols)
+            throw(
+                ArgumentError(
+                    "`n_rows*n_cols` should equal `n*n_replications`. Please revise or use `missing` for automatic `n_rows` and `n_cols` setting.",
+                ),
+            )
+        end
+    end
+    # Define the field layout
+    # Note that we prefer the number of rows to be less than or equal to the number of columns, and
+    # that blocks divide the field along columns
+    if ismissing(n_rows) && ismissing(n_cols)
+        n_rows = Int64(floor(sqrt(n * n_replications)))
+        while ((n * n_replications) % n_rows) > 0
+            n_rows -= 1
+        end
+        n_cols = Int64(n * n_replications / n_rows)
+    elseif !ismissing(n_rows) && ismissing(n_cols)
+        n_cols = Int64(n * n_replications / n_rows)
+    elseif ismissing(n_rows) && !ismissing(n_cols)
+        n_rows = Int64(n * n_replications / n_cols)
+    end
+    if !ismissing(n_blocks)
+        if n_cols % n_blocks > 0
+            throw(
+                ArgumentError(
+                    "`n_blocks` does not evenly divide the `n_cols`. Please revise or use `missing` for automatic `n_blocks` setting.",
+                ),
+            )
+        end
+    else
+        n_blocks = n_cols
+        while ((n_cols % n_blocks) > 0) || (n_blocks == n_cols)
+            n_blocks -= 1
+        end
+    end
+    n_cols_per_block::Int64 = Int64(n_cols / n_blocks)
+    field_layout::Matrix{Int64} = fill(0, n_rows * n_cols, 4)
+    counter = 1
+    counter_entries_per_replication = 1
+    replication = 1
+    for row = 1:n_rows
+        block = 1
+        counter_cols_per_block = 1
+        for col = 1:n_cols
+            field_layout[counter, 1] = replication
+            field_layout[counter, 2] = block
+            field_layout[counter, 3] = row
+            field_layout[counter, 4] = col
+            if counter_entries_per_replication == n
+                replication += 1
+                counter_entries_per_replication = 0
+            end
+            if counter_cols_per_block == n_cols_per_block
+                block += 1
+                counter_cols_per_block = 0
+            end
+            counter += 1
+            counter_entries_per_replication += 1
+            counter_cols_per_block += 1
+        end
+    end
+    # Set randomisation seed
+    rng::TaskLocalRNG = Random.seed!(seed)
+    # Argument checks (continued...)
+    if ismissing(proportion_of_variance)
+        proportion_of_variance::Union{Missing,Matrix{Float64}} = rand(rng, 9, n_traits)
+        proportion_of_variance[1, :] .= sample(rng, 1:10, n_traits)
+    end
+    if size(proportion_of_variance) != (9, n_traits)
+        throw(
+            ArgumentError(
+                "We expect 9 x " *
+                string(n_traits) *
+                " (`n_traits`) matrix. " *
+                "Each row corresponding to the scaled/non-scaled proportion of variance of " *
+                "\t (1) additive genetic effects\n" *
+                "\t (2) dominance genetic effects\n" *
+                "\t (3) epistasis genetic effects\n" *
+                "\t (4) years effects\n" *
+                "\t (5) seasons effects\n" *
+                "\t (6) sites effects\n" *
+                "\t (7) environmental interactions\n" *
+                "\t (8) spatial interactions\n" *
+                "\t (9) GxE interactions\n" *
+                "There were only " *
+                string(size(proportion_of_variance, 1)) *
+                " row/s and " *
+                string(size(proportion_of_variance, 2)) *
+                " column/s in `proportion_of_variance`.",
+            ),
+        )
+    end
+    if sum(proportion_of_variance .>= 0.0) < (9 * n_traits)
+        throw(ArgumentError("We accept zero or positive values in `proportion_of_variance` matrix."))
+    end
+    if (sparsity < 0.0) || (sparsity > 1.0)
+        throw(ArgumentError("We accept `sparsity` from 0.0 to 1.0."))
+    end
+    (n, n_traits, n_blocks, n_rows, n_cols, field_layout, rng, proportion_of_variance)
+end
+
+"""
     simulatetrials(;
         genomes::Genomes,
         f_add_dom_epi::Matrix{Float64} = [
@@ -125,184 +378,21 @@ function simulatetrials(;
 )::Tuple{Trials,Vector{SimulatedEffects}}
     # genomes::Genomes = simulategenomes(n=100, l=2_000, n_alleles=3, verbose=false); f_add_dom_epi::Matrix{Float64} = [0.01 0.25 0.10; 0.05 0.50 0.25; 0.10 0.25 0.00]; n_years::Int64 = 2; n_seasons::Int64 = 4; n_measurements::Int64 = 2; n_sites::Int64 = 4; n_replications::Int64 = 2; n_blocks::Union{Missing,Int64} = missing; n_rows::Union{Missing,Int64} = missing; n_cols::Union{Missing,Int64} = missing; proportion_of_variance::Union{Missing,Matrix{Float64}} = missing; sparsity::Float64 = 0.25; seed::Int64 = 42; verbose::Bool = false;
     # Argument checks
-    n_traits, n, field_layout, rng, proportion_of_variance = begin
-        if !checkdims(genomes)
-            throw(ArgumentError("Error in the genomes input"))
-        end
-        # Genomes dimensions
-        genomes_dims::Dict{String,Int64} = dimensions(genomes)
-        n::Int64 = genomes_dims["n_entries"]
-        n_populations::Int64 = genomes_dims["n_populations"]
-        p::Int64 = genomes_dims["n_loci_alleles"]
-        l::Int64 = genomes_dims["n_loci"]
-        max_n_alleles::Int64 = genomes_dims["max_n_alleles"]
-        n_missing::Int64 = genomes_dims["n_missing"]
-        if n_missing > 0
-            throw(
-                ArgumentError(
-                    "We do not accept a Genomes struct with missing data to simulate trials data. Please consider filtering them out or imputing.",
-                ),
-            )
-        end
-        n_traits::Int64 = size(f_add_dom_epi, 1)
-        if (n_traits < 1) || (n_traits > 1e6)
-            throw(ArgumentError("We accept `n_traits` from 1 to 1 million."))
-        end
-        if size(f_add_dom_epi, 2) != 3
-            throw(
-                ArgumentError(
-                    "We expect `f_add_dom_epi` to have exactly 3 columns corresponding to the proportion of loci with additive effects, then the poportion of additive loci with dominance and epistasis effects.",
-                ),
-            )
-        end
-        if sum((f_add_dom_epi .< 0.0) .&& (f_add_dom_epi .> 1.0)) != 0
-            throw(ArgumentError("We expect `f_add_dom_epi` values to range from 0.0 to 1.0."))
-        end
-        if (n_years < 1) || (n_years > 1e6)
-            throw(ArgumentError("We accept `n_years` from 1 to 1 million."))
-        end
-        if (n_seasons < 1) || (n_seasons > 1e6)
-            throw(ArgumentError("We accept `n_seasons` from 1 to 1 million."))
-        end
-        if (n_measurements < 1) || (n_measurements > 1e6)
-            throw(ArgumentError("We accept `n_measurements` from 1 to 1 million."))
-        end
-        if (n_sites < 1) || (n_sites > 1e6)
-            throw(ArgumentError("We accept `n_sites` from 1 to 1 million."))
-        end
-        if (n_replications < 1) || (n_replications > 1e6)
-            throw(ArgumentError("We accept `n_replications` from 1 to 1 million."))
-        end
-        # Argument checks (continued...)
-        if !ismissing(n_blocks)
-            if (n * n_replications % n_blocks) > 0
-                throw(
-                    ArgumentError(
-                        "`n_blocks` does not evenly divide the `n*n_replications`. Please revise or use `missing` for automatic `n_blocks` setting.",
-                    ),
-                )
-            end
-        end
-        if !ismissing(n_rows)
-            if (n * n_replications % n_rows) > 0
-                throw(
-                    ArgumentError(
-                        "`n_rows` does not evenly divide the `n*n_replications`. Please revise or use `missing` for automatic `n_rows` setting.",
-                    ),
-                )
-            end
-        end
-        if !ismissing(n_cols)
-            if (n * n_replications % n_cols) > 0
-                throw(
-                    ArgumentError(
-                        "`n_cols` does not evenly divide the `n*n_replications`. Please revise or use `missing` for automatic `n_cols` setting.",
-                    ),
-                )
-            end
-        end
-        if !ismissing(n_rows) && !ismissing(n_cols)
-            if (n * n_replications) != (n_rows * n_cols)
-                throw(
-                    ArgumentError(
-                        "`n_rows*n_cols` should equal `n*n_replications`. Please revise or use `missing` for automatic `n_rows` and `n_cols` setting.",
-                    ),
-                )
-            end
-        end
-        # Define the field layout
-        # Note that we prefer the number of rows to be less than or equal to the number of columns, and
-        # that blocks divide the field along columns
-        if ismissing(n_rows) && ismissing(n_cols)
-            n_rows = Int64(floor(sqrt(n * n_replications)))
-            while ((n * n_replications) % n_rows) > 0
-                n_rows -= 1
-            end
-            n_cols = Int64(n * n_replications / n_rows)
-        elseif !ismissing(n_rows) && ismissing(n_cols)
-            n_cols = Int64(n * n_replications / n_rows)
-        elseif ismissing(n_rows) && !ismissing(n_cols)
-            n_rows = Int64(n * n_replications / n_cols)
-        end
-        if !ismissing(n_blocks)
-            if n_cols % n_blocks > 0
-                throw(
-                    ArgumentError(
-                        "`n_blocks` does not evenly divide the `n_cols`. Please revise or use `missing` for automatic `n_blocks` setting.",
-                    ),
-                )
-            end
-        else
-            n_blocks = n_cols
-            while ((n_cols % n_blocks) > 0) || (n_blocks == n_cols)
-                n_blocks -= 1
-            end
-        end
-        n_cols_per_block::Int64 = Int64(n_cols / n_blocks)
-        field_layout::Matrix{Int64} = fill(0, n_rows * n_cols, 4)
-        counter = 1
-        counter_entries_per_replication = 1
-        replication = 1
-        for row = 1:n_rows
-            block = 1
-            counter_cols_per_block = 1
-            for col = 1:n_cols
-                field_layout[counter, 1] = replication
-                field_layout[counter, 2] = block
-                field_layout[counter, 3] = row
-                field_layout[counter, 4] = col
-                if counter_entries_per_replication == n
-                    replication += 1
-                    counter_entries_per_replication = 0
-                end
-                if counter_cols_per_block == n_cols_per_block
-                    block += 1
-                    counter_cols_per_block = 0
-                end
-                counter += 1
-                counter_entries_per_replication += 1
-                counter_cols_per_block += 1
-            end
-        end
-        # Set randomisation seed
-        rng::TaskLocalRNG = Random.seed!(seed)
-        # Argument checks (continued...)
-        if ismissing(proportion_of_variance)
-            proportion_of_variance::Union{Missing,Matrix{Float64}} = rand(rng, 9, n_traits)
-            proportion_of_variance[1, :] .= sample(rng, 1:10, n_traits)
-        end
-        if size(proportion_of_variance) != (9, n_traits)
-            throw(
-                ArgumentError(
-                    "We expect 9 x " *
-                    string(n_traits) *
-                    " (`n_traits`) matrix. " *
-                    "Each row corresponding to the scaled/non-scaled proportion of variance of " *
-                    "\t (1) additive genetic effects\n" *
-                    "\t (2) dominance genetic effects\n" *
-                    "\t (3) epistasis genetic effects\n" *
-                    "\t (4) years effects\n" *
-                    "\t (5) seasons effects\n" *
-                    "\t (6) sites effects\n" *
-                    "\t (7) environmental interactions\n" *
-                    "\t (8) spatial interactions\n" *
-                    "\t (9) GxE interactions\n" *
-                    "There were only " *
-                    string(size(proportion_of_variance, 1)) *
-                    " row/s and " *
-                    string(size(proportion_of_variance, 2)) *
-                    " column/s in `proportion_of_variance`.",
-                ),
-            )
-        end
-        if sum(proportion_of_variance .>= 0.0) < (9 * n_traits)
-            throw(ArgumentError("We accept zero or positive values in `proportion_of_variance` matrix."))
-        end
-        if (sparsity < 0.0) || (sparsity > 1.0)
-            throw(ArgumentError("We accept `sparsity` from 0.0 to 1.0."))
-        end
-        (n_traits, n, field_layout, rng, proportion_of_variance)
-    end
+    (n, n_traits, n_blocks, n_rows, n_cols, field_layout, rng, proportion_of_variance) = parsetrialsimargs(
+        genomes,
+        f_add_dom_epi = f_add_dom_epi,
+        n_years = n_years,
+        n_seasons = n_seasons,
+        n_measurements = n_measurements,
+        n_sites = n_sites,
+        n_replications = n_replications,
+        n_blocks = n_blocks,
+        n_rows = n_rows,
+        n_cols = n_cols,
+        proportion_of_variance = proportion_of_variance,
+        sparsity = sparsity,
+        seed = seed,
+    )
     # Instantiate output Trials struct
     n_total::Int64 = n_years * n_seasons * n_measurements * n_sites * n_replications * n
     trials::Trials = Trials(; n = n_total, t = n_traits)
@@ -423,9 +513,40 @@ function simulatetrials(;
         idx_out_fin::Int64 = n
         # Iterate across environments
         for idx_year = 1:n_years
+            year_id = string(2025 + idx_year)
+            # Sample measurement dates to iterate across
+            autumn_dates = sample(
+                ["$year_id/$mm/$dd" for mm in lpad.(collect(3:5), 2, "0") for dd in lpad.(collect(1:30), 2, "0")],
+                n_measurements,
+            )
+            winter_dates = sample(
+                ["$year_id/$mm/$dd" for mm in lpad.(collect(6:7), 2, "0") for dd in lpad.(collect(1:30), 2, "0")],
+                n_measurements,
+            )
+            earlyspring_dates = sample(
+                ["$year_id/$mm/$dd" for mm in lpad.(collect(8:9), 2, "0") for dd in lpad.(collect(1:30), 2, "0")],
+                n_measurements,
+            )
+            latespring_dates = sample(
+                ["$year_id/$mm/$dd" for mm in lpad.(collect(10:11), 2, "0") for dd in lpad.(collect(1:30), 2, "0")],
+                n_measurements,
+            )
+            spring_dates = sample(
+                ["$year_id/$mm/$dd" for mm in lpad.(collect(8:11), 2, "0") for dd in lpad.(collect(1:30), 2, "0")],
+                n_measurements,
+            )
+            summer_dates = let
+                dec = ["$(year_id)/$mm/$dd" for mm in lpad.(collect(12), 2, "0") for dd in lpad.(collect(1:31), 2, "0")]
+                jan_feb = [
+                    "$(parse(Int64, year_id) + 1)/$mm/$dd" for mm in lpad.(collect(1:2), 2, "0") for
+                    dd in lpad.(collect(1:30), 2, "0")
+                ]
+                sample(vcat(dec, jan_feb), n_measurements)
+            end
             for idx_season = 1:n_seasons
                 for idx_measurement = 1:n_measurements
                     for idx_site = 1:n_sites
+                        # idx_year = 1; idx_season = 1; idx_measurement = 1; idx_site = 1; 
                         θ_replications_x_site_x_measurement_x_season_x_year = simulateeffects(;
                             p = n_replications,
                             covar_details = (simulatecovariancespherical, 1.0),
@@ -465,6 +586,7 @@ function simulatetrials(;
                                 seed = seeds_inner[idx_trait, idx_year, idx_season, idx_measurement, idx_site, 7],
                             )
                         for idx_replication = 1:n_replications
+                            # idx_replication = 1
                             idx_field_layout::Vector{Bool} = field_layout[:, 1] .== idx_replication
                             # Randomise the layout of the entries
                             idx_randomised_entries::Vector{Int64} = StatsBase.sample(rng, 1:n, n; replace = false)
@@ -473,33 +595,33 @@ function simulatetrials(;
                             idx_ysh::Int = (idx_ys - 1) * n_measurements + idx_measurement
                             # Define the effects
                             effects::SimulatedEffects = SimulatedEffects()
-                            year_id = string(2025 + idx_year)
-                            effects.id = [
-                                trials.traits[idx_trait],
-                                year_id,
-                                if n_seasons > 5
-                                    string("season_", lpad(idx_season, length(string(n_seasons)), "0"))
-                                elseif n_seasons == 5
-                                    ["Autumn", "Winter", "Early Spring", "Late Spring", "Summer"][idx_season]
-                                else
-                                    ["Autumn", "Winter", "Spring", "Summer"][idx_season]
-                                end,
-                                if n_measurements > 5
-                                    string("measurement_", lpad(idx_measurement, length(string(n_measurements)), "0"))
-                                elseif n_measurements == 5
-                                    [
-                                        "$year_id/04/15",
-                                        "$year_id/06/30",
-                                        "$year_id/08/31",
-                                        "$year_id/10/31",
-                                        "$year_id/01/15",
-                                    ][idx_measurement]
-                                else
-                                    ["$year_id/04/15", "$year_id/06/30", "$year_id/09/30", "$year_id/01/15"][idx_measurement]
-                                end,
-                                string("site_", lpad(idx_site, length(string(n_sites)), "0")),
-                                string("replication_", lpad(idx_replication, length(string(n_replications)), "0")),
-                            ]
+                            trait_id = trials.traits[idx_trait]
+                            season_id = if n_seasons > 5
+                                string("season_", lpad(idx_season, length(string(n_seasons)), "0"))
+                            elseif n_seasons == 5
+                                ["Autumn", "Winter", "Early Spring", "Late Spring", "Summer"][idx_season]
+                            else
+                                ["Autumn", "Winter", "Spring", "Summer"][idx_season]
+                            end
+                            date_id = if n_measurements > 5
+                                string("measurement_", lpad(idx_measurement, length(string(n_measurements)), "0"))
+                            elseif season_id == "Autumn"
+                                autumn_dates[idx_measurement]
+                            elseif season_id == "Winter"
+                                winter_dates[idx_measurement]
+                            elseif season_id == "Early Spring"
+                                earlyspring_dates[idx_measurement]
+                            elseif season_id == "Late Spring"
+                                latespring_dates[idx_measurement]
+                            elseif season_id == "Spring"
+                                spring_dates[idx_measurement]
+                            else
+                                summer_dates[idx_measurement]
+                            end
+                            site_id = string("site_", lpad(idx_site, length(string(n_sites)), "0"))
+                            replication_id =
+                                string("replication_", lpad(idx_replication, length(string(n_replications)), "0"))
+                            effects.id = [trait_id, year_id, season_id, date_id, site_id, replication_id]
                             effects.year = θ_years[idx_year] * σ²_year
                             effects.season = θ_seasons[idx_season] * σ²_season
                             effects.site = θ_sites[idx_site] * σ²_site

@@ -55,7 +55,7 @@ Dict{String, Int64} with 16 entries:
   "n_traits"       => 2
   "n_seasons"      => 2
   "n_blocks"       => 10
-  "n_measurements" => 2
+  "n_measurements" => 4
   "n_rows"         => 10
   "n_missing"      => 0
   "n_total"        => 6400

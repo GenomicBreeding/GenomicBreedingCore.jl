@@ -74,6 +74,7 @@ export simulategenomes,
     simulatecovariancekinship,
     simulateeffects,
     simulategenomiceffects,
+    parsetrialsimargs,
     simulatetrials
 export histallelefreqs, simulatemating
 export countlevels, @string2formula, trialsmodelsfomulae!, analyse, extractphenomes
