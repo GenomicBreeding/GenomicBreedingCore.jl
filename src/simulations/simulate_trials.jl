@@ -513,6 +513,7 @@ function simulatetrials(;
         idx_out_fin::Int64 = n
         # Iterate across environments
         for idx_year = 1:n_years
+            # idx_year = 1
             year_id = string(2025 + idx_year)
             # Sample measurement dates to iterate across
             autumn_dates = sample(
@@ -536,7 +537,7 @@ function simulatetrials(;
                 n_measurements,
             )
             summer_dates = let
-                dec = ["$(year_id)/$mm/$dd" for mm in lpad.(collect(12), 2, "0") for dd in lpad.(collect(1:31), 2, "0")]
+                dec = ["$(year_id)/$mm/$dd" for mm in lpad.(collect(12:12), 2, "0") for dd in lpad.(collect(1:31), 2, "0")]
                 jan_feb = [
                     "$(parse(Int64, year_id) + 1)/$mm/$dd" for mm in lpad.(collect(1:2), 2, "0") for
                     dd in lpad.(collect(1:30), 2, "0")
