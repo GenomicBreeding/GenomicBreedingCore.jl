@@ -69,8 +69,8 @@ function Base.merge(
     if !checkdims(other)
         throw(ArgumentError("The second Genomes struct is corrupted ☹."))
     end
-    if (length(conflict_resolution) != 2) && (sum(conflict_resolution) != 1.00)
-        throw(ArgumentError("We expect `conflict_resolution` 2 be a 2-item tuple which sums up to exactly 1.00."))
+    if (length(conflict_resolution) != 2) || (sum(conflict_resolution) != 1.00)
+        throw(ArgumentError("We expect `conflict_resolution` to be a 2-item tuple which sums up to exactly 1.00."))
     end
     # Check if quick merging of entries is possible
     if (sort(genomes.loci_alleles) == sort(other.loci_alleles)) &&
