@@ -147,10 +147,10 @@ Contains phenotype data across years, seasons, measurement, sites, populations, 
 
 ## Constructor
 ```julia
-Trials(; n::Int64 = 2, p::Int64 = 2)
+Trials(; n::Int64 = 2, t::Int64 = 2)
 ```
 where:
-- `n::Int64=1`: Number of entries in the trials
+- `n::Int64=1`: Number of records in the trials
 - `t::Int64=2`: Number of traits in the trials
 
 ## Examples
