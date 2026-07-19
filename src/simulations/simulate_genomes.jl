@@ -548,7 +548,7 @@ Simulates genomic data with population structure and linkage disequilibrium.
 - `n_chroms::Int64`: Number of chromosomes (1 to 1e6)
 - `n_alleles::Int64`: Number of alleles per locus (2 to 5, representing A, T, C, G, D)
 - `max_pos::Int64`: Maximum position in base pairs (10 to 160e9)
-- `ld_corr_50perc_kb::Int64`: Distance in kb where correlation decay reaches 50%
+- `ld_corr_50perc_kb::Int64`: Distance in kb where correlation decay reaches 50% (setting this to zero skips LD simulation)
 - `rel_dist_multiplier::Float64`: Multiplier for maximum relative distance to consider in LD blocks
 - `μ_β_params::Tuple{Float64,Float64}`: Shape parameters for Beta distribution of allele frequencies
 - `sparsity::Float64`: Proportion of missing data to simulate (0.0 to 1.0)
@@ -684,42 +684,48 @@ function simulategenomes(;
     # Group entries into populations
     populations, idx_population_groupings = simulatepopgroups(n = n, n_populations = n_populations)
     # Simulate allele frequencies with linkage disequillibrium by sampling from a multivariate normal distribution with non-spherical variance-covariance matrix
-    allele_frequencies::Matrix{Union{Float64,Missing}} = fill(missing, n, p)
-    locus_counter::Vector{UInt} = [1]
-    pb = if verbose
-        ProgressMeter.Progress(n_chroms * n * (n_alleles - 1); desc = "Simulating allele frequencies: ")
+    allele_frequencies::Matrix{Union{Float64,Missing}} = if ld_corr_50perc_kb == 0
+        # Skip LD simulation for simple simulations by setting ld_corr_50perc_kb to zero 
+        rand(n, p)
     else
-        nothing
-    end
-    for i = 1:n_chroms
-        # Simulate linkage blocks
-        # i  = 1
-        Σ_base = simulateldblocks(
-            chrom_positions = positions[i],
-            chrom_length = chrom_lengths[i],
-            ld_corr_50perc_kb = ld_corr_50perc_kb,
-            rel_dist_multiplier = rel_dist_multiplier,
-        )
-        for k = 1:n_populations
-            # k = 4
-            # Sample mean allele frequencies per population, and scale the variance-covariance matrix by the allele frequency means
-            μ, Σ = simulateperpopμΣ(Σ_base = Σ_base, μ_β_params = μ_β_params, rng = rng)
-            # Update the allele frequency vector, locus_counter, and progress bar
-            simulateallelefreqs!(
-                allele_frequencies,
-                locus_counter,
-                pb,
-                μ = μ,
-                Σ = Σ,
-                n_alleles = n_alleles,
-                idx_entries_per_population = idx_population_groupings[k],
-                rng = rng,
+        allele_frequencies = fill(missing, n, p)
+        locus_counter::Vector{UInt} = [1]
+        pb = if verbose
+            ProgressMeter.Progress(n_chroms * n * (n_alleles - 1); desc = "Simulating allele frequencies: ")
+        else
+            nothing
+        end
+        for i = 1:n_chroms
+            # Simulate linkage blocks
+            # i  = 1
+            Σ_base = simulateldblocks(
+                chrom_positions = positions[i],
+                chrom_length = chrom_lengths[i],
+                ld_corr_50perc_kb = ld_corr_50perc_kb,
+                rel_dist_multiplier = rel_dist_multiplier,
             )
-        end # populations
-        locus_counter[1] = locus_counter[1] + chrom_loci_counts[i]
-    end
-    if verbose
-        ProgressMeter.finish!(pb)
+            for k = 1:n_populations
+                # k = 4
+                # Sample mean allele frequencies per population, and scale the variance-covariance matrix by the allele frequency means
+                μ, Σ = simulateperpopμΣ(Σ_base = Σ_base, μ_β_params = μ_β_params, rng = rng)
+                # Update the allele frequency vector, locus_counter, and progress bar
+                simulateallelefreqs!(
+                    allele_frequencies,
+                    locus_counter,
+                    pb,
+                    μ = μ,
+                    Σ = Σ,
+                    n_alleles = n_alleles,
+                    idx_entries_per_population = idx_population_groupings[k],
+                    rng = rng,
+                )
+            end # populations
+            locus_counter[1] = locus_counter[1] + chrom_loci_counts[i]
+        end
+        if verbose
+            ProgressMeter.finish!(pb)
+        end
+        allele_frequencies
     end
     # Populate the output struct
     genomes.entries = ["entry_" * lpad(i, length(string(n)), "0") for i = 1:n]
