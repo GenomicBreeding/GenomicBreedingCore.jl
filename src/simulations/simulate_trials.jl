@@ -529,7 +529,7 @@ function simulatetrials(;
                 n_measurements,
             )
             latespring_dates = sample(
-                ["$year_id-$mm-$dd" for mm in lpad.(collect(10:11), 2, "0") for dd in lpad.(collect(1:30), 2, "0")],
+                ["$year_id-$mm-$dd" for mm in lpad.(collect(10:11), 2, "0") for dd in lpad.(collect(1:31), 2, "0")],
                 n_measurements,
             )
             spring_dates = sample(
@@ -537,10 +537,10 @@ function simulatetrials(;
                 n_measurements,
             )
             summer_dates = let
-                dec = ["$(year_id)-$mm-$dd" for mm in lpad.(collect(12:12), 2, "0") for dd in lpad.(collect(1:28), 2, "0")]
+                dec = ["$(year_id)-$mm-$dd" for mm in lpad.(collect(12:12), 2, "0") for dd in lpad.(collect(1:31), 2, "0")]
                 jan_feb = [
                     "$(parse(Int64, year_id) + 1)-$mm-$dd" for mm in lpad.(collect(1:2), 2, "0") for
-                    dd in lpad.(collect(1:30), 2, "0")
+                    dd in lpad.(collect(1:28), 2, "0")
                 ]
                 sample(vcat(dec, jan_feb), n_measurements)
             end
