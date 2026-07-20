@@ -517,27 +517,27 @@ function simulatetrials(;
             year_id = string(2025 + idx_year)
             # Sample measurement dates to iterate across
             autumn_dates = sample(
-                ["$year_id-$mm-$dd" for mm in lpad.(collect(3:5), 2, "0") for dd in lpad.(collect(1:28), 2, "0")],
+                ["$year_id-$mm-$dd" for mm in lpad.(collect(3:5), 2, "0") for dd in lpad.(collect(1:30), 2, "0")],
                 n_measurements,
             )
             winter_dates = sample(
-                ["$year_id-$mm-$dd" for mm in lpad.(collect(6:7), 2, "0") for dd in lpad.(collect(1:28), 2, "0")],
+                ["$year_id-$mm-$dd" for mm in lpad.(collect(6:7), 2, "0") for dd in lpad.(collect(1:30), 2, "0")],
                 n_measurements,
             )
             earlyspring_dates = sample(
-                ["$year_id-$mm-$dd" for mm in lpad.(collect(8:9), 2, "0") for dd in lpad.(collect(1:28), 2, "0")],
+                ["$year_id-$mm-$dd" for mm in lpad.(collect(8:9), 2, "0") for dd in lpad.(collect(1:30), 2, "0")],
                 n_measurements,
             )
             latespring_dates = sample(
-                ["$year_id-$mm-$dd" for mm in lpad.(collect(10:11), 2, "0") for dd in lpad.(collect(1:28), 2, "0")],
+                ["$year_id-$mm-$dd" for mm in lpad.(collect(10:11), 2, "0") for dd in lpad.(collect(1:30), 2, "0")],
                 n_measurements,
             )
             spring_dates = sample(
-                ["$year_id-$mm-$dd" for mm in lpad.(collect(8:11), 2, "0") for dd in lpad.(collect(1:28), 2, "0")],
+                ["$year_id-$mm-$dd" for mm in lpad.(collect(8:11), 2, "0") for dd in lpad.(collect(1:30), 2, "0")],
                 n_measurements,
             )
             summer_dates = let
-                dec = ["$(year_id)-$mm-$dd" for mm in lpad.(collect(12:12), 2, "0") for dd in lpad.(collect(1:31), 2, "0")]
+                dec = ["$(year_id)-$mm-$dd" for mm in lpad.(collect(12:12), 2, "0") for dd in lpad.(collect(1:28), 2, "0")]
                 jan_feb = [
                     "$(parse(Int64, year_id) + 1)-$mm-$dd" for mm in lpad.(collect(1:2), 2, "0") for
                     dd in lpad.(collect(1:30), 2, "0")
