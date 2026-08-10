@@ -282,8 +282,8 @@ function removemissnaninf(trials::Trials)::Trials
     for t in eachindex(trials.traits)
         bool_omit = .!(
             .!ismissing.(trials.phenotypes[:, t]) .&&
-            .!isnan.(trials.phenotypes[:, t]) .&&
-            .!isinf.(trials.phenotypes[:, t]),
+                .!isnan.(trials.phenotypes[:, t]) .&&
+                .!isinf.(trials.phenotypes[:, t]),
         )
         if sum(bool_omit) < n
             push!(traits, trials.traits[t])

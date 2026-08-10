@@ -648,9 +648,9 @@ function plot(trials::Trials; nbins::Int64 = 10)
             println("Population: " * pop * " | Trait: " * trials.traits[j])
             idx = findall(
                 (trials.populations .== pop) .&&
-                .!ismissing.(trials.phenotypes[:, j]) .&&
-                .!isnan.(trials.phenotypes[:, j]) .&&
-                .!isinf.(trials.phenotypes[:, j]),
+                    .!ismissing.(trials.phenotypes[:, j]) .&&
+                    .!isnan.(trials.phenotypes[:, j]) .&&
+                    .!isinf.(trials.phenotypes[:, j]),
             )
             if length(idx) == 0
                 println("All values are missing, NaN and/or infinities.")

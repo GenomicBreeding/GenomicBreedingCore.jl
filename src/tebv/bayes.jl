@@ -151,7 +151,7 @@ function checkandfocalterms(;
         end
         # Nest the spatial terms within years and/or seasons and/or sites
         nesters = if length(main_effects) > 0
-            join(filter(x -> isnothing(match(Regex("entries"), x)), main_effects), ":")
+            join(filter(x -> !occursin(Regex("entries"), x), main_effects), ":")
         else
             []
         end
@@ -933,7 +933,7 @@ function removespatialeffects!(
         )
     end
     # Define spatial factors
-    spatial_factors = filter(x -> !isnothing(match(Regex("blocks|rows|cols"), x)), factors)
+    spatial_factors = filter(x -> occursin(Regex("blocks|rows|cols"), x), factors)
     # Make sure that each measurement is year- and site-specific
     measurements = unique(df.measurements)
     # Instantiate the diagnostics dictionary for each measurement-by-trait combination
@@ -1280,7 +1280,7 @@ function analyseviaBLR(
     JLD2.save(fname_df_spat_adj_tmp_jl2, Dict("df" => df))
     # GxE modelling excluding the effects of spatial factors and continuous covariates
     BLRs::Dict{String,BLR} = Dict()
-    traits = filter(x -> !isnothing(match(Regex("^SPATADJ-"), x)), names(df)) # includes only the spatially adjusted traits
+    traits = filter(x -> occursin(Regex("^SPATADJ-"), x), names(df)) # includes only the spatially adjusted traits
     for (i, trait) in enumerate(traits)
         # i = length(traits); trait = traits[i];
         if verbose

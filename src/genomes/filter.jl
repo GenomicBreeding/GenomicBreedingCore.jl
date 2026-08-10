@@ -383,8 +383,8 @@ function filterbysparsity(
     # Instantiate the boolean vector for the while-loop to iteratively filter the Genomes struct
     bool::Vector{Bool} = [
         (length(entry_sparsities) > 0) &&
-        (length(locus_sparsities) > 0) &&
-        ((maximum(entry_sparsities) > max_entry_sparsity) || (maximum(locus_sparsities) > max_locus_sparsity)),
+            (length(locus_sparsities) > 0) &&
+            ((maximum(entry_sparsities) > max_entry_sparsity) || (maximum(locus_sparsities) > max_locus_sparsity)),
     ]
     # Return early if the input Genomes struct passed all the filtering thresholds
     if !bool[1]
