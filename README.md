@@ -26,3 +26,16 @@ time julia --project=. --threads=2 test/cli_tester.jl
 ```shell
 find GenomicBreeding*/ -type f -name "*.jl" -exec sed -i 's/harvest/measurement/g' {} +
 ```
+
+### Force stable docs on new release:
+
+First create a new release and if the stable don't get updated then try the following:
+
+```shell
+TAG=v0.3.0 # should match the release tag you created on Github
+git fetch origin tag $TAG
+git show $TAG --no-patch
+git checkout main
+git commit --allow-empty -m "Rebuild docs"
+git push
+```
