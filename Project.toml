@@ -1,6 +1,6 @@
 name = "GenomicBreedingCore"
 uuid = "50d95318-1838-4cfa-a614-3543b4bb0509"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["jeffersonparil@gmail.com"]
 
 [deps]
@@ -13,6 +13,7 @@ Distances = "b4f34e82-e78d-54a5-968a-f98e89d6e8f7"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
 JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
+JuliaFormatter = "98e50ef6-434e-11e9-1051-2b60c6c9e899"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MixedModels = "ff71e718-51f3-5ec2-a782-8ffcbfa3c316"
 MultivariateStats = "6f286f6a-111f-5878-ab1e-185364afe411"
@@ -39,6 +40,7 @@ Distances = "0.10.12"
 Distributions = "0.25.115"
 Documenter = "1.8.0"
 JLD2 = "0.5.11, 0.6"
+JuliaFormatter = "2.12.4"
 LinearAlgebra = "1.11.0"
 MixedModels = "4.34.1, 5"
 MultivariateStats = "0.10.3"

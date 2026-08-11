@@ -390,10 +390,10 @@
 #     # Instantiate output dictionary of dataframes
 #     dfs::Dict{String,DataFrame} = Dict()
 #     # Main effects
-#     main_effect_names = filter(x -> (x != "intercept") && isnothing(match(Regex(" & "), x)), string.(keys(blr.Xs)))
+#     main_effect_names = filter(x -> (x != "intercept") && !occursin(Regex(" & "), x), string.(keys(blr.Xs)))
 #     for name in main_effect_names
 #         # name = main_effect_names[1]
-#         levels = filter(x -> !isnothing(match(Regex(name), x)) && (isnothing(match(Regex(" & "), x))), b_labels)
+#         levels = filter(x -> occursin(Regex(name), x) && (!occursin(Regex(" & "), x)), b_labels)
 #         idx_col = vcat(1, findall([x ∈ levels for x in b_labels]))
 #         X_sub = X[:, idx_col]
 #         b_sub = b[idx_col]
@@ -416,7 +416,7 @@
 #     end
 #     # Interaction effects
 #     interaction_effect_names =
-#         filter(x -> (x != "intercept") && !isnothing(match(Regex(" & "), x)), string.(keys(blr.Xs)))
+#         filter(x -> (x != "intercept") && occursin(Regex(" & "), x), string.(keys(blr.Xs)))
 #     for name in interaction_effect_names
 #         # name = interaction_effect_names[1]
 #         levels = []
@@ -428,7 +428,7 @@
 #                 continue
 #             end
 #             # Include main and interaction components
-#             bool = [sum(.!isnothing.(match.(Regex(x), lab_split))) > 0 for x in name_split]
+#             bool = [sum(occursin.(Regex(x), lab_split)) > 0 for x in name_split]
 #             if (sum(bool) > 0) && (sum(bool) <= length(name_split))
 #                 push!(levels, lab)
 #             end

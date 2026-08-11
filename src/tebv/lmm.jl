@@ -282,7 +282,7 @@ function trialsmodelsfomulae!(
     # Remove models with redundant nesters in the main and residual terms
     idx = findall([
         (sum(match.(r"years_x_seasons_x_measurements_x_sites", x) .!= nothing) < 2) &&
-        (sum(match.(r"years_x_seasons_x_sites", x) .!= nothing) < 2) for x in split.(formulae, " + (")
+            (sum(match.(r"years_x_seasons_x_sites", x) .!= nothing) < 2) for x in split.(formulae, " + (")
     ])
     formulae = formulae[idx]
     n_levels = n_levels[idx]

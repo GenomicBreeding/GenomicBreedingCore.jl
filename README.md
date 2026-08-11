@@ -17,6 +17,7 @@ julia --project=. --threads=2,1 --load test/interactive_prelude.jl
 ### Format and test
 
 ```shell
+julia --project=. -e 'using Pkg; Pkg.instantiate()' # For a fresh Julia installation
 time julia --project=. --threads=2 test/cli_tester.jl
 ```
 
