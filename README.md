@@ -33,12 +33,15 @@ First create a new release and if the stable don't get updated then try the foll
 
 ```shell
 TAG=v0.3.0 # should match the release tag you created on Github
+git switch main
 git push origin :refs/tags/$TAG
 git tag -d $TAG
 git tag $TAG
 git push origin $TAG
 git show ${TAG}:Project.toml
 git branch --contains $TAG
+git commit --allow-empty -m "Rebuild docs"
+git push
 git switch gh-pages
 git pull
 git branch --contains v0.3.0
